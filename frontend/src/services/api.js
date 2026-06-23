@@ -1,6 +1,6 @@
 import { useAuthStore } from '@/store'
 
-const BASE = '/api'
+const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
 
 async function request(path, options = {}) {
   const token = useAuthStore.getState().token
