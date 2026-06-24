@@ -4,9 +4,14 @@
 
 const BASE = process.env.WORKER_URL || 'http://localhost:8787'
 
-const email    = process.argv[2] || 'admin@caredesk.local'
-const password = process.argv[3] || '<SENHA_INICIAL>'
+const email    = process.argv[2]
+const password = process.argv[3]
 const name     = process.argv[4] || 'Administrador'
+
+if (!email || !password) {
+  console.error('Uso: node scripts/create-admin.js <email> <senha> [nome]')
+  process.exit(1)
+}
 
 console.log(`\nCriando admin em ${BASE}...`)
 console.log(`  Email: ${email}`)

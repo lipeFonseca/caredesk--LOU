@@ -1,0 +1,24 @@
+# Copie este arquivo para wrangler.toml e preencha os valores
+# NUNCA commite wrangler.toml com valores reais de account_id
+
+name = "caredesk-worker"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+# account_id lido via variável de ambiente CLOUDFLARE_ACCOUNT_ID
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "SEU_NOME_DO_BANCO"
+database_id   = "SEU_DATABASE_ID"
+
+[vars]
+FRONTEND_URL = "https://SEU_PROJETO.pages.dev"
+APP_ENV      = "production"
+
+# Secrets — definir via: wrangler secret put NOME
+# JWT_SECRET
+# RESEND_API_KEY
+
+[triggers]
+crons = ["0 11 * * *"]

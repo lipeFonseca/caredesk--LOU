@@ -15,10 +15,13 @@ setup.use('*', async (c, next) => {
 // Cria (ou sobrescreve) o usuário admin padrão
 setup.post('/admin', async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const name     = body.name     || 'Administrador'
-  const email    = body.email    || 'admin@caredesk.local'
-  const password = body.password || '<SENHA_INICIAL>'
+  const name     = body.name  || 'Administrador'
+  const email    = body.email
+  const password = body.password
 
+  if (!email || !password) {
+    return c.json({ error: 'Email e senha são obrigatórios' }, 400)
+  }
   if (password.length < 8) {
     return c.json({ error: 'Senha deve ter ao menos 8 caracteres' }, 400)
   }
@@ -34,10 +37,7 @@ setup.post('/admin', async (c) => {
       password_hash = excluded.password_hash
   `).bind(name, email.toLowerCase(), hash).run()
 
-  return c.json({
-    success: true,
-    message: `Admin criado: ${email} / ${password}`,
-  })
+  return c.json({ success: true, message: `Admin criado: ${email}` })
 })
 
 export default setup

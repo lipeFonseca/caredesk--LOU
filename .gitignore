@@ -10,12 +10,17 @@ build/
 
 # Wrangler local state
 .wrangler/
-.dev.vars
 
-# Environment & secrets
+# Secrets e variáveis de ambiente — NUNCA commitar
+.dev.vars
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+frontend/.env.production
+frontend/.env.development
+frontend/.env.local
 
 # Logs
 *.log
