@@ -83,19 +83,37 @@ patients.post('/', async (c) => {
   }
 
   const id = crypto.randomUUID()
+
   await c.env.DB.prepare(`
     INSERT INTO patients (id, name, phone, email, procedure, surgery_date, assigned_agent_id, protocol_days, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    id, name, phone || null, email || null,
-    procedure, surgery_date,
+    id,
+    name,
+    phone             || null,
+    email             || null,
+    procedure,
+    surgery_date,
     assigned_agent_id || null,
-    protocol_days || '7,15,30,60,90',
-    notes || null
+    protocol_days     || '7,15,30,60,90',
+    notes             || null
   ).run()
 
-  const created = await c.env.DB.prepare('SELECT * FROM patients WHERE id = ?').bind(id).first()
-  return c.json(created, 201)
+  // Retorna os dados do paciente criado sem SELECT adicional para evitar race condition D1
+  return c.json({
+    id,
+    name,
+    phone:             phone             || null,
+    email:             email             || null,
+    procedure,
+    surgery_date,
+    assigned_agent_id: assigned_agent_id || null,
+    protocol_days:     protocol_days     || '7,15,30,60,90',
+    notes:             notes             || null,
+    status:            'active',
+    created_at:        new Date().toISOString(),
+    updated_at:        new Date().toISOString(),
+  }, 201)
 })
 
 // ── PATCH /api/patients/:id ───────────────────────────────────
