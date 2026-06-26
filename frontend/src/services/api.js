@@ -35,8 +35,9 @@ async function request(path, options = {}) {
   const data = await res.json().catch(() => ({}))
 
   if (res.status === 401) {
-    useAuthStore.getState().logout()
-    throw new Error(data.error || 'Credenciais inválidas')
+    const { token, logout } = useAuthStore.getState()
+    if (token) logout()
+    throw new Error(data.error || 'Não autorizado')
   }
 
   if (!res.ok) {
