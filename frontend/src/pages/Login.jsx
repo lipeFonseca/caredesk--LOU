@@ -10,6 +10,7 @@ export default function Login() {
   const login     = useAuthStore(s => s.login)
 
   const [form, setForm]       = useState({ email: '', password: '' })
+  /* campo "email" mantido internamente para compatibilidade com o backend */
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
@@ -59,14 +60,15 @@ export default function Login() {
         <div className="card">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">E-mail</label>
+              <label className="label">Usuário</label>
               <input
-                type="email"
+                type="text"
                 className="input"
-                placeholder="seu@email.com"
+                placeholder="nome de usuário"
                 value={form.email}
                 onChange={set('email')}
                 autoFocus
+                autoComplete="username"
                 disabled={loading}
               />
             </div>
@@ -117,7 +119,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          CareDesk · Sistema de follow-up cirúrgico
+          CareDesk · Acompanhamento pós-cirúrgico
         </p>
       </motion.div>
     </div>
