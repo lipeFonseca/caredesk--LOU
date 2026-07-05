@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Save, UserPlus } from 'lucide-react'
 import { api } from '@/services/api'
-
-const DEFAULT_PROTOCOL = '7,15,30,60,90'
+import { formatProtocolDay, normalizeProtocolDays } from '@/utils/protocols'
 
 export default function NewPatient() {
   const navigate = useNavigate()
@@ -12,26 +10,28 @@ export default function NewPatient() {
   const [form, setForm] = useState({
     name:              '',
     phone:             '',
-    email:             '',
     procedure:         '',
     surgery_date:      new Date().toISOString().split('T')[0],
     assigned_agent_id: '',
-    protocol_days:     DEFAULT_PROTOCOL,
+    protocol_id:       '',
     notes:             '',
   })
-  const [agents, setAgents] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const [agents, setAgents]       = useState([])
+  const [protocols, setProtocols] = useState([])
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState('')
 
   useEffect(() => {
     api.agents.list().then(data => setAgents(data ?? [])).catch(() => {})
+    api.protocols.list().then(data => {
+      setProtocols(data ?? [])
+      const def = (data ?? []).find(p => p.is_default)
+      if (def) setForm(f => ({ ...f, protocol_id: def.id }))
+    }).catch(() => {})
   }, [])
 
   function set(field) {
-    return (e) => {
-      setForm(f => ({ ...f, [field]: e.target.value }))
-      setError('')
-    }
+    return (e) => { setForm(f => ({ ...f, [field]: e.target.value })); setError('') }
   }
 
   async function handleSubmit(e) {
@@ -55,12 +55,12 @@ export default function NewPatient() {
     <div className="animate-fade-in max-w-2xl">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link to="/patients" className="btn-ghost !px-2 !py-2">
-          <ArrowLeft size={18} />
+        <Link to="/patients" className="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-lg transition-colors">
+          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Novo paciente</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Preencha os dados do paciente</p>
+          <h1 className="text-display-md font-display-md text-on-surface">Novo paciente</h1>
+          <p className="text-body-md text-on-surface-variant mt-0.5">Preencha os dados do paciente</p>
         </div>
       </div>
 
@@ -68,14 +68,14 @@ export default function NewPatient() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="card space-y-5"
+          className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6 space-y-6"
         >
           {/* Dados pessoais */}
           <section>
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            <h2 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-4">
               Dados pessoais
             </h2>
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
                 <label className="label">Nome completo *</label>
                 <input
@@ -87,41 +87,27 @@ export default function NewPatient() {
                   disabled={loading}
                 />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Telefone / WhatsApp</label>
-                  <input
-                    className="input"
-                    placeholder="(85) 99999-9999"
-                    value={form.phone}
-                    onChange={set('phone')}
-                    disabled={loading}
-                  />
-                </div>
-                <div>
-                  <label className="label">E-mail</label>
-                  <input
-                    type="email"
-                    className="input"
-                    placeholder="paciente@email.com"
-                    value={form.email}
-                    onChange={set('email')}
-                    disabled={loading}
-                  />
-                </div>
+              <div>
+                <label className="label">Telefone / WhatsApp</label>
+                <input
+                  className="input"
+                  placeholder="(85) 99999-9999"
+                  value={form.phone}
+                  onChange={set('phone')}
+                  disabled={loading}
+                />
               </div>
             </div>
           </section>
 
-          <hr className="border-surface-border" />
+          <hr className="border-outline-variant" />
 
           {/* Dados clínicos */}
           <section>
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            <h2 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-4">
               Dados clínicos
             </h2>
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
                 <label className="label">Procedimento / Cirurgia *</label>
                 <input
@@ -132,8 +118,7 @@ export default function NewPatient() {
                   disabled={loading}
                 />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="label">Data da cirurgia *</label>
                   <input
@@ -162,39 +147,70 @@ export default function NewPatient() {
             </div>
           </section>
 
-          <hr className="border-surface-border" />
+          <hr className="border-outline-variant" />
 
-          {/* Protocolo */}
+          {/* Protocolo de contato */}
           <section>
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-              Protocolo de follow-up
-            </h2>
-
-            <div>
-              <label className="label">Dias do protocolo</label>
-              <input
-                className="input"
-                placeholder={DEFAULT_PROTOCOL}
-                value={form.protocol_days}
-                onChange={set('protocol_days')}
-                disabled={loading}
-              />
-              <p className="text-xs text-slate-400 mt-1.5">
-                Informe os dias após a cirurgia em que o paciente deve ser contactado, separados por vírgula.
-              </p>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">
+                Protocolo de contato
+              </h2>
+              <Link to="/admin" className="text-label-sm font-label-sm text-primary hover:underline flex items-center gap-1">
+                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>settings</span>
+                Gerenciar protocolos
+              </Link>
             </div>
-
-            {/* Protocolo visual */}
-            <div className="flex flex-wrap gap-2 mt-3">
-              {form.protocol_days.split(',').filter(Boolean).map((d, i) => (
-                <span key={i} className="badge bg-primary-50 text-primary-700">
-                  Dia {d.trim()}
-                </span>
-              ))}
-            </div>
+            {protocols.length === 0 ? (
+              <p className="text-body-md text-outline italic">Nenhum protocolo configurado. <Link to="/admin" className="text-primary hover:underline">Criar protocolo</Link></p>
+            ) : (
+              <div className="space-y-2">
+                {protocols.map(p => {
+                  const sel = form.protocol_id === p.id
+                  const days = normalizeProtocolDays(p.days)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, protocol_id: p.id }))}
+                      className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                        sel
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                          : 'border-outline-variant bg-surface hover:bg-surface-container-low'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color || '#6366f1' }} />
+                        <span className="text-label-md font-label-md text-on-surface font-semibold">{p.name}</span>
+                        {p.is_default && <span className="text-label-sm text-outline">(padrão)</span>}
+                        {sel && <span className="material-symbols-outlined text-primary ml-auto" style={{ fontSize: '16px' }}>check_circle</span>}
+                      </div>
+                      {p.description && <p className="text-body-md text-on-surface-variant mb-2">{p.description}</p>}
+                      {days.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-label-sm text-on-surface-variant">
+                            {days.length} marco{days.length !== 1 ? 's' : ''} configurado{days.length !== 1 ? 's' : ''}
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                          {days.map(d => (
+                            <span key={d} className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                              d < 0  ? 'bg-[#fff3e0] border-[#ffe0b2] text-[#ef6c00]'
+                                     : d === 0 ? 'bg-primary/10 border-primary/30 text-primary'
+                                     : 'bg-secondary/10 border-secondary/30 text-secondary'
+                            }`}>
+                              {formatProtocolDay(d)}
+                            </span>
+                          ))}
+                        </div>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </section>
 
-          <hr className="border-surface-border" />
+          <hr className="border-outline-variant" />
 
           {/* Observações */}
           <section>
@@ -213,7 +229,7 @@ export default function NewPatient() {
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-xl"
+              className="text-label-sm text-error bg-error-container/30 px-3 py-2 rounded-lg"
             >
               {error}
             </motion.p>
@@ -225,10 +241,14 @@ export default function NewPatient() {
               Cancelar
             </Link>
             <button type="submit" className="btn-primary flex-1" disabled={loading}>
-              {loading
-                ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                : <><UserPlus size={16} /> Cadastrar paciente</>
-              }
+              {loading ? (
+                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+              ) : (
+                <>
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>person_add</span>
+                  Cadastrar paciente
+                </>
+              )}
             </button>
           </div>
         </motion.div>

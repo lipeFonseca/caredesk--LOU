@@ -142,6 +142,14 @@ cd frontend && npm run build
 wrangler pages deploy dist --project-name caredesk
 ```
 
+Ou, no terminal do VS Code na raiz do projeto:
+
+```powershell
+npm run deploy:worker
+npm run deploy:frontend
+npm run deploy
+```
+
 ---
 
 ## Variáveis de Ambiente
@@ -151,3 +159,55 @@ wrangler pages deploy dist --project-name caredesk
 | `JWT_SECRET`    | Worker (wrangler secret) | `openssl rand -hex 32` |
 | `RESEND_API_KEY`| Worker (wrangler secret) | https://resend.com  |
 | `FRONTEND_URL`  | `wrangler.toml [vars]`  | URL do seu deploy   |
+
+---
+
+## Acesso Cloudflare Local
+
+Para trabalhar com deploys e D1 remoto sem versionar credenciais:
+
+1. Copie `worker/.dev.vars.example` para `worker/.dev.vars`
+2. Preencha `CLOUDFLARE_ACCOUNT_ID` e `CLOUDFLARE_API_TOKEN`
+3. Carregue as variáveis antes de comandos remotos do Wrangler:
+
+```powershell
+cd worker
+. .\scripts\load-cloudflare-env.ps1
+npx wrangler whoami
+npx wrangler d1 execute caredesk-sprint --remote --command "SELECT COUNT(*) FROM patients"
+```
+
+O arquivo `worker/.dev.vars` já é ignorado pelo Git.
+
+---
+
+## GitHub Actions
+
+O repositório inclui um workflow em `.github/workflows/deploy.yml` que faz deploy automatico no `push` para `main` e tambem pode ser disparado manualmente.
+
+Antes de funcionar no GitHub, cadastre estes secrets no repositorio:
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+
+Variavel opcional recomendada no GitHub:
+
+- `VITE_API_BASE_PRODUCTION`
+
+Fluxo atual do workflow:
+
+1. faz deploy do Worker com `npx wrangler deploy`
+2. faz build do frontend com `VITE_API_BASE` vindo da variavel `VITE_API_BASE_PRODUCTION`
+3. publica o frontend no projeto Pages `caredesk-lou`
+
+---
+
+## API no Frontend
+
+O frontend resolve a API assim:
+
+1. se `VITE_API_BASE` estiver definido, usa esse valor
+2. em desenvolvimento local, sem `VITE_API_BASE`, usa `/api` e o proxy do Vite para `http://localhost:8787`
+3. em producao, sem `VITE_API_BASE`, cai no Worker publico `https://caredesk-worker.faugusto-thecoral.workers.dev`
+
+Para configurar localmente, copie `frontend/.env.example` para `frontend/.env.local` e ajuste somente se quiser apontar para outra API.

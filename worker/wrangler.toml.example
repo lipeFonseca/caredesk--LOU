@@ -12,6 +12,11 @@ binding       = "DB"
 database_name = "SEU_NOME_DO_BANCO"
 database_id   = "SEU_DATABASE_ID"
 
+# Descomente apos criar um bucket R2 para as logos da clinica
+# [[r2_buckets]]
+# binding     = "LOGO_BUCKET"
+# bucket_name = "SEU_BUCKET_R2"
+
 [vars]
 FRONTEND_URL = "https://SEU_PROJETO.pages.dev"
 APP_ENV      = "production"

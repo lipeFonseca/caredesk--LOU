@@ -105,8 +105,21 @@ export const api = {
       return request('/settings/logo', { method: 'POST', body: form })
     },
     removeLogo:    ()     => request('/settings/logo',     { method: 'DELETE' }),
-    getTelegram:    ()     => request('/settings/telegram'),
-    updateTelegram: (body) => request('/settings/telegram', { method: 'PUT',   body: JSON.stringify(body) }),
+    uploadAsset:   (type, file) => {
+      const form = new FormData()
+      form.append('file', file)
+      return request(`/settings/assets/${type}`, { method: 'POST', body: form })
+    },
+    removeAsset:   (type) => request(`/settings/assets/${type}`, { method: 'DELETE' }),
     updateProtocol: (days) => request('/settings/protocol', { method: 'PATCH', body: JSON.stringify({ days }) }),
+  },
+
+  whatsapp: {
+    getConfig:      ()         => request('/whatsapp/config'),
+    updateConfig:   (body)     => request('/whatsapp/config', { method: 'PUT', body: JSON.stringify(body) }),
+    listTemplates:  ()         => request('/whatsapp/templates'),
+    createTemplate: (body)     => request('/whatsapp/templates', { method: 'POST', body: JSON.stringify(body) }),
+    updateTemplate: (id, body) => request(`/whatsapp/templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    deleteTemplate: (id)       => request(`/whatsapp/templates/${id}`, { method: 'DELETE' }),
   },
 }

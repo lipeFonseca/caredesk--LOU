@@ -43,40 +43,43 @@ export const useNotifStore = create((set) => ({
     })),
 }))
 
+// ── Theme Store (dark mode) ───────────────────────────────────
+export const useThemeStore = create(
+  persist(
+    (set) => ({
+      dark: false,
+      toggle: () => set((s) => ({ dark: !s.dark })),
+    }),
+    { name: 'caredesk-theme' }
+  )
+)
+
+const DEFAULT_PROTOCOL = '[-2,0,2,5,15,30,60,90,120,180]'
+
 // ── App Settings Store ────────────────────────────────────────
-export const useSettingsStore = create((set) => ({
+export const useSettingsStore = create((set, get) => ({
   settings: {
-    clinic_name:   'CareDesk',
-    primary_color: '#6366f1',
-    logo_url:      '',
+    clinic_name:           'CareDesk',
+    clinic_tagline:        'Acompanhamento pos-cirurgico com presenca e previsibilidade.',
+    hero_title:            'Cuidado premium em cada etapa da jornada do paciente.',
+    hero_subtitle:         'Organize contatos, acompanhe protocolos e conduza o retorno com uma interface mais humana, elegante e clara.',
+    primary_color:         '#5f8fba',
+    logo_url:              '',
+    background_image_url:  '',
+    favicon_url:           '',
+    timezone:              'America/Fortaleza',
+    contact_protocol_days: DEFAULT_PROTOCOL,
   },
-  setSettings: (settings) => {
-    set({ settings })
-    // Aplicar cor primária como CSS var
-    applyPrimaryColor(settings.primary_color)
+  setSettings: (incoming) => {
+    const mergedSettings = { ...get().settings, ...incoming }
+    set({ settings: mergedSettings })
+  },
+  getProtocolDays: () => {
+    try {
+      const raw = get().settings.contact_protocol_days || DEFAULT_PROTOCOL
+      return JSON.parse(raw)
+    } catch {
+      return [-2, 0, 2, 5, 15, 30, 60, 90, 120, 180]
+    }
   },
 }))
-
-function applyPrimaryColor(hex) {
-  if (!hex) return
-  const [r, g, b] = hexToRgb(hex)
-  if (r === null) return
-  const root = document.documentElement
-  root.style.setProperty('--color-primary-500', `${r} ${g} ${b}`)
-  root.style.setProperty('--color-primary-600', adjustBrightness(r, g, b, -20))
-  root.style.setProperty('--color-primary-700', adjustBrightness(r, g, b, -40))
-  root.style.setProperty('--color-primary-100', adjustBrightness(r, g, b, 120))
-  root.style.setProperty('--color-primary-50',  adjustBrightness(r, g, b, 150))
-}
-
-function hexToRgb(hex) {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  return result
-    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
-    : [null, null, null]
-}
-
-function adjustBrightness(r, g, b, amount) {
-  const clamp = (v) => Math.min(255, Math.max(0, v))
-  return `${clamp(r + amount)} ${clamp(g + amount)} ${clamp(b + amount)}`
-}

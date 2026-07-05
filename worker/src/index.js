@@ -2,13 +2,15 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 
-import authRoutes     from './routes/auth.js'
-import patientRoutes  from './routes/patients.js'
-import followupRoutes from './routes/followups.js'
-import agentRoutes    from './routes/agents.js'
-import notifRoutes    from './routes/notifications.js'
-import settingsRoutes from './routes/settings.js'
-import setupRoutes    from './routes/setup.js'
+import authRoutes      from './routes/auth.js'
+import patientRoutes   from './routes/patients.js'
+import followupRoutes  from './routes/followups.js'
+import agentRoutes     from './routes/agents.js'
+import notifRoutes     from './routes/notifications.js'
+import settingsRoutes  from './routes/settings.js'
+import setupRoutes     from './routes/setup.js'
+import protocolRoutes  from './routes/protocols.js'
+import whatsappRoutes  from './routes/whatsapp.js'
 import { runScheduler } from './services/scheduler.js'
 
 const app = new Hono()
@@ -22,7 +24,7 @@ app.use('*', cors({
       'http://localhost:5173',
       'http://localhost:4173',
     ]
-    return allowed.includes(origin) ? origin : allowed[0]
+    return allowed.includes(origin) ? origin : false
   },
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
@@ -40,6 +42,8 @@ app.route('/api/agents',        agentRoutes)
 app.route('/api/notifications', notifRoutes)
 app.route('/api/settings',      settingsRoutes)
 app.route('/api/setup',         setupRoutes)
+app.route('/api/protocols',     protocolRoutes)
+app.route('/api/whatsapp',      whatsappRoutes)
 
 // ── 404 ──────────────────────────────────────────────────────
 app.notFound((c) => c.json({ error: 'Rota não encontrada' }, 404))

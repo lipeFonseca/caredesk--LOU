@@ -1,0 +1,9 @@
+{
+  "name": "caredesk-sprint",
+  "private": true,
+  "scripts": {
+    "deploy:worker": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-worker.ps1",
+    "deploy:frontend": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-frontend.ps1",
+    "deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-all.ps1"
+  }
+}

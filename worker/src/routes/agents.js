@@ -8,14 +8,14 @@ agents.use('*', authMiddleware)
 // ── GET /api/agents ───────────────────────────────────────────
 agents.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT id, name, email, role, telegram_chat_id, is_active, created_at FROM agents ORDER BY name'
+    'SELECT id, name, email, role, is_active, created_at FROM agents ORDER BY name'
   ).all()
   return c.json(results)
 })
 
 // ── POST /api/agents (admin only) ────────────────────────────
 agents.post('/', adminOnly, async (c) => {
-  const { name, email, password, role, telegram_chat_id } = await c.req.json()
+  const { name, email, password, role } = await c.req.json()
 
   if (!name || !email || !password) {
     return c.json({ error: 'Nome, email e senha são obrigatórios' }, 400)
@@ -33,13 +33,12 @@ agents.post('/', adminOnly, async (c) => {
   const hash = await hashPassword(password)
 
   await c.env.DB.prepare(`
-    INSERT INTO agents (id, name, email, password_hash, role, telegram_chat_id)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO agents (id, name, email, password_hash, role)
+    VALUES (?, ?, ?, ?, ?)
   `).bind(
     id, name, email.toLowerCase(),
     hash,
-    role || 'agent',
-    telegram_chat_id || null
+    role || 'agent'
   ).run()
 
   return c.json({
@@ -52,7 +51,7 @@ agents.patch('/:id', adminOnly, async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json()
 
-  const allowed = ['name','email','role','telegram_chat_id','is_active']
+  const allowed = ['name','email','role','is_active']
   const fields = Object.keys(body).filter(k => allowed.includes(k))
   if (!fields.length) return c.json({ error: 'Nenhum campo válido' }, 400)
 

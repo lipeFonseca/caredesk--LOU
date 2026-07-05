@@ -17,7 +17,6 @@ APP_ENV      = "production"
 
 # ── Secrets (definir via: wrangler secret put NOME) ──────────
 # JWT_SECRET
-# RESEND_API_KEY
 
 # ── Cron Trigger (roda todo dia às 8h horário de Brasília = 11h UTC) ──
 [triggers]

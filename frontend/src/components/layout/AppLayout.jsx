@@ -1,50 +1,62 @@
 import { useState, useEffect, useRef } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useAuthStore, useNotifStore, useSettingsStore } from '@/store'
-import { api } from '@/services/api'
 import { format, formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { api } from '@/services/api'
+import { useAuthStore, useNotifStore, useSettingsStore, useThemeStore } from '@/store'
+import { getBranding } from '@/theme/branding'
 
 const NAV_ITEMS = [
-  { to: '/',         icon: 'dashboard',     label: 'Dashboard',    end: true },
-  { to: '/patients', icon: 'group',         label: 'Pacientes',    end: false },
+  { to: '/', icon: 'dashboard', label: 'Visao Geral', end: true },
+  { to: '/patients', icon: 'group', label: 'Pacientes', end: false },
+  { to: '/comunicacao', icon: 'chat', label: 'WhatsApp', end: false },
 ]
 
 function greeting(name) {
-  const h = new Date().getHours()
-  const salut = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
-  const first = name?.split(' ')[0] ?? 'Especialista'
-  return `${salut}, ${first}`
+  const hour = new Date().getHours()
+  const salute = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
+  const firstName = name?.split(' ')[0] ?? 'Equipe'
+  return `${salute}, ${firstName}`
 }
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [notifOpen,   setNotifOpen]   = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef(null)
 
   const { agent, logout, isAdmin } = useAuthStore()
   const { notifications, unreadCount, setNotifications, markRead, markAllRead } = useNotifStore()
-  const { settings } = useSettingsStore()
+  const { settings, setSettings } = useSettingsStore()
+  const { dark, toggle: toggleDark } = useThemeStore()
+  const branding = getBranding(settings)
 
   useEffect(() => {
-    function handler(e) {
-      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false)
+    api.settings.get().then((data) => { if (data) setSettings(data) }).catch(() => {})
+  }, [setSettings])
+
+  useEffect(() => {
+    function handleOutsideClick(event) {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotifOpen(false)
+      }
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
   useEffect(() => {
-    function fetchNotifs() {
-      api.notifications.list({ limit: 20 }).then(data => {
+    function fetchNotifications() {
+      api.notifications.list({ limit: 20 }).then((data) => {
         if (data) setNotifications(data.notifications ?? data, data.unread_count ?? 0)
       }).catch(() => {})
     }
-    fetchNotifs()
-    const id = setInterval(fetchNotifs, 60_000)
-    return () => clearInterval(id)
-  }, [])
+
+    fetchNotifications()
+    const intervalId = setInterval(fetchNotifications, 60_000)
+    return () => clearInterval(intervalId)
+  }, [setNotifications])
 
   async function handleMarkRead(id) {
     await api.notifications.markRead(id).catch(() => {})
@@ -57,199 +69,218 @@ export default function AppLayout() {
   }
 
   const today = format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })
+  const sidebarHeroStyle = branding.backgroundImageUrl
+    ? {
+        backgroundImage: `linear-gradient(180deg, rgba(24, 41, 35, 0.76), rgba(24, 41, 35, 0.94)), url("${branding.backgroundImageUrl}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : undefined
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-
-      {/* ── Mobile overlay ──────────────────────────────────── */}
+    <div className="relative flex min-h-screen bg-background text-on-surface overflow-hidden">
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-20 bg-black/30 md:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-20 bg-[#1d1a15]/45 backdrop-blur-[2px] md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
       </AnimatePresence>
 
-      {/* ── Sidebar ─────────────────────────────────────────── */}
-      <nav className={`
-        fixed inset-y-0 left-0 z-30 w-[260px] flex flex-col
-        bg-surface border-r border-outline-variant shadow-sm
-        transition-transform duration-300 md:translate-x-0 md:relative md:z-auto
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        {/* Brand */}
-        <div className="px-6 py-6 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-primary/20 flex items-center justify-center shrink-0">
-            {settings.logo_url ? (
-              <img src={settings.logo_url} alt="Logo" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-primary font-bold text-sm">
-                {(settings.clinic_name || 'C')[0].toUpperCase()}
-              </span>
-            )}
-          </div>
-          <div>
-            <h1 className="text-display-md font-display-md font-bold text-primary">
-              {settings.clinic_name || 'CareDesk'}
-            </h1>
-            <p className="text-label-sm font-label-sm text-on-surface-variant">CS Portal</p>
-          </div>
-          <button
-            className="ml-auto md:hidden text-on-surface-variant hover:text-on-surface"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        {/* Nav links */}
-        <ul className="flex flex-col flex-grow mt-2">
-          {NAV_ITEMS.map(({ to, icon, label, end }) => (
-            <li key={to}>
-              <NavLink
-                to={to}
-                end={end}
+      <nav
+        className={`
+          fixed inset-y-0 left-0 z-30 w-[292px] border-r border-white/10
+          bg-[#1d342d] text-[#f7efe3] shadow-glow transition-transform duration-300
+          md:translate-x-0 md:relative md:z-auto
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+        style={sidebarHeroStyle}
+      >
+        <div className="flex h-full flex-col bg-[linear-gradient(180deg,rgba(15,22,19,0.14),rgba(15,22,19,0.36))] px-5 pb-6 pt-5 backdrop-blur-[1px]">
+          <div className="rounded-[28px] border border-white/10 bg-white/8 p-5 shadow-card backdrop-blur-sm">
+            <div className="flex items-start gap-4">
+              <img
+                src={branding.logoUrl}
+                alt={`Logo da clinica ${branding.clinicName}`}
+                className="h-16 w-16 rounded-[22px] border border-white/20 bg-white/15 object-cover shadow-card"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] uppercase tracking-[0.28em] text-[#dac8ab]">CS Portal</p>
+                <h1 className="mt-2 text-[2rem] leading-none text-white">{branding.clinicName}</h1>
+                <p className="mt-2 text-sm leading-6 text-[#ebddc8]/88">{branding.tagline}</p>
+              </div>
+              <button
+                className="rounded-full border border-white/12 p-2 text-[#ebddc8] md:hidden"
                 onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center px-6 py-4 text-label-md font-label-md transition-all duration-150 ` +
-                  (isActive
-                    ? 'text-primary font-bold border-l-4 border-primary bg-primary/5'
-                    : 'text-on-surface-variant border-l-4 border-transparent hover:bg-surface-container-high')
-                }
               >
-                {({ isActive }) => (
-                  <>
-                    <span className={`material-symbols-outlined mr-3 ${isActive ? 'fill-icon' : ''}`}>{icon}</span>
-                    {label}
-                  </>
-                )}
-              </NavLink>
-            </li>
-          ))}
-
-          {isAdmin() && (
-            <li>
-              <NavLink
-                to="/admin"
-                onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center px-6 py-4 text-label-md font-label-md transition-all duration-150 ` +
-                  (isActive
-                    ? 'text-primary font-bold border-l-4 border-primary bg-primary/5'
-                    : 'text-on-surface-variant border-l-4 border-transparent hover:bg-surface-container-high')
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <span className={`material-symbols-outlined mr-3 ${isActive ? 'fill-icon' : ''}`}>settings</span>
-                    Admin
-                  </>
-                )}
-              </NavLink>
-            </li>
-          )}
-        </ul>
-
-        {/* Logout footer */}
-        <div className="p-6 mt-auto border-t border-outline-variant/30">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-primary text-xs font-semibold">
-                {agent?.name?.charAt(0)?.toUpperCase()}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-label-md font-label-md text-on-surface truncate">{agent?.name}</p>
-              <p className="text-label-sm font-label-sm text-on-surface-variant">
-                {agent?.role === 'admin' ? 'Administrador' : 'Agente'}
-              </p>
+                <span className="material-symbols-outlined">close</span>
+              </button>
             </div>
           </div>
-          <button
-            onClick={logout}
-            className="w-full py-2 px-4 flex items-center justify-center gap-2 text-on-surface-variant hover:bg-surface-container-high transition-colors text-label-md font-label-md"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>logout</span>
-            Sair
-          </button>
+
+          <div className="mt-6 rounded-[28px] border border-white/8 bg-black/10 p-3 backdrop-blur-sm">
+            <p className="px-3 pb-2 text-[11px] uppercase tracking-[0.26em] text-[#d5c2a3]">Navegacao</p>
+            <ul className="space-y-1.5">
+              {NAV_ITEMS.map(({ to, icon, label, end }) => (
+                <li key={to}>
+                  <NavLink
+                    to={to}
+                    end={end}
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all
+                      ${isActive
+                        ? 'bg-[#f6ebd9] text-[#18352d] shadow-card'
+                        : 'text-[#f3e6d2]/86 hover:bg-white/10 hover:text-white'}
+                    `}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span className={`material-symbols-outlined ${isActive ? 'fill-icon' : ''}`}>{icon}</span>
+                        <span className="font-semibold">{label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                </li>
+              ))}
+
+              {isAdmin() && (
+                <li>
+                  <NavLink
+                    to="/admin"
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all
+                      ${isActive
+                        ? 'bg-[#f6ebd9] text-[#18352d] shadow-card'
+                        : 'text-[#f3e6d2]/86 hover:bg-white/10 hover:text-white'}
+                    `}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span className={`material-symbols-outlined ${isActive ? 'fill-icon' : ''}`}>settings</span>
+                        <span className="font-semibold">Configuracoes</span>
+                      </>
+                    )}
+                  </NavLink>
+                </li>
+              )}
+            </ul>
+          </div>
+
+          <div className="mt-6 rounded-[28px] border border-white/8 bg-white/7 p-5 text-[#f3e6d2] backdrop-blur-sm">
+            <p className="text-[11px] uppercase tracking-[0.26em] text-[#d9c6a7]">Curadoria do dia</p>
+            <p className="mt-3 text-2xl leading-none text-white">{branding.heroTitle}</p>
+            <p className="mt-3 text-sm leading-6 text-[#e7dac4]/86">{branding.heroSubtitle}</p>
+          </div>
+
+          <div className="mt-auto rounded-[28px] border border-white/8 bg-black/16 p-4 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f4ebdd] text-[#19372f] text-sm font-bold">
+                {agent?.name?.charAt(0)?.toUpperCase() || 'A'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">{agent?.name}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#d6c3a5]">
+                  {agent?.role === 'admin' ? 'Administrador' : 'Agente'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-white/12 px-4 py-3 text-sm font-semibold text-[#f7efe3] hover:bg-white/10"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>logout</span>
+              Sair
+            </button>
+          </div>
         </div>
       </nav>
 
-      {/* ── Main content ────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-
-        {/* Top App Bar */}
-        <header className="sticky top-0 z-30 flex justify-between items-center px-6 py-4 bg-surface/90 backdrop-blur-md border-b border-surface-container-high flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <button
-              className="md:hidden text-on-surface-variant hover:text-on-surface p-1"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <span className="material-symbols-outlined">menu</span>
-            </button>
-            <div>
-              <h2 className="text-display-md font-display-md text-on-surface">
-                {greeting(agent?.name)} <span className="inline-block hover:animate-bounce">👋</span>
-              </h2>
-              <p className="text-body-md font-body-md text-on-surface-variant mt-0.5 capitalize">{today}</p>
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 border-b border-outline-variant/40 bg-surface-container-low/85 px-4 py-4 backdrop-blur-xl md:px-8">
+          <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                className="rounded-full border border-outline-variant/70 bg-surface px-3 py-2 text-on-surface md:hidden"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <span className="material-symbols-outlined">menu</span>
+              </button>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-on-surface-variant">Painel institucional</p>
+                <h2 className="mt-1 text-display-md text-on-surface">
+                  {greeting(agent?.name)} <span className="inline-block">👋</span>
+                </h2>
+                <p className="text-sm capitalize text-on-surface-variant">{today}</p>
+              </div>
             </div>
-          </div>
 
-          {/* Notification bell */}
-          <div className="relative" ref={notifRef}>
-            <button
-              onClick={() => setNotifOpen(v => !v)}
-              className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors relative"
-            >
-              <span className="material-symbols-outlined">notifications</span>
-              {unreadCount > 0 && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full ring-2 ring-surface" />
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleDark}
+                title={dark ? 'Modo claro' : 'Modo escuro'}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-outline-variant/70 bg-surface text-on-surface-variant hover:text-on-surface"
+              >
+                <span className="material-symbols-outlined">{dark ? 'light_mode' : 'dark_mode'}</span>
+              </button>
 
-            <AnimatePresence>
-              {notifOpen && (
-                <motion.div
-                  initial={{ opacity: 0, scale: .96, y: -4 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: .96, y: -4 }}
-                  transition={{ duration: .15 }}
-                  className="absolute right-0 top-full mt-2 w-80 bg-surface shadow-modal border border-outline-variant z-50"
+              <div className="relative" ref={notifRef}>
+                <button
+                  onClick={() => setNotifOpen((current) => !current)}
+                  className="relative flex h-11 w-11 items-center justify-center rounded-full border border-outline-variant/70 bg-surface text-on-surface-variant hover:text-on-surface"
                 >
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/50">
-                    <span className="text-label-md font-label-md text-on-surface">Notificações</span>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={handleMarkAll}
-                        className="text-label-sm font-label-sm text-primary hover:text-primary-fixed-dim flex items-center gap-1"
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>done_all</span>
-                        Marcar todas
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-72 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <p className="text-center text-body-md font-body-md text-on-surface-variant py-8">
-                        Nenhuma notificação
-                      </p>
-                    ) : (
-                      notifications.slice(0, 15).map(n => (
-                        <NotifItem key={n.id} notif={n} onRead={handleMarkRead} />
-                      ))
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  <span className="material-symbols-outlined">notifications</span>
+                  {unreadCount > 0 && (
+                    <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-error ring-2 ring-surface-container-low" />
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {notifOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.96, y: -6 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.96, y: -6 }}
+                      className="absolute right-0 top-full mt-3 w-[360px] overflow-hidden rounded-[28px] border border-outline-variant bg-surface-container-low shadow-modal"
+                    >
+                      <div className="flex items-center justify-between border-b border-outline-variant/50 px-5 py-4">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.26em] text-on-surface-variant">Notificacoes</p>
+                          <h3 className="mt-1 text-headline-sm text-on-surface">Atividade recente</h3>
+                        </div>
+                        {unreadCount > 0 && (
+                          <button onClick={handleMarkAll} className="text-sm font-semibold text-primary hover:opacity-80">
+                            Marcar todas
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-80 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <p className="px-5 py-8 text-center text-sm text-on-surface-variant">Nenhuma notificacao no momento.</p>
+                        ) : (
+                          notifications.slice(0, 15).map((notification) => (
+                            <NotifItem key={notification.id} notif={notification} onRead={handleMarkRead} />
+                          ))
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-8">
+          <div className="mx-auto max-w-[1440px]">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
@@ -258,23 +289,24 @@ export default function AppLayout() {
 
 function NotifItem({ notif, onRead }) {
   const isOverdue = notif.type === 'followup_overdue'
+
   return (
     <button
       onClick={() => !notif.is_read && onRead(notif.id)}
-      className={`w-full text-left px-4 py-3 border-b border-outline-variant/30 hover:bg-surface-container-low transition-colors ${!notif.is_read ? 'bg-primary/5' : ''}`}
+      className={`w-full border-b border-outline-variant/35 px-5 py-4 text-left hover:bg-surface ${!notif.is_read ? 'bg-primary/5' : ''}`}
     >
-      <div className="flex items-start gap-2.5">
-        <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${isOverdue ? 'bg-error' : 'bg-tertiary-container'}`} />
-        <div className="flex-1 min-w-0">
-          <p className="text-label-md font-label-md text-on-surface line-clamp-2">
-            {isOverdue ? 'Atrasado' : 'Follow-up pendente'}
-            {notif.patient_name && ` — ${notif.patient_name}`}
+      <div className="flex items-start gap-3">
+        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${isOverdue ? 'bg-error' : 'bg-secondary'}`} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-on-surface">
+            {isOverdue ? 'Contato em atraso' : 'Contato pendente'}
+            {notif.patient_name && ` - ${notif.patient_name}`}
           </p>
-          <p className="text-label-sm font-label-sm text-outline mt-0.5">
+          <p className="mt-1 text-sm text-on-surface-variant">
             {formatDistanceToNow(new Date(notif.created_at), { addSuffix: true, locale: ptBR })}
           </p>
         </div>
-        {!notif.is_read && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 mt-1" />}
+        {!notif.is_read && <span className="mt-1 h-2 w-2 rounded-full bg-primary" />}
       </div>
     </button>
   )

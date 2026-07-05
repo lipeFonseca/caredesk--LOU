@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '@/services/api'
 import { format, parseISO, differenceInCalendarDays, subDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import PatientPanel from '@/components/PatientPanel'
 
 const PAGE_SIZE = 20
 
@@ -62,14 +63,15 @@ function getInitials(name = '') {
 }
 
 export default function Patients() {
-  const [patients,  setPatients]  = useState([])
-  const [agents,    setAgents]    = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [search,    setSearch]    = useState('')
-  const [status,    setStatus]    = useState('active')
-  const [agentId,   setAgentId]   = useState('')
-  const [dateRange, setDateRange] = useState('')
-  const [page,      setPage]      = useState(1)
+  const [patients,         setPatients]         = useState([])
+  const [agents,           setAgents]           = useState([])
+  const [loading,          setLoading]          = useState(true)
+  const [search,           setSearch]           = useState('')
+  const [status,           setStatus]           = useState('active')
+  const [agentId,          setAgentId]          = useState('')
+  const [dateRange,        setDateRange]        = useState('')
+  const [page,             setPage]             = useState(1)
+  const [selectedPatientId, setSelectedPatientId] = useState(null)
 
   useEffect(() => {
     api.agents.list().then(data => setAgents(data ?? [])).catch(() => {})
@@ -207,7 +209,7 @@ export default function Patients() {
                   <th>Procedimento</th>
                   <th>Cirurgia</th>
                   <th>Último Contato</th>
-                  <th>Próximo Follow-up</th>
+                  <th>Próximo Contato</th>
                   <th>Especialista</th>
                   <th className="text-right">Ações</th>
                 </tr>
@@ -228,8 +230,9 @@ export default function Patients() {
                             {getInitials(p.name)}
                           </div>
                           <div>
-                            <p className="font-label-md text-on-surface group-hover:text-primary transition-colors">{p.name}</p>
-                            {p.email && <p className="text-[12px] text-outline">{p.email}</p>}
+                            <Link to={`/patients/${p.id}`} className="font-label-md text-on-surface hover:text-primary transition-colors hover:underline">
+                              {p.name}
+                            </Link>
                           </div>
                         </div>
                       </td>
@@ -273,19 +276,19 @@ export default function Patients() {
                       {/* Ações */}
                       <td className="text-right">
                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Link
-                            to={`/patients/${p.id}`}
+                          <button
+                            onClick={() => setSelectedPatientId(p.id)}
                             className="p-1.5 text-outline hover:text-primary rounded hover:bg-surface-container-high transition-colors"
                             title="Visualizar"
                           >
                             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>visibility</span>
-                          </Link>
+                          </button>
                           <Link
                             to={`/patients/${p.id}`}
                             className="p-1.5 text-outline hover:text-primary rounded hover:bg-surface-container-high transition-colors"
-                            title="Editar"
+                            title="Ver página completa"
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>edit</span>
+                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>open_in_full</span>
                           </Link>
                         </div>
                       </td>
@@ -346,6 +349,11 @@ export default function Patients() {
           </div>
         )}
       </div>
+
+      <PatientPanel
+        patientId={selectedPatientId}
+        onClose={() => setSelectedPatientId(null)}
+      />
     </div>
   )
 }

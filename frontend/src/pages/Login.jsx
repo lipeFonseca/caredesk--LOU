@@ -2,125 +2,163 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, LogIn } from 'lucide-react'
-import { useAuthStore } from '@/store'
+import { useAuthStore, useSettingsStore } from '@/store'
 import { api } from '@/services/api'
+import { getBranding } from '@/theme/branding'
 
 export default function Login() {
-  const navigate  = useNavigate()
-  const login     = useAuthStore(s => s.login)
+  const navigate = useNavigate()
+  const login = useAuthStore((state) => state.login)
+  const branding = getBranding(useSettingsStore((state) => state.settings))
 
-  const [form, setForm]       = useState({ email: '', password: '' })
-  /* campo "email" mantido internamente para compatibilidade com o backend */
+  const [form, setForm] = useState({ email: '', password: '' })
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const [error, setError] = useState('')
 
   function set(field) {
-    return (e) => {
-      setForm(f => ({ ...f, [field]: e.target.value }))
+    return (event) => {
+      setForm((current) => ({ ...current, [field]: event.target.value }))
       setError('')
     }
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault()
+  async function handleSubmit(event) {
+    event.preventDefault()
+
     if (!form.email || !form.password) {
-      setError('Preencha todos os campos')
+      setError('Preencha todos os campos.')
       return
     }
+
     setLoading(true)
     try {
       const data = await api.auth.login(form)
       login(data.token, data.agent)
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err.message || 'Credenciais inválidas')
+      setError(err.message || 'Credenciais invalidas')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-surface-subtle flex items-center justify-center p-4">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-8">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(184,136,74,0.14),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(40,75,64,0.18),transparent_32%)]" />
+
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: .4, ease: [.16, 1, .3, 1] }}
-        className="w-full max-w-sm"
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="relative grid w-full max-w-5xl overflow-hidden rounded-[36px] border border-outline-variant/65 bg-surface-container-low shadow-modal lg:grid-cols-[1.15fr_0.85fr]"
       >
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex w-14 h-14 rounded-2xl bg-primary-600 items-center justify-center mb-4 shadow-lg shadow-primary-600/30">
-            <span className="text-white text-2xl font-bold">C</span>
+        <section
+          className="relative hidden min-h-[620px] overflow-hidden bg-[#1d342d] p-10 text-[#f8f1e6] lg:flex lg:flex-col"
+          style={branding.backgroundImageUrl ? {
+            backgroundImage: `linear-gradient(180deg, rgba(21, 36, 31, 0.68), rgba(21, 36, 31, 0.9)), url("${branding.backgroundImageUrl}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          } : undefined}
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%)]" />
+          <div className="relative">
+            <p className="text-[11px] uppercase tracking-[0.3em] text-[#d6c2a2]">Acesso institucional</p>
+            <h1 className="mt-4 text-display-lg text-white">{branding.heroTitle}</h1>
+            <p className="mt-4 max-w-md text-body-lg text-[#ece1cf]/88">{branding.heroSubtitle}</p>
           </div>
-          <h1 className="text-2xl font-bold text-slate-800">CareDesk</h1>
-          <p className="text-sm text-slate-500 mt-1">Acompanhamento pós-operatório</p>
-        </div>
 
-        <div className="card">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="label">Usuário</label>
-              <input
-                type="text"
-                className="input"
-                placeholder="nome de usuário"
-                value={form.email}
-                onChange={set('email')}
-                autoFocus
-                autoComplete="username"
-                disabled={loading}
+          <div className="relative mt-auto rounded-[28px] border border-white/10 bg-white/8 p-5 backdrop-blur-sm">
+            <div className="flex items-center gap-4">
+              <img
+                src={branding.logoUrl}
+                alt={`Logo da clinica ${branding.clinicName}`}
+                className="h-16 w-16 rounded-[20px] border border-white/15 bg-white/10 object-cover"
               />
-            </div>
-
-            <div>
-              <label className="label">Senha</label>
-              <div className="relative">
-                <input
-                  type={showPwd ? 'text' : 'password'}
-                  className="input pr-10"
-                  placeholder="••••••••"
-                  value={form.password}
-                  onChange={set('password')}
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+              <div>
+                <h2 className="text-headline-sm text-white">{branding.clinicName}</h2>
+                <p className="mt-1 text-sm text-[#e7dac4]/84">{branding.tagline}</p>
               </div>
             </div>
+          </div>
+        </section>
 
-            {error && (
-              <motion.p
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-xl"
-              >
-                {error}
-              </motion.p>
-            )}
+        <section className="flex items-center justify-center p-6 sm:p-10">
+          <div className="w-full max-w-md">
+            <div className="mb-8 text-center lg:text-left">
+              <img
+                src={branding.logoUrl}
+                alt={`Logo da clinica ${branding.clinicName}`}
+                className="mx-auto h-16 w-16 rounded-[20px] border border-outline-variant/70 bg-surface object-cover shadow-card lg:mx-0"
+              />
+              <p className="mt-5 text-[11px] uppercase tracking-[0.3em] text-on-surface-variant">Entrar no painel</p>
+              <h1 className="mt-3 text-display-md text-on-surface">{branding.clinicName}</h1>
+              <p className="mt-2 text-sm leading-6 text-on-surface-variant">{branding.tagline}</p>
+            </div>
 
-            <button
-              type="submit"
-              className="btn-primary w-full mt-2"
-              disabled={loading}
-            >
-              {loading ? (
-                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-              ) : (
-                <><LogIn size={16} /> Entrar</>
-              )}
-            </button>
-          </form>
-        </div>
+            <div className="card">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="label">Usuario</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="nome de usuario"
+                    value={form.email}
+                    onChange={set('email')}
+                    autoFocus
+                    autoComplete="username"
+                    disabled={loading}
+                  />
+                </div>
 
-        <p className="text-center text-xs text-slate-400 mt-6">
-          CareDesk · Acompanhamento pós-cirúrgico
-        </p>
+                <div>
+                  <label className="label">Senha</label>
+                  <div className="relative">
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      className="input pr-10"
+                      placeholder="••••••••"
+                      value={form.password}
+                      onChange={set('password')}
+                      autoComplete="current-password"
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPwd((value) => !value)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+                    >
+                      {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <motion.p
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="rounded-2xl bg-error-container/20 px-4 py-3 text-sm text-error"
+                  >
+                    {error}
+                  </motion.p>
+                )}
+
+                <button type="submit" className="btn-primary w-full" disabled={loading}>
+                  {loading ? (
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  ) : (
+                    <><LogIn size={16} /> Entrar</>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            <p className="mt-6 text-center text-xs uppercase tracking-[0.18em] text-on-surface-variant lg:text-left">
+              Cuidado humano com rotina organizada
+            </p>
+          </div>
+        </section>
       </motion.div>
     </div>
   )

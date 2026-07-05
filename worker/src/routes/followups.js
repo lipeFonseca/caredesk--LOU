@@ -23,7 +23,7 @@ followups.get('/', async (c) => {
 // ── POST /api/followups ───────────────────────────────────────
 followups.post('/', async (c) => {
   const body = await c.req.json()
-  const { patient_id, contact_date, contact_type, outcome, notes, next_followup_date } = body
+  const { patient_id, contact_date, contact_type, outcome, notes, next_followup_date, is_extra_contact } = body
   const agent = c.get('agent')
 
   if (!patient_id) return c.json({ error: 'patient_id obrigatório' }, 400)
@@ -35,15 +35,16 @@ followups.post('/', async (c) => {
 
   const id = crypto.randomUUID()
   await c.env.DB.prepare(`
-    INSERT INTO followup_logs (id, patient_id, agent_id, contact_date, contact_type, outcome, notes, next_followup_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO followup_logs (id, patient_id, agent_id, contact_date, contact_type, outcome, notes, next_followup_date, is_extra_contact)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id, patient_id, agent.sub,
     contact_date || new Date().toISOString().split('T')[0],
     contact_type || 'call',
     outcome || 'reached',
     notes || null,
-    next_followup_date || null
+    next_followup_date || null,
+    is_extra_contact ? 1 : 0
   ).run()
 
   // Marcar notificações do dia como lidas para esse paciente

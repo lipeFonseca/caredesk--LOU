@@ -3,6 +3,9 @@ import { signToken, authMiddleware } from '../middleware/auth.js'
 
 const auth = new Hono()
 
+const RATE_LIMIT_MAX      = 5   // tentativas antes do bloqueio
+const RATE_LIMIT_MINUTES  = 15  // minutos de bloqueio
+
 // ── POST /api/auth/login ──────────────────────────────────────
 auth.post('/login', async (c) => {
   const { email, password } = await c.req.json()
@@ -10,24 +13,56 @@ auth.post('/login', async (c) => {
     return c.json({ error: 'Email e senha são obrigatórios' }, 400)
   }
 
+  // Rate limiting por IP
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown'
+  const rl = await c.env.DB.prepare(
+    'SELECT attempts, locked_until FROM login_rate_limit WHERE key = ?'
+  ).bind(ip).first()
+
+  if (rl?.locked_until && new Date(rl.locked_until) > new Date()) {
+    return c.json({ error: 'Muitas tentativas de login. Aguarde 15 minutos.' }, 429)
+  }
+
   const agent = await c.env.DB.prepare(
     'SELECT * FROM agents WHERE email = ? AND is_active = 1'
   ).bind(email.toLowerCase().trim()).first()
 
-  if (!agent) {
-    return c.json({ error: 'Credenciais inválidas' }, 401)
-  }
-
   // Verificação de senha usando Web Crypto (bcrypt não disponível no Worker)
-  const valid = await verifyPassword(password, agent.password_hash)
-  if (!valid) {
+  const valid = agent ? await verifyPassword(password, agent.password_hash) : false
+
+  if (!agent || !valid) {
+    // Incrementar contador de tentativas
+    const attempts = (rl?.attempts || 0) + 1
+    const lockedUntil = attempts >= RATE_LIMIT_MAX
+      ? new Date(Date.now() + RATE_LIMIT_MINUTES * 60 * 1000).toISOString()
+      : null
+    await c.env.DB.prepare(`
+      INSERT INTO login_rate_limit (key, attempts, locked_until, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET
+        attempts     = excluded.attempts,
+        locked_until = excluded.locked_until,
+        updated_at   = excluded.updated_at
+    `).bind(ip, attempts, lockedUntil).run()
+
     return c.json({ error: 'Credenciais inválidas' }, 401)
   }
 
-  const token = await signToken(
-    { sub: agent.id, email: agent.email, role: agent.role, name: agent.name },
-    c.env.JWT_SECRET
-  )
+  // Login bem-sucedido — zerar contador
+  await c.env.DB.prepare(
+    'DELETE FROM login_rate_limit WHERE key = ?'
+  ).bind(ip).run()
+
+  let token
+  try {
+    token = await signToken(
+      { sub: agent.id, email: agent.email, role: agent.role, name: agent.name },
+      c.env.JWT_SECRET
+    )
+  } catch (err) {
+    console.error('[auth/login] token generation failed', err)
+    return c.json({ error: 'Falha ao gerar sessão' }, 500)
+  }
 
   return c.json({
     token,
@@ -39,7 +74,7 @@ auth.post('/login', async (c) => {
 auth.get('/me', authMiddleware, async (c) => {
   const { sub } = c.get('agent')
   const agent = await c.env.DB.prepare(
-    'SELECT id, name, email, role, telegram_chat_id, created_at FROM agents WHERE id = ?'
+    'SELECT id, name, email, role, created_at FROM agents WHERE id = ?'
   ).bind(sub).first()
 
   if (!agent) return c.json({ error: 'Agente não encontrado' }, 404)

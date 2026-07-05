@@ -1,21 +1,24 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  ArrowLeft, Phone, Mail, Calendar, User, FileText,
-  Plus, ChevronDown, ChevronUp, Pencil, Trash2,
-  PhoneCall, MessageCircle, AtSign, HandshakeIcon, X, Save
-} from 'lucide-react'
 import { api } from '@/services/api'
-import { useAuthStore } from '@/store'
-import { format, parseISO, formatDistanceToNow } from 'date-fns'
+import { useAuthStore, useSettingsStore } from '@/store'
+import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import {
+  buildProtocolMilestones,
+  buildProtocolTimeline,
+  formatProtocolDay,
+  formatProtocolDayShort,
+  getCompletedProtocolCount,
+  getNextFollowup,
+  normalizeProtocolDays,
+} from '@/utils/protocols'
 
 const CONTACT_TYPES = [
-  { value: 'call',      label: 'Ligação',   Icon: PhoneCall },
-  { value: 'whatsapp',  label: 'WhatsApp',  Icon: MessageCircle },
-  { value: 'email',     label: 'E-mail',    Icon: AtSign },
-  { value: 'in_person', label: 'Presencial', Icon: HandshakeIcon },
+  { value: 'call',      label: 'Ligação',    icon: 'call' },
+  { value: 'whatsapp',  label: 'WhatsApp',   icon: 'chat' },
+  { value: 'in_person', label: 'Presencial', icon: 'handshake' },
 ]
 
 const OUTCOMES = [
@@ -24,39 +27,49 @@ const OUTCOMES = [
   { value: 'callback_scheduled', label: 'Retorno agendado' },
 ]
 
-const urgencyInfo = {
-  overdue: { label: 'Atrasado',    cls: 'badge-overdue' },
-  due:     { label: 'Vence hoje',  cls: 'badge-due' },
-  soon:    { label: 'Em breve',    cls: 'badge-soon' },
-  ok:      { label: 'Em dia',      cls: 'badge-ok' },
-  none:    { label: '—',           cls: 'badge-paused' },
-}
-
 const statusLabel = {
   active:     'Ativo',
   paused:     'Pausado',
   discharged: 'Alta',
 }
 
-export default function PatientDetail() {
-  const { id }     = useParams()
-  const navigate   = useNavigate()
-  const { isAdmin, agent } = useAuthStore()
+const urgencyBadge = {
+  overdue: { cls: 'bg-error-container text-on-error-container border border-error/30',   label: 'Atrasado' },
+  due:     { cls: 'bg-[#fff8e1] text-[#f57f17] border border-[#ffecb3]',                label: 'Vence hoje' },
+  soon:    { cls: 'bg-[#fff3e0] text-[#ef6c00] border border-[#ffe0b2]',                label: 'Em breve' },
+  ok:      { cls: 'bg-[#e8f5e9] text-[#2e7d32] border border-[#c8e6c9]',               label: 'Em dia' },
+  none:    { cls: 'bg-surface-container-highest text-on-surface-variant border border-outline-variant', label: '—' },
+}
 
-  const [patient, setPatient]     = useState(null)
-  const [loading, setLoading]     = useState(true)
-  const [showLog, setShowLog]     = useState(true)
-  const [addOpen, setAddOpen]     = useState(false)
-  const [editOpen, setEditOpen]   = useState(false)
+function getInitials(name = '') {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+  return (parts[0]?.[0] ?? '?').toUpperCase()
+}
+
+export default function PatientDetail() {
+  const { id }          = useParams()
+  const navigate        = useNavigate()
+  const { isAdmin }     = useAuthStore()
+  const getProtocolDays = useSettingsStore(s => s.getProtocolDays)
+
+  const [patient,    setPatient]    = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [addOpen,    setAddOpen]    = useState(false)
+  const [editOpen,   setEditOpen]   = useState(false)
   const [delConfirm, setDelConfirm] = useState(false)
-  const [saving, setSaving]       = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [protocols,  setProtocols]  = useState([])
+  const [customProto, setCustomProto] = useState({ name: 'Personalizado', days: [-2, 0], manualType: 'after', manualDay: '' })
 
   const [logForm, setLogForm] = useState({
-    contact_date:     new Date().toISOString().split('T')[0],
-    contact_type:     'call',
-    outcome:          'reached',
-    notes:            '',
+    contact_date:       new Date().toISOString().split('T')[0],
+    contact_type:       'call',
+    outcome:            'reached',
+    notes:              '',
     next_followup_date: '',
+    is_extra_contact:   false,
+    new_protocol_id:    '',
   })
 
   const [editForm, setEditForm] = useState({})
@@ -64,18 +77,22 @@ export default function PatientDetail() {
   async function load() {
     setLoading(true)
     try {
-      const data = await api.patients.get(id)
+      const [data] = await Promise.all([
+        api.patients.get(id),
+        protocols.length === 0
+          ? api.protocols.list().then(ps => setProtocols(ps ?? [])).catch(() => {})
+          : Promise.resolve(),
+      ])
       setPatient(data)
       setEditForm({
         name:              data.name,
         phone:             data.phone || '',
-        email:             data.email || '',
         procedure:         data.procedure,
         surgery_date:      data.surgery_date,
-        protocol_days:     data.protocol_days,
         status:            data.status,
         notes:             data.notes || '',
         assigned_agent_id: data.assigned_agent_id || '',
+        protocol_id:       data.protocol_id || '',
       })
     } catch {
       navigate('/patients', { replace: true })
@@ -84,18 +101,66 @@ export default function PatientDetail() {
     }
   }
 
+  useEffect(() => {
+    api.protocols.list().then(ps => setProtocols(ps ?? [])).catch(() => {})
+  }, [])
+
   useEffect(() => { load() }, [id])
+
+  function calcAutoNextDate(isExtra = false) {
+    if (!patient?.surgery_date || !Array.isArray(patientProtocolDays)) return ''
+    const milestones = buildProtocolMilestones(patient.surgery_date, patientProtocolDays)
+    const completedCount = getCompletedProtocolCount(patient.followup_logs)
+    // Se é extra, não avança o índice do protocolo; se normal, próximo após este
+    const nextIdx = isExtra ? completedCount : completedCount + 1
+    return milestones[nextIdx]?.dateStr || ''
+  }
 
   async function handleAddLog(e) {
     e.preventDefault()
     setSaving(true)
     try {
-      await api.followups.create({ ...logForm, patient_id: id })
+      let resolvedProtocolId = logForm.new_protocol_id
+
+      // Se escolheu criar protocolo customizado, cria antes de salvar o log
+      if (logForm.is_extra_contact && logForm.new_protocol_id === '__custom__') {
+        if (customProto.days.length === 0) {
+          alert('Adicione pelo menos um dia ao protocolo personalizado.')
+          setSaving(false)
+          return
+        }
+        const created = await api.protocols.create({
+          name:      customProto.name.trim() || 'Personalizado',
+          days:      customProto.days,
+          color:     '#8b5cf6',
+          is_default: 0,
+          is_custom:  1,
+        })
+        resolvedProtocolId = created.id
+      }
+
+      await api.followups.create({
+        patient_id:         id,
+        contact_date:       logForm.contact_date,
+        contact_type:       logForm.contact_type,
+        outcome:            logForm.outcome,
+        notes:              logForm.notes || null,
+        next_followup_date: logForm.next_followup_date || null,
+        is_extra_contact:   logForm.is_extra_contact ? 1 : 0,
+      })
+
+      // Atualiza protocolo do paciente se selecionado
+      if (logForm.is_extra_contact && resolvedProtocolId && resolvedProtocolId !== '__custom__') {
+        await api.patients.update(id, { protocol_id: resolvedProtocolId })
+      }
+
       setAddOpen(false)
       setLogForm({
         contact_date: new Date().toISOString().split('T')[0],
-        contact_type: 'call', outcome: 'reached', notes: '', next_followup_date: '',
+        contact_type: 'call', outcome: 'reached', notes: '',
+        next_followup_date: '', is_extra_contact: false, new_protocol_id: '',
       })
+      setCustomProto({ name: 'Personalizado', days: [-2, 0], manualType: 'after', manualDay: '' })
       load()
     } catch (err) {
       alert(err.message)
@@ -130,116 +195,374 @@ export default function PatientDetail() {
   }
 
   if (loading) return (
-    <div className="space-y-4 animate-pulse">
-      <div className="h-8 w-48 bg-slate-100 rounded-xl" />
-      <div className="card h-48 bg-slate-50" />
-      <div className="card h-64 bg-slate-50" />
+    <div className="space-y-5 animate-pulse">
+      <div className="h-6 w-40 bg-surface-container-high rounded" />
+      <div className="h-36 bg-surface-container-low rounded-xl" />
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+        <div className="md:col-span-8 space-y-5">
+          <div className="h-64 bg-surface-container-low rounded-xl" />
+          <div className="h-80 bg-surface-container-low rounded-xl" />
+        </div>
+        <div className="md:col-span-4 space-y-5">
+          <div className="h-52 bg-surface-container-low rounded-xl" />
+          <div className="h-44 bg-surface-container-low rounded-xl" />
+        </div>
+      </div>
     </div>
   )
 
   if (!patient) return null
 
+  // Use patient's own protocol days, fallback to global
+  const patientProtocolDays = normalizeProtocolDays(patient.protocol_days_parsed ?? getProtocolDays())
+  const nextFollowup = getNextFollowup(patient, patientProtocolDays)
+  const timeline     = buildProtocolTimeline(patient, patientProtocolDays)
+  const initials     = getInitials(patient.name)
+  const urg          = urgencyBadge[patient.followup_urgency] ?? urgencyBadge.none
+
+  const quickActions = [
+    { icon: 'add',           label: 'Registrar\nContato', action: () => setAddOpen(true) },
+    { icon: 'call',          label: 'Fazer\nLigação',      action: patient.phone ? () => window.open(`tel:${patient.phone}`) : null },
+    { icon: 'chat',          label: 'Abrir\nWhatsApp',     action: patient.phone ? () => window.open(`https://wa.me/${String(patient.phone).replace(/\D/g, '')}`, '_blank', 'noopener,noreferrer') : null },
+    { icon: 'edit',          label: 'Editar\nDados',        action: () => setEditOpen(true) },
+    isAdmin()
+      ? { icon: 'delete', label: 'Excluir\nPaciente', action: () => setDelConfirm(true), danger: true }
+      : { icon: 'calendar_add_on', label: 'Reagendar', action: () => setAddOpen(true) },
+  ]
+
   return (
-    <div className="space-y-5 animate-fade-in max-w-3xl">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-3">
-        <Link to="/patients" className="btn-ghost !px-2 !py-2">
-          <ArrowLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">{patient.name}</h1>
-          <p className="text-xs text-slate-400">{patient.procedure}</p>
-        </div>
-        <div className="ml-auto flex items-center gap-2 flex-wrap">
-          <span className={urgencyInfo[patient.followup_urgency]?.cls}>
-            {urgencyInfo[patient.followup_urgency]?.label}
-          </span>
-          <span className="badge bg-slate-100 text-slate-600">
-            {statusLabel[patient.status]}
-          </span>
+    <div className="animate-fade-in space-y-5">
+
+      {/* ── Breadcrumb ──────────────────────────────────────────── */}
+      <nav className="flex items-center text-body-md text-on-surface-variant">
+        <Link to="/patients" className="hover:text-primary transition-colors">Pacientes</Link>
+        <span className="material-symbols-outlined mx-1" style={{ fontSize: '16px' }}>chevron_right</span>
+        <span className="text-on-surface font-medium">{patient.name}</span>
+      </nav>
+
+      {/* ── Header Card ─────────────────────────────────────────── */}
+      <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 rounded-full bg-surface-container-high text-primary flex items-center justify-center text-display-md font-semibold shrink-0 border-2 border-primary/20">
+              {initials}
+            </div>
+            <div>
+              <h1 className="text-display-md font-display-md text-on-surface mb-1">{patient.name}</h1>
+              <p className="text-body-lg text-on-surface-variant mb-3 flex items-center gap-2">
+                {patient.procedure}
+                <span className="text-outline">•</span>
+                {patient.surgery_date
+                  ? format(parseISO(patient.surgery_date), "dd MMM. yyyy", { locale: ptBR })
+                  : '—'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <span className={`px-2.5 py-1 rounded-full font-label-sm text-label-sm uppercase tracking-wider ${urg.cls}`}>
+                  {urg.label}
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm border border-outline-variant uppercase tracking-wider">
+                  {statusLabel[patient.status]}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+            <button
+              onClick={() => setEditOpen(true)}
+              className="px-4 py-2 bg-surface text-on-surface border border-outline-variant rounded-lg text-label-md font-label-md hover:bg-surface-container-low transition-colors flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>edit</span>
+              Editar
+            </button>
+            <button
+              onClick={() => setAddOpen(true)}
+              className="px-4 py-2 bg-primary text-on-primary rounded-lg text-label-md font-label-md hover:opacity-90 transition-opacity ambient-shadow-lvl1 flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
+              Registrar Contato
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Info card */}
-      <div className="card">
-        <div className="flex items-start justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-600">Informações</h2>
-          <div className="flex gap-2">
-            <button onClick={() => setEditOpen(true)} className="btn-ghost !px-2 !py-1.5 text-xs gap-1.5">
-              <Pencil size={13} /> Editar
-            </button>
-            {isAdmin() && (
-              <button onClick={() => setDelConfirm(true)} className="btn !px-2 !py-1.5 text-xs gap-1.5 text-red-600 hover:bg-red-50">
-                <Trash2 size={13} /> Excluir
-              </button>
+      {/* ── Main Grid ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+
+        {/* Coluna esquerda — 8 cols */}
+        <div className="md:col-span-8 space-y-5">
+
+          {/* Dados Clínicos */}
+          <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
+            <h2 className="text-headline-sm font-headline-sm text-on-surface mb-6 pb-4 border-b border-outline-variant flex items-center gap-2">
+              <span className="material-symbols-outlined text-outline">patient_list</span>
+              Dados Clínicos
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+              <div>
+                <p className="text-label-sm font-label-sm text-on-surface-variant mb-1 uppercase tracking-wider">Telefone</p>
+                <p className="text-body-md font-body-md text-on-surface flex items-center gap-2">
+                  <span className="material-symbols-outlined text-outline" style={{ fontSize: '16px' }}>call</span>
+                  {patient.phone || <span className="text-outline">Não informado</span>}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-label-sm font-label-sm text-on-surface-variant mb-1 uppercase tracking-wider">Especialista Responsável</p>
+                <p className="text-body-md font-body-md text-on-surface flex items-center gap-2">
+                  {patient.agent_name ? (
+                    <>
+                      <span className="w-6 h-6 rounded-full bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-primary border border-outline-variant shrink-0">
+                        {getInitials(patient.agent_name)}
+                      </span>
+                      {patient.agent_name}
+                    </>
+                  ) : (
+                    <span className="text-outline">Não atribuído</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-outline" style={{ fontSize: '14px' }}>route</span>
+                    Protocolo de Contato
+                  </p>
+                  {patient.protocol_name && (
+                    <span className="flex items-center gap-1.5 text-label-sm font-label-sm font-semibold text-on-surface">
+                      {patient.protocol_is_custom ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#ede9fe] border border-[#ddd6fe] text-[#7c3aed] text-[11px] font-semibold">
+                          <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>stars</span>
+                          Protocolo Customizado
+                        </span>
+                      ) : (
+                        <>
+                          {patient.protocol_color && (
+                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: patient.protocol_color }} />
+                          )}
+                          {patient.protocol_name}
+                        </>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {patientProtocolDays.map(d => (
+                    <span key={d} className={`px-2 py-0.5 rounded text-label-sm font-label-sm border ${
+                      d < 0  ? 'bg-[#fff3e0] border-[#ffe0b2] text-[#ef6c00]'
+                             : d === 0 ? 'bg-primary/10 border-primary/30 text-primary'
+                             : 'bg-secondary/10 border-secondary/30 text-secondary'
+                    }`}>
+                      {formatProtocolDay(d)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {patient.notes && (
+                <div className="sm:col-span-2 mt-2">
+                  <p className="text-label-sm font-label-sm text-on-surface-variant mb-2 uppercase tracking-wider">Notas Clínicas</p>
+                  <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant text-body-md text-on-surface">
+                    {patient.notes}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Linha do Tempo do Protocolo */}
+          {timeline.length > 0 && (
+            <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
+              <h2 className="text-headline-sm font-headline-sm text-on-surface mb-4 pb-4 border-b border-outline-variant flex items-center gap-2">
+                <span className="material-symbols-outlined text-outline">timeline</span>
+                Linha do Tempo
+                <span className="ml-1 bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm px-2 py-0.5 rounded-full border border-outline-variant">
+                  {timeline.filter(t => t.status === 'completed').length}/{timeline.length}
+                </span>
+              </h2>
+              <div className="overflow-x-auto pb-2">
+                <div className="flex items-center gap-0" style={{ minWidth: 'max-content' }}>
+                  {timeline.map((item, i) => (
+                    <div key={item.day} className="flex items-center">
+                      {i > 0 && (
+                        <div className={`w-6 h-0.5 ${
+                          item.status === 'completed' ? 'bg-secondary' :
+                          item.status === 'overdue'   ? 'bg-error/40'  :
+                          'bg-outline-variant'
+                        }`} />
+                      )}
+                      <div className={`flex flex-col items-center px-2 py-1.5 rounded-lg border text-center min-w-[64px] relative ${
+                        item.status === 'completed' ? 'bg-secondary/10 border-secondary/30 text-secondary' :
+                        item.status === 'overdue'   ? 'bg-error-container/20 border-error/30 text-error'  :
+                        item.status === 'due'       ? 'bg-[#fff8e1] border-[#ffecb3] text-[#f57f17]'   :
+                        item.status === 'next'      ? 'bg-primary text-on-primary border-primary'         :
+                        'bg-surface-container-low border-outline-variant text-on-surface-variant'
+                      }`}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
+                          {item.status === 'completed' ? 'check_circle' :
+                           item.status === 'overdue'   ? 'warning'      :
+                           item.status === 'due'       ? 'event_available' :
+                           item.status === 'next'      ? 'notifications_active' :
+                           'radio_button_unchecked'}
+                        </span>
+                        <span className="text-label-sm font-label-sm font-semibold whitespace-nowrap mt-0.5">
+                          {formatProtocolDayShort(item.day)}
+                        </span>
+                        <span className="text-[10px] text-inherit opacity-70 whitespace-nowrap">
+                          {format(parseISO(item.dateStr), 'dd/MM', { locale: ptBR })}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-outline-variant">
+                {[
+                  { cls: 'bg-secondary/10 border-secondary/30 text-secondary', label: 'Concluído' },
+                  { cls: 'bg-error-container/20 border-error/30 text-error',   label: 'Atrasado' },
+                  { cls: 'bg-primary text-on-primary border-primary',          label: 'Próximo' },
+                  { cls: 'bg-surface-container-low border-outline-variant text-on-surface-variant', label: 'Pendente' },
+                ].map(({ cls, label }) => (
+                  <span key={label} className="flex items-center gap-1.5 text-label-sm text-on-surface-variant">
+                    <span className={`w-3 h-3 rounded-sm border inline-block ${cls}`} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Histórico de Contatos */}
+          <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant">
+              <h2 className="text-headline-sm font-headline-sm text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-outline">history</span>
+                Histórico de Contatos
+                <span className="ml-1 bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm px-2 py-0.5 rounded-full border border-outline-variant">
+                  {patient.followup_logs?.length ?? 0}
+                </span>
+              </h2>
+            </div>
+
+            {!patient.followup_logs?.length ? (
+              <div className="flex flex-col items-center py-10 gap-3 text-on-surface-variant">
+                <span className="material-symbols-outlined" style={{ fontSize: '40px' }}>history_toggle_off</span>
+                <p className="text-label-md font-label-md">Nenhum contato registrado ainda</p>
+                <button
+                  onClick={() => setAddOpen(true)}
+                  className="text-primary text-label-sm font-label-sm hover:underline"
+                >
+                  Registrar primeiro contato
+                </button>
+              </div>
+            ) : (
+              <div className="relative pl-6 sm:pl-8 border-l-2 border-surface-container-high space-y-8 mt-4">
+                {patient.followup_logs.map(log => (
+                  <LogItem key={log.id} log={log} />
+                ))}
+              </div>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-          <InfoRow icon={Calendar} label="Cirurgia" value={
-            patient.surgery_date
-              ? format(parseISO(patient.surgery_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
-              : '—'
-          } />
-          <InfoRow icon={User} label="Agente" value={patient.agent_name || 'Não atribuído'} />
-          {patient.phone && <InfoRow icon={Phone} label="Telefone" value={patient.phone} />}
-          {patient.email && <InfoRow icon={Mail}  label="E-mail"   value={patient.email} />}
-          <InfoRow icon={FileText} label="Protocolo (dias)" value={patient.protocol_days} />
-          {patient.notes && (
-            <div className="sm:col-span-2">
-              <InfoRow icon={FileText} label="Observações" value={patient.notes} />
+        {/* Coluna direita — 4 cols */}
+        <div className="md:col-span-4 space-y-5">
+
+          {/* Próximo Contato */}
+          {nextFollowup && (
+            <div className="bg-primary text-on-primary rounded-xl ambient-shadow-lvl2 p-6 relative overflow-hidden">
+              <div
+                className="absolute inset-0 opacity-10"
+                style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '16px 16px' }}
+              />
+              <div className="relative z-10">
+                <h3 className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>event</span>
+                  Próximo Contato
+                </h3>
+                <div className="text-display-md font-display-md mb-1">
+                  {format(nextFollowup.date, "dd MMM. yyyy", { locale: ptBR })}
+                </div>
+                <div className="text-body-lg text-primary-fixed mb-6">{nextFollowup.label}</div>
+                <div className="flex items-center justify-between bg-black/10 rounded-lg p-4">
+                  <div>
+                    <div className="text-display-md font-display-md">
+                      {Math.abs(nextFollowup.daysRemaining)}
+                    </div>
+                    <div className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-wider">
+                      {nextFollowup.daysRemaining >= 0 ? 'Dias Restantes' : 'Dias em Atraso'}
+                    </div>
+                  </div>
+                  <div className="relative w-16 h-16 flex items-center justify-center">
+                    <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                      <path
+                        fill="none" stroke="currentColor"
+                        strokeDasharray="100, 100" strokeWidth="3"
+                        className="text-white/20"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                      <path
+                        fill="none" stroke="currentColor"
+                        strokeDasharray={`${nextFollowup.countdownProgress}, 100`}
+                        strokeLinecap="round" strokeWidth="3"
+                        className="text-white"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                    </svg>
+                    <span className="absolute text-label-sm font-label-sm font-bold">
+                      {nextFollowup.countdownProgress}%
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-primary-fixed-dim mt-3">
+                  Percentual restante até o próximo marco do protocolo.
+                </p>
+              </div>
             </div>
           )}
+
+          {/* Ações Rápidas */}
+          <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
+            <h3 className="text-label-md font-label-md text-on-surface font-semibold mb-4 pb-2 border-b border-outline-variant">
+              Ações Rápidas
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              {quickActions.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={item.action}
+                  disabled={!item.action}
+                  className={`flex flex-col items-center justify-center p-4 rounded-lg border transition-colors group disabled:opacity-40 disabled:cursor-default ${
+                    item.danger
+                      ? 'bg-error-container/10 border-error/20 hover:bg-error-container/30'
+                      : 'bg-surface-container-low border-outline-variant hover:bg-surface-container-high'
+                  }`}
+                >
+                  <span
+                    className={`material-symbols-outlined mb-2 transition-colors ${
+                      item.danger
+                        ? 'text-error'
+                        : 'text-outline group-hover:text-primary'
+                    }`}
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="text-label-sm font-label-sm text-on-surface text-center leading-tight whitespace-pre-line">
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Follow-up logs */}
-      <div className="card !p-0">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border">
-          <button
-            onClick={() => setShowLog(v => !v)}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-          >
-            Histórico de contatos
-            <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">
-              {patient.followup_logs?.length ?? 0}
-            </span>
-            {showLog ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-          <button onClick={() => setAddOpen(true)} className="btn-primary !py-1.5 !px-3 text-xs">
-            <Plus size={14} /> Registrar contato
-          </button>
-        </div>
-
-        <AnimatePresence>
-          {showLog && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: .2 }}
-              className="overflow-hidden"
-            >
-              {!patient.followup_logs?.length ? (
-                <div className="flex flex-col items-center py-10 text-slate-400">
-                  <p className="text-sm">Nenhum contato registrado ainda</p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-surface-border/50 px-5">
-                  {patient.followup_logs.map(log => (
-                    <LogItem key={log.id} log={log} />
-                  ))}
-                </ul>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Modal: Registrar contato */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Registrar contato">
+      {/* ── Modal: Registrar Contato ──────────────────────────── */}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Registrar Contato">
         <form onSubmit={handleAddLog} className="space-y-4">
+
+          {/* Datas */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Data do contato</label>
@@ -249,7 +572,18 @@ export default function PatientDetail() {
               />
             </div>
             <div>
-              <label className="label">Próximo follow-up</label>
+              <label className="label flex items-center justify-between">
+                <span>Próximo contato</span>
+                <button
+                  type="button"
+                  title="Preencher pelo protocolo"
+                  onClick={() => setLogForm(f => ({ ...f, next_followup_date: calcAutoNextDate(f.is_extra_contact) }))}
+                  className="inline-flex items-center gap-1 text-primary text-[11px] font-semibold hover:underline normal-case tracking-normal"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>auto_schedule</span>
+                  Pelo protocolo
+                </button>
+              </label>
               <input type="date" className="input"
                 value={logForm.next_followup_date}
                 onChange={e => setLogForm(f => ({ ...f, next_followup_date: e.target.value }))}
@@ -257,24 +591,27 @@ export default function PatientDetail() {
             </div>
           </div>
 
+          {/* Tipo de contato */}
           <div>
             <label className="label">Tipo de contato</label>
             <div className="grid grid-cols-2 gap-2">
-              {CONTACT_TYPES.map(({ value, label, Icon }) => (
+              {CONTACT_TYPES.map(({ value, label, icon }) => (
                 <button
                   key={value} type="button"
                   onClick={() => setLogForm(f => ({ ...f, contact_type: value }))}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-label-md font-label-md transition-all
                     ${logForm.contact_type === value
-                      ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-surface-border text-slate-600 hover:bg-slate-50'}`}
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-outline-variant text-on-surface-variant hover:bg-surface-container-low'}`}
                 >
-                  <Icon size={15} /> {label}
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>{icon}</span>
+                  {label}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Resultado */}
           <div>
             <label className="label">Resultado</label>
             <select className="input"
@@ -285,26 +622,198 @@ export default function PatientDetail() {
             </select>
           </div>
 
+          {/* Observações */}
           <div>
             <label className="label">Observações</label>
-            <textarea className="input resize-none" rows={3}
+            <textarea className="input resize-none" rows={2}
               placeholder="Anotações sobre o contato…"
               value={logForm.notes}
               onChange={e => setLogForm(f => ({ ...f, notes: e.target.value }))}
             />
           </div>
 
+          {/* Fora do protocolo */}
+          <div className={`rounded-xl border transition-colors ${logForm.is_extra_contact ? 'border-[#f59e0b] bg-[#fffbeb]' : 'border-outline-variant bg-surface-container-low'}`}>
+            <button
+              type="button"
+              onClick={() => setLogForm(f => ({ ...f, is_extra_contact: !f.is_extra_contact, new_protocol_id: '' }))}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left"
+            >
+              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                logForm.is_extra_contact ? 'bg-[#f59e0b] border-[#f59e0b]' : 'border-outline-variant bg-surface'
+              }`}>
+                {logForm.is_extra_contact && <span className="material-symbols-outlined text-white" style={{ fontSize: '14px', fontVariationSettings: "'FILL' 1" }}>check</span>}
+              </div>
+              <div>
+                <p className={`text-label-md font-label-md font-semibold ${logForm.is_extra_contact ? 'text-[#92400e]' : 'text-on-surface'}`}>
+                  Contato solicitado pelo paciente
+                </p>
+                <p className="text-[11px] text-on-surface-variant">Fora do protocolo — não avança a sequência de contatos</p>
+              </div>
+            </button>
+
+            {logForm.is_extra_contact && (
+              <div className="px-4 pb-4 space-y-3 border-t border-[#fde68a]">
+                <p className="text-label-sm font-label-sm text-[#92400e] pt-3 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>route</span>
+                  Revisar protocolo do paciente (opcional):
+                </p>
+
+                <select
+                  className="input"
+                  value={logForm.new_protocol_id}
+                  onChange={e => {
+                    setLogForm(f => ({ ...f, new_protocol_id: e.target.value }))
+                    if (e.target.value !== '__custom__') {
+                      setCustomProto({ name: 'Personalizado', days: [-2, 0], manualType: 'after', manualDay: '' })
+                    }
+                  }}
+                >
+                  <option value="">Manter protocolo atual ({patient.protocol_name ?? 'padrão'})</option>
+                  {protocols.filter(p => p.id !== patient.protocol_id).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}{p.is_default ? ' (Padrão)' : ''}</option>
+                  ))}
+                  <option value="__custom__">✦ Criar protocolo personalizado para este paciente</option>
+                </select>
+
+                {/* Builder de protocolo customizado */}
+                {logForm.new_protocol_id === '__custom__' && (
+                  <div className="bg-white rounded-lg border border-[#fde68a] p-3 space-y-3">
+                    <div>
+                      <label className="label text-[11px]">Nome do protocolo</label>
+                      <input
+                        className="input text-sm"
+                        value={customProto.name}
+                        onChange={e => setCustomProto(p => ({ ...p, name: e.target.value }))}
+                        placeholder="Ex: Personalizado Felipe"
+                      />
+                    </div>
+
+                    {/* Adicionar dia manual */}
+                    <div>
+                      <label className="label text-[11px]">Adicionar marco manual</label>
+                      <div className="flex gap-2 mb-2">
+                        {[
+                          { value: 'before', label: 'Antes' },
+                          { value: 'surgery', label: 'Cirurgia' },
+                          { value: 'after', label: 'Depois' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setCustomProto((p) => ({ ...p, manualType: option.value, manualDay: '' }))}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors ${
+                              customProto.manualType === option.value
+                                ? 'bg-primary text-on-primary'
+                                : 'bg-surface border border-outline-variant text-on-surface-variant hover:bg-surface-container-low'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        {customProto.manualType !== 'surgery' && (
+                          <input
+                            type="number" min="1" max="180"
+                            className="input text-sm w-24"
+                            placeholder="dias"
+                            value={customProto.manualDay}
+                            onChange={e => setCustomProto(p => ({ ...p, manualDay: e.target.value }))}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                const amount = parseInt(customProto.manualDay, 10)
+                                if (!amount || amount <= 0) return
+                                const day = customProto.manualType === 'before' ? -amount : amount
+                                setCustomProto(p => ({
+                                  ...p,
+                                  days: [...new Set([...p.days, day])].sort((a, b) => a - b),
+                                  manualDay: ''
+                                }))
+                              }
+                            }}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (customProto.manualType === 'surgery') {
+                              setCustomProto(p => ({
+                                ...p,
+                                days: [...new Set([...p.days, 0])].sort((a, b) => a - b),
+                              }))
+                              return
+                            }
+
+                            const amount = parseInt(customProto.manualDay, 10)
+                            if (!amount || amount <= 0) return
+                            const day = customProto.manualType === 'before' ? -amount : amount
+                            setCustomProto(p => ({
+                              ...p,
+                              days: [...new Set([...p.days, day])].sort((a, b) => a - b),
+                              manualDay: ''
+                            }))
+                          }}
+                          className="px-3 py-2 rounded-lg border border-outline-variant text-label-sm text-on-surface hover:bg-surface-container-low transition-colors"
+                        >
+                          + Adicionar
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Preview dos dias */}
+                    {customProto.days.length > 0 && (
+                      <div>
+                        <p className="text-[11px] text-on-surface-variant mb-1.5">Dias selecionados ({customProto.days.length}):</p>
+                        <div className="flex flex-wrap gap-1">
+                          {customProto.days.map(d => (
+                            <span key={d} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border cursor-pointer group ${
+                              d < 0  ? 'bg-[#fff3e0] border-[#ffe0b2] text-[#ef6c00]'
+                                     : d === 0 ? 'bg-primary/10 border-primary/30 text-primary'
+                                     : 'bg-secondary/10 border-secondary/30 text-secondary'
+                            }`}
+                              onClick={() => setCustomProto(p => ({ ...p, days: p.days.filter(x => x !== d) }))}
+                              title="Clique para remover"
+                            >
+                              {formatProtocolDayShort(d)}
+                              <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 transition-opacity" style={{ fontSize: '10px' }}>close</span>
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-outline mt-1">Clique em um dia para remover</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {logForm.new_protocol_id && logForm.new_protocol_id !== '__custom__' && (
+                  <p className="text-[11px] text-[#92400e] flex items-center gap-1">
+                    <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>info</span>
+                    O protocolo do paciente será atualizado ao salvar.
+                  </p>
+                )}
+                {logForm.new_protocol_id === '__custom__' && (
+                  <p className="text-[11px] text-[#92400e] flex items-center gap-1">
+                    <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>info</span>
+                    Um protocolo personalizado será criado e atribuído a este paciente.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={() => setAddOpen(false)} className="btn-ghost flex-1">Cancelar</button>
             <button type="submit" className="btn-primary flex-1" disabled={saving}>
-              {saving ? <Spinner /> : <><Save size={14} /> Salvar</>}
+              {saving ? <Spinner /> : 'Salvar'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Modal: Editar paciente */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar paciente">
+      {/* ── Modal: Editar Paciente ───────────────────────────────── */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar Paciente">
         <form onSubmit={handleEditPatient} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
@@ -316,11 +825,6 @@ export default function PatientDetail() {
               <label className="label">Telefone</label>
               <input className="input" value={editForm.phone}
                 onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
-            </div>
-            <div>
-              <label className="label">E-mail</label>
-              <input type="email" className="input" value={editForm.email}
-                onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
             </div>
             <div className="sm:col-span-2">
               <label className="label">Procedimento</label>
@@ -341,37 +845,44 @@ export default function PatientDetail() {
                 <option value="discharged">Alta</option>
               </select>
             </div>
-            <div className="sm:col-span-2">
-              <label className="label">Protocolo de dias</label>
-              <input className="input" value={editForm.protocol_days}
-                placeholder="ex: 7,15,30,60,90"
-                onChange={e => setEditForm(f => ({ ...f, protocol_days: e.target.value }))} />
-            </div>
+            {protocols.length > 0 && (
+              <div className="sm:col-span-2">
+                <label className="label">Protocolo de Contato</label>
+                <select className="input" value={editForm.protocol_id}
+                  onChange={e => setEditForm(f => ({ ...f, protocol_id: e.target.value }))}>
+                  <option value="">Sem protocolo específico (usar padrão)</option>
+                  {protocols.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.is_default ? ' (Padrão)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="sm:col-span-2">
               <label className="label">Observações</label>
               <textarea className="input resize-none" rows={2} value={editForm.notes}
                 onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
           </div>
-
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={() => setEditOpen(false)} className="btn-ghost flex-1">Cancelar</button>
             <button type="submit" className="btn-primary flex-1" disabled={saving}>
-              {saving ? <Spinner /> : <><Save size={14} /> Salvar</>}
+              {saving ? <Spinner /> : 'Salvar'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Modal: Confirmação de exclusão */}
-      <Modal open={delConfirm} onClose={() => setDelConfirm(false)} title="Excluir paciente">
-        <p className="text-sm text-slate-600 mb-5">
-          Tem certeza que deseja excluir <strong>{patient.name}</strong>? Esta ação não pode ser desfeita.
+      {/* ── Modal: Confirmar Exclusão ────────────────────────────── */}
+      <Modal open={delConfirm} onClose={() => setDelConfirm(false)} title="Excluir Paciente">
+        <p className="text-body-md text-on-surface-variant mb-5">
+          Tem certeza que deseja excluir <strong className="text-on-surface">{patient.name}</strong>? Esta ação não pode ser desfeita.
         </p>
         <div className="flex gap-2">
           <button onClick={() => setDelConfirm(false)} className="btn-ghost flex-1">Cancelar</button>
           <button onClick={handleDelete} className="btn-danger flex-1" disabled={saving}>
-            {saving ? <Spinner /> : <><Trash2 size={14} /> Excluir</>}
+            {saving ? <Spinner /> : 'Excluir'}
           </button>
         </div>
       </Modal>
@@ -379,60 +890,67 @@ export default function PatientDetail() {
   )
 }
 
-function InfoRow({ icon: Icon, label, value }) {
-  return (
-    <div className="flex items-start gap-2">
-      <Icon size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
-      <div>
-        <p className="text-[11px] text-slate-400 uppercase font-semibold tracking-wide">{label}</p>
-        <p className="text-slate-700 text-sm">{value}</p>
-      </div>
-    </div>
-  )
-}
-
 function LogItem({ log }) {
-  const typeIcons = {
-    call:      PhoneCall,
-    whatsapp:  MessageCircle,
-    email:     AtSign,
-    in_person: HandshakeIcon,
+  const typeConfig = {
+    call:      { icon: 'call',      color: 'text-primary' },
+    whatsapp:  { icon: 'chat',      color: 'text-[#25D366]' },
+    email:     { icon: 'mail',      color: 'text-primary' },
+    in_person: { icon: 'handshake', color: 'text-primary' },
   }
-  const outcomeColors = {
-    reached:            'text-emerald-600',
-    no_answer:          'text-slate-400',
-    callback_scheduled: 'text-amber-600',
+  const typeLabel = {
+    call: 'Ligação', whatsapp: 'WhatsApp', email: 'E-mail', in_person: 'Presencial',
   }
-  const outcomeLabels = {
-    reached:            'Contactado',
-    no_answer:          'Sem resposta',
-    callback_scheduled: 'Retorno agendado',
+  const outcomeConfig = {
+    reached:            { cls: 'bg-secondary-container/20 text-on-secondary-container', icon: 'check_circle', label: 'Contato realizado' },
+    no_answer:          { cls: 'bg-surface-container-high text-on-surface-variant',     icon: 'phone_missed',  label: 'Sem resposta' },
+    callback_scheduled: { cls: 'bg-[#fff8e1] text-[#f57f17]',                           icon: 'schedule',      label: 'Retorno agendado' },
   }
-  const Icon = typeIcons[log.contact_type] ?? PhoneCall
+  const tc = typeConfig[log.contact_type] ?? typeConfig.call
+  const oc = outcomeConfig[log.outcome]   ?? outcomeConfig.no_answer
 
   return (
-    <li className="py-3.5 flex items-start gap-3">
-      <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <Icon size={14} className="text-slate-500" />
+    <div className="relative">
+      <div className="absolute -left-[35px] sm:-left-[43px] w-5 h-5 rounded-full bg-secondary text-on-secondary flex items-center justify-center border-4 border-white shadow-sm">
+        <span
+          className="material-symbols-outlined"
+          style={{ fontSize: '10px', fontVariationSettings: "'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20" }}
+        >check</span>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-xs font-semibold ${outcomeColors[log.outcome]}`}>
-            {outcomeLabels[log.outcome]}
+      <div className="bg-surface border border-outline-variant rounded-lg p-4 hover:shadow-[0_4px_6px_rgba(0,0,0,0.08)] transition-shadow">
+        <div className="flex justify-between items-start mb-2">
+          <div className="flex items-center gap-2">
+            <span className={`material-symbols-outlined ${tc.color}`} style={{ fontSize: '18px' }}>{tc.icon}</span>
+            <span className="text-label-md font-label-md text-on-surface font-semibold">
+              {typeLabel[log.contact_type] ?? 'Contato'}
+            </span>
+          </div>
+          <span className="text-label-sm font-label-sm text-on-surface-variant">
+            {log.contact_date ? format(parseISO(log.contact_date), "dd MMM. yyyy", { locale: ptBR }) : '—'}
           </span>
-          <span className="text-xs text-slate-400">
-            {log.contact_date ? format(parseISO(log.contact_date), "dd 'de' MMMM", { locale: ptBR }) : '—'}
-          </span>
-          {log.agent_name && <span className="text-xs text-slate-400">· {log.agent_name}</span>}
         </div>
-        {log.notes && <p className="text-sm text-slate-600 mt-1">{log.notes}</p>}
+        {log.notes && (
+          <p className="text-body-md font-body-md text-on-surface-variant mb-3">{log.notes}</p>
+        )}
+        <div className="flex justify-between items-center mt-2 pt-3 border-t border-surface-container-highest">
+          <span className={`inline-flex items-center gap-1 text-label-sm font-label-sm px-2 py-0.5 rounded ${oc.cls}`}>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{oc.icon}</span>
+            {oc.label}
+          </span>
+          <span className="text-label-sm font-label-sm text-on-surface-variant flex items-center gap-1">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
+              {log.agent_name ? 'person' : 'smart_toy'}
+            </span>
+            {log.agent_name ?? 'Sistema Automático'}
+          </span>
+        </div>
         {log.next_followup_date && (
-          <p className="text-xs text-primary-600 mt-1">
+          <p className="text-label-sm font-label-sm text-primary mt-2 flex items-center gap-1">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>event</span>
             Próximo: {format(parseISO(log.next_followup_date), "dd/MM/yyyy")}
           </p>
         )}
       </div>
-    </li>
+    </div>
   )
 }
 
@@ -450,13 +968,16 @@ function Modal({ open, onClose, title, children }) {
             initial={{ opacity: 0, scale: .96, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: .96, y: 16 }}
-            transition={{ duration: .2, ease: [.16,1,.3,1] }}
-            className="fixed inset-x-4 top-[10vh] z-50 mx-auto max-w-lg bg-white rounded-2xl shadow-modal overflow-hidden"
+            transition={{ duration: .2, ease: [.16, 1, .3, 1] }}
+            className="fixed inset-x-4 top-[10vh] z-50 mx-auto max-w-lg bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant"
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border">
-              <h3 className="font-semibold text-slate-800">{title}</h3>
-              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
-                <X size={16} />
+            <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">
+              <h3 className="text-headline-sm font-headline-sm text-on-surface">{title}</h3>
+              <button
+                onClick={onClose}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container-low transition-colors"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
               </button>
             </div>
             <div className="p-5 max-h-[75vh] overflow-y-auto">
@@ -470,5 +991,5 @@ function Modal({ open, onClose, title, children }) {
 }
 
 function Spinner() {
-  return <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+  return <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
 }
