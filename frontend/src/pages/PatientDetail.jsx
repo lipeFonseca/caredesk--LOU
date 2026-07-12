@@ -17,6 +17,8 @@ import {
 
 const CONTACT_TYPES = [
   { value: 'call',      label: 'Ligação',    icon: 'call' },
+  { value: 'whatsapp',  label: 'WhatsApp',   icon: 'chat' },
+  { value: 'email',     label: 'Email',      icon: 'mail' },
   { value: 'in_person', label: 'Presencial', icon: 'handshake' },
 ]
 
@@ -891,11 +893,12 @@ export default function PatientDetail() {
 function LogItem({ log }) {
   const typeConfig = {
     call:      { icon: 'call',      color: 'text-primary' },
-    email:     { icon: 'history',   color: 'text-primary' },
+    whatsapp:  { icon: 'chat',      color: 'text-primary' },
+    email:     { icon: 'mail',      color: 'text-primary' },
     in_person: { icon: 'handshake', color: 'text-primary' },
   }
   const typeLabel = {
-    call: 'Ligação', email: 'Contato legado', in_person: 'Presencial',
+    call: 'Ligação', whatsapp: 'WhatsApp', email: 'Email', in_person: 'Presencial',
   }
   const outcomeConfig = {
     reached:            { cls: 'bg-secondary-container/20 text-on-secondary-container', icon: 'check_circle', label: 'Contato realizado' },

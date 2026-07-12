@@ -25,7 +25,8 @@ const statusLabel = { active: 'Ativo', paused: 'Pausado', discharged: 'Alta' }
 
 const typeConfig = {
   call:      { icon: 'call',      color: 'text-primary',     label: 'Ligação' },
-  email:     { icon: 'history',   color: 'text-primary',     label: 'Contato legado' },
+  whatsapp:  { icon: 'chat',      color: 'text-primary',     label: 'WhatsApp' },
+  email:     { icon: 'mail',      color: 'text-primary',     label: 'Email' },
   in_person: { icon: 'handshake', color: 'text-primary',     label: 'Presencial' },
 }
 

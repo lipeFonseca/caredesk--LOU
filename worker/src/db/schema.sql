@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS followup_logs (
   patient_id      TEXT NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   agent_id        TEXT REFERENCES agents(id) ON DELETE SET NULL,
   contact_date    TEXT NOT NULL DEFAULT (date('now')),
-  contact_type    TEXT NOT NULL DEFAULT 'call' CHECK (contact_type IN ('call', 'email', 'in_person')),
+  contact_type    TEXT NOT NULL DEFAULT 'call' CHECK (contact_type IN ('call', 'email', 'whatsapp', 'in_person')),
   outcome         TEXT NOT NULL DEFAULT 'reached' CHECK (outcome IN ('reached', 'no_answer', 'callback_scheduled')),
   notes           TEXT,
   next_followup_date TEXT,
