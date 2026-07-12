@@ -74,6 +74,7 @@ export default function BrandingSettingsTab() {
         logo: 'logo_url',
         background: 'background_image_url',
         login: 'login_image_url',
+        login_background: 'login_background_image_url',
         favicon: 'favicon_url',
       }
 
@@ -107,6 +108,7 @@ export default function BrandingSettingsTab() {
         logo: 'logo_url',
         background: 'background_image_url',
         login: 'login_image_url',
+        login_background: 'login_background_image_url',
         favicon: 'favicon_url',
       }
 
@@ -157,6 +159,13 @@ export default function BrandingSettingsTab() {
   const loginPreviewStyle = branding.loginImageUrl
     ? {
         backgroundImage: `linear-gradient(180deg, rgba(21, 36, 31, 0.74), rgba(21, 36, 31, 0.88)), url("${branding.loginImageUrl}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : undefined
+  const loginPageBackgroundStyle = branding.loginBackgroundImageUrl
+    ? {
+        backgroundImage: `url("${branding.loginBackgroundImageUrl}")`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }
@@ -328,10 +337,11 @@ export default function BrandingSettingsTab() {
             <BrandAssetField title="Logo" description="Usada na sidebar, login e cards institucionais." imageUrl={form.logo_url} placeholder="https://..." value={form.logo_url} onChange={set('logo_url')} onUpload={(file) => handleAssetUpload('logo', file)} onRemove={() => handleRemoveAsset('logo')} loading={uploadingAsset === 'logo'} />
             <BrandAssetField title="Imagem de fundo" description="Compoe o hero principal do painel e a atmosfera da marca." imageUrl={form.background_image_url} placeholder="https://..." value={form.background_image_url} onChange={set('background_image_url')} onUpload={(file) => handleAssetUpload('background', file)} onRemove={() => handleRemoveAsset('background')} loading={uploadingAsset === 'background'} tall />
             <BrandAssetField title="Imagem da pagina de login" description="Aplica uma imagem exclusiva para a lateral institucional da tela de login. Se ficar vazia, a tela permanece sem imagem." imageUrl={form.login_image_url} placeholder="https://..." value={form.login_image_url} onChange={set('login_image_url')} onUpload={(file) => handleAssetUpload('login', file)} onRemove={() => handleRemoveAsset('login')} loading={uploadingAsset === 'login'} tall />
+            <BrandAssetField title="Imagem de fundo da pagina de login" description="Cobre o fundo da pagina inteira de login, atras do card de acesso. Se ficar vazia, a pagina permanece sem imagem de fundo." imageUrl={form.login_background_image_url} placeholder="https://..." value={form.login_background_image_url} onChange={set('login_background_image_url')} onUpload={(file) => handleAssetUpload('login_background', file)} onRemove={() => handleRemoveAsset('login_background')} loading={uploadingAsset === 'login_background'} tall />
             <BrandAssetField title="Favicon" description="Atualiza o icone da aba do navegador." imageUrl={form.favicon_url} placeholder="https://..." value={form.favicon_url} onChange={set('favicon_url')} onUpload={(file) => handleAssetUpload('favicon', file)} onRemove={() => handleRemoveAsset('favicon')} loading={uploadingAsset === 'favicon'} iconOnly />
           </div>
 
-          <div className="rounded-[24px] border border-outline-variant bg-surface-container p-4">
+          <div className="rounded-[24px] border border-outline-variant bg-surface-container p-4" style={loginPageBackgroundStyle}>
             <div>
               <h3 className="text-sm font-semibold text-on-surface">Preview da tela de login</h3>
               <p className="mt-1 text-sm text-on-surface-variant">Mostra a composicao completa com imagem institucional e card real de acesso.</p>
@@ -446,6 +456,7 @@ function getDefaultFormState() {
     logo_url: '',
     background_image_url: '',
     login_image_url: '',
+    login_background_image_url: '',
     favicon_url: '',
     login_border_effect_enabled: false,
     login_border_preset: 'default',
@@ -472,6 +483,7 @@ function buildSettingsPayload(form) {
     logo_url: sanitizeBrandUrl(normalized.logo_url),
     background_image_url: sanitizeBrandUrl(normalized.background_image_url),
     login_image_url: sanitizeBrandUrl(normalized.login_image_url),
+    login_background_image_url: sanitizeBrandUrl(normalized.login_background_image_url),
     favicon_url: sanitizeBrandUrl(normalized.favicon_url),
     login_border_effect_enabled: normalized.login_border_effect_enabled,
     login_border_preset: normalized.login_border_preset,

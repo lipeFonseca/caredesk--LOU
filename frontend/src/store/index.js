@@ -72,6 +72,7 @@ export const useSettingsStore = create((set, get) => ({
     logo_url:              '',
     background_image_url:  '',
     login_image_url:       '',
+    login_background_image_url: '',
     favicon_url:           '',
     login_border_effect_enabled: false,
     login_border_preset: 'default',

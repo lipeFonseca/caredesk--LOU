@@ -19,6 +19,7 @@ Direcao atual do produto:
 - boot autenticado do frontend agora espera as configuracoes remotas antes do primeiro paint principal, evitando flash de branding antigo
 - tela publica de login agora tambem consome branding remoto sanitizado antes do acesso, sem depender de sessao autenticada
 - ambiente publicado validado em 11 jul 2026 nas rotas principais e sem canais de mensagem expostos
+- pagina de login agora suporta uma imagem de fundo dedicada para a pagina inteira, distinta da imagem institucional do painel esquerdo, salva no R2 (12 jul 2026)
 
 Ambientes conhecidos:
 - frontend publicado: `https://caredesk-lou.pages.dev`
@@ -310,6 +311,37 @@ Arquivos relevantes desta frente:
 - `frontend/src/pages/Admin.jsx`
 - `frontend/src/components/layout/AppLayout.jsx`
 
+### Imagem de fundo dedicada para a pagina de login (12 jul 2026)
+
+Escopo entregue:
+- a tela de login agora suporta uma imagem de fundo propria, aplicada na pagina inteira, atras do card de acesso com o efeito de borda pulsante
+- esse asset e distinto da imagem institucional (`login_image_url`, que cobre apenas o painel esquerdo institucional) — os dois podem ser configurados de forma independente
+- segue a mesma diretriz oficial de storage: binario grande no `R2`, referencia e metadados no `D1`
+- se `login_background_image_url` ficar vazio, a pagina de login permanece sem imagem de fundo, sem herdar nenhuma outra imagem do sistema
+
+Contrato consolidado:
+- chave de configuracao: `login_background_image_url`
+- chave interna de storage: `login_background_image_storage_key`
+- namespace no storage: `branding/login-backgrounds/`
+
+Rotas relevantes:
+- `POST /api/settings/assets/login_background`
+- `DELETE /api/settings/assets/login_background`
+- `GET /api/settings/logo/:key` (leitura, endpoint compartilhado de todos os assets de branding)
+- `GET /api/settings/public` (expoe `login_background_image_url` para a tela publica de login)
+
+Arquivos principais desta frente:
+- `worker/migrations/0005_login-background.sql`
+- `worker/src/db/schema.sql`
+- `worker/src/routes/notifications.js`
+- `frontend/src/theme/branding.js`
+- `frontend/src/store/index.js`
+- `frontend/src/components/admin/BrandingSettingsTab.jsx`
+- `frontend/src/pages/Login.jsx`
+
+Pendencia de publicacao:
+- a migration `0005_login-background.sql` ainda precisa ser aplicada no D1 remoto antes do proximo deploy oficial
+
 ## Estrutura principal
 
 ```text
@@ -333,6 +365,15 @@ Arquivos-chave:
 Higiene recente do repositório:
 - arquivos de suporte local em `.codex/runtime/` foram removidos do workspace e agora ficam ignorados via `.gitignore`
 - utilitarios nao integrados ao fluxo atual, como `worker/reset-admin-password.mjs` e `worker/wrangler.toml.example`, foram retirados para reduzir ruído
+
+## Ambiente local com multiplas ferramentas de IA
+
+Este workspace e usado tanto pelo Codex quanto pelo Claude Code, que rodam sob identidades diferentes do Windows nesta maquina (`CodexSandboxOffline` e o usuario interativo). Isso pode deixar arquivos ou pastas especificas sem permissao de escrita para uma das duas ferramentas, mesmo com o resto do repositorio normal.
+
+Regra pratica se isso acontecer:
+- comparar a ACL do caminho com erro contra a de uma pasta irma via `icacls` antes de qualquer correcao
+- corrigir com `takeown /F <caminho> /R /D Y` seguido de `icacls <caminho> /reset /T`, sempre no caminho especifico com problema
+- nunca rodar `icacls /reset` na raiz do projeto (`caredesk-sprint`) — a permissao de escrita compartilhada pelas duas ferramentas e uma entrada explicita definida exatamente ali; resetar a raiz apaga essa entrada e derruba o acesso de uma das ferramentas
 
 ## Setup local recomendado
 

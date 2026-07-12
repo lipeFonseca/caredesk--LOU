@@ -17,6 +17,14 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const pageBackgroundStyle = branding.loginBackgroundImageUrl
+    ? {
+        backgroundImage: `linear-gradient(180deg, rgba(15, 23, 20, 0.55), rgba(15, 23, 20, 0.75)), url("${branding.loginBackgroundImageUrl}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : undefined
+
   function set(field) {
     return (event) => {
       setForm((current) => ({ ...current, [field]: event.target.value }))
@@ -45,7 +53,7 @@ export default function Login() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-8">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-8" style={pageBackgroundStyle}>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(184,136,74,0.14),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(40,75,64,0.18),transparent_32%)]" />
 
       <LoginPulsingBorder config={branding.loginBorder} className="w-full max-w-5xl rounded-[36px] shadow-modal">

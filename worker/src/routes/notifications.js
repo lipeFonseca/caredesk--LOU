@@ -56,7 +56,7 @@ settings.get('/logo/:key', async (c) => {
     return c.json({ error: 'Storage de branding nao configurado' }, 503)
   }
 
-  const key = sanitizeScopedAssetKey(c.req.param('key'), ['logos', 'backgrounds', 'favicons', 'login-images'])
+  const key = sanitizeScopedAssetKey(c.req.param('key'), ['logos', 'backgrounds', 'favicons', 'login-images', 'login-backgrounds'])
   if (!key) return c.json({ error: 'Asset nao encontrado' }, 404)
 
   const response = await buildAssetResponse(c.env.LOGO_BUCKET, key)
@@ -87,6 +87,7 @@ settings.patch('/', adminOnly, async (c) => {
     'logo_url',
     'background_image_url',
     'login_image_url',
+    'login_background_image_url',
     'favicon_url',
     'login_border_effect_enabled',
     'login_border_preset',
@@ -199,6 +200,7 @@ function buildPublicSettingsPayload(settingsMap = {}) {
     'logo_url',
     'background_image_url',
     'login_image_url',
+    'login_background_image_url',
     'favicon_url',
     'login_border_effect_enabled',
     'login_border_preset',
@@ -245,6 +247,12 @@ const BRAND_ASSET_CONFIG = {
     folder: 'login-images',
     urlKey: 'login_image_url',
     storageKey: 'login_image_storage_key',
+    maxSizeMb: 8,
+  },
+  login_background: {
+    folder: 'login-backgrounds',
+    urlKey: 'login_background_image_url',
+    storageKey: 'login_background_image_storage_key',
     maxSizeMb: 8,
   },
   favicon: {

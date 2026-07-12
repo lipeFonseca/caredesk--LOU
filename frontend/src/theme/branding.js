@@ -21,6 +21,7 @@ export function normalizeBrandingSettings(settings = {}) {
     logo_url: sanitizeBrandUrl(settings.logo_url),
     background_image_url: sanitizeBrandUrl(settings.background_image_url),
     login_image_url: sanitizeBrandUrl(settings.login_image_url),
+    login_background_image_url: sanitizeBrandUrl(settings.login_background_image_url),
     favicon_url: sanitizeBrandUrl(settings.favicon_url),
     login_border_effect_enabled: coerceBooleanish(settings.login_border_effect_enabled),
     login_border_preset: normalizeLoginBorderPreset(settings.login_border_preset),
@@ -47,6 +48,7 @@ export function getBranding(settings = {}) {
   const faviconUrl = normalized.favicon_url || logoUrl
   const backgroundImageUrl = normalized.background_image_url
   const loginImageUrl = normalized.login_image_url
+  const loginBackgroundImageUrl = normalized.login_background_image_url
   const loginBorderColors = [
     normalized.login_border_color_1,
     normalized.login_border_color_2,
@@ -62,6 +64,7 @@ export function getBranding(settings = {}) {
     faviconUrl,
     backgroundImageUrl,
     loginImageUrl,
+    loginBackgroundImageUrl,
     loginBorder: {
       enabled: normalized.login_border_effect_enabled,
       preset: normalized.login_border_preset,

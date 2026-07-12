@@ -1,6 +1,6 @@
 # Status do Projeto CareDesk
 
-Atualizado em: 2026-07-11
+Atualizado em: 2026-07-12
 
 Este arquivo registra como o CareDesk funciona hoje de verdade no codigo local.
 
@@ -249,6 +249,7 @@ Porem:
 - consolidar protocolos como fonte unica de verdade
 - revisar se `patients.protocol_days` ja pode entrar na fila de remocao definitiva
 - atualizar o GitHub para refletir o estado local real
+- aplicar a migration `0005_login-background.sql` no D1 remoto antes do proximo deploy oficial (ver secao 11.27)
 
 ### Media prioridade
 
@@ -806,3 +807,52 @@ Publicado em `2026-07-11`:
 Checagem final:
 - `GET /health` respondeu `200` com `{\"status\":\"ok\",\"app\":\"CareDesk\"}`
 - `GET https://caredesk-lou.pages.dev/login` respondeu `200`
+
+### 11.27 Imagem de fundo dedicada para a pagina de login
+
+Escopo entregue em `2026-07-12`:
+- nova chave `login_background_image_url`, que cobre o fundo da pagina de login inteira, atras do card de acesso com o efeito de borda pulsante
+- e distinta de `login_image_url` (imagem institucional do painel esquerdo) — as duas sao independentes e podem ser configuradas separadamente
+- reaproveita o nucleo de storage ja existente (`worker/src/utils/storage.js`) e o mesmo padrao de rotas genericas de upload/remocao de assets (`/api/settings/assets/:type`)
+- novo namespace no R2: `branding/login-backgrounds/`
+- preview da aba de identidade visual passou a aplicar essa imagem no fundo do card de preview inteiro, nao so no bloco institucional
+
+Contrato consolidado:
+- chave de configuracao: `login_background_image_url`
+- chave interna de storage: `login_background_image_storage_key`
+
+Arquivos principais desta entrega:
+- `worker/migrations/0005_login-background.sql`
+- `worker/src/db/schema.sql`
+- `worker/src/routes/notifications.js` (`BRAND_ASSET_CONFIG`, whitelist de `PATCH /settings`, whitelist de `GET /settings/public`, pasta permitida em `sanitizeScopedAssetKey`)
+- `frontend/src/theme/branding.js`
+- `frontend/src/store/index.js`
+- `frontend/src/components/admin/BrandingSettingsTab.jsx`
+- `frontend/src/pages/Login.jsx`
+
+Validacao local:
+- `frontend`: `npm run build` ok em `2026-07-12` (bundle principal segue acima de `500 kB`, alerta ja conhecido do shader de login)
+- `worker`: `npm test` ok em `2026-07-12` (6/6 testes de protocolo, sem regressao)
+- `node --check` em `worker/src/routes/notifications.js` ok
+
+Pendencia:
+- a migration `0005_login-background.sql` ainda nao foi aplicada no D1 remoto — precisa rodar antes do proximo deploy oficial, junto com o restante do pacote de branding do login
+
+### 11.28 Armadilha de ambiente: ACL quebrada entre Codex e Claude Code no Windows
+
+Sintoma observado em `2026-07-12`:
+- o Claude Code recebeu erro de permissao (`EPERM`/acesso negado) ao tentar editar `worker/migrations/`, `frontend/src/components/admin/BrandingSettingsTab.jsx` e `frontend/src/pages/Login.jsx`, mesmo com o resto do repositorio editavel normalmente
+
+Causa raiz confirmada:
+- Codex roda localmente sob uma identidade Windows sandbox propria (`DESKTOP-HUGKHAV\CodexSandboxOffline`) e por vezes usa permissao mais elevada para gravar em caminhos especificos
+- em algum momento isso recriou esses 3 caminhos sem herdar a ACL corretamente, deixando-os sem a entrada de escrita do usuario interativo (`faugu`), usado pelo Claude Code
+- verificado via `icacls`: a permissao de escrita compartilhada pelas duas ferramentas (grupo `DESKTOP-HUGKHAV\CodexSandboxUsers`, direito `Modify`) e uma entrada **explicita definida na raiz do repositorio** (`caredesk-sprint`), nao herdada de pastas acima — ou seja, qualquer correcao de ACL precisa ficar restrita a um caminho especifico dentro do repo, nunca resetar a partir da raiz do projeto, sob risco de apagar essa entrada e derrubar o acesso do Codex ao repositorio inteiro
+
+Correcao aplicada:
+- `takeown /F <caminho> /R /D Y` seguido de `icacls <caminho> /reset /T`, rodado apenas nos 3 caminhos especificos (nao na raiz do projeto), restaurando a heranca normal do diretorio pai imediato — que ja contem tanto `faugu:(F)` quanto `CodexSandboxUsers:(M,DC)`
+- validado via `icacls` apos a correcao: os 3 caminhos voltaram a ter as duas identidades com acesso de escrita, nada foi perdido para o Codex
+
+Regra pratica para o futuro:
+- se qualquer ferramenta (Codex ou Claude Code) travar com erro de permissao num caminho especifico do projeto, comparar a ACL desse caminho com a de uma pasta irma via `icacls` antes de qualquer correcao
+- nunca rodar `icacls /reset` na raiz do projeto (`caredesk-sprint`) — a permissao de escrita de ambas as ferramentas depende de uma entrada explicita definida exatamente ali
+- corrigir sempre no nivel mais especifico possivel (a pasta ou arquivo com problema), nunca num ancestral maior do que o necessario

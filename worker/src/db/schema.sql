@@ -123,6 +123,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES
   ('logo_url',              ''),
   ('background_image_url',  ''),
   ('login_image_url',       ''),
+  ('login_background_image_url', ''),
   ('favicon_url',           ''),
   ('login_border_effect_enabled', '0'),
   ('login_border_preset',         'default'),
