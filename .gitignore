@@ -25,6 +25,7 @@ frontend/.env.local
 # Logs
 *.log
 npm-debug.log*
+.codex/
 
 # Local database backups
 backups/

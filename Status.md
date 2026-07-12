@@ -738,6 +738,20 @@ Pacote minimo que precisa andar junto para o login premium nao regredir:
 Decisao:
 - a correcao definitiva e publicar esse pacote coordenado no GitHub, e nao apenas reaplicar deploy manual no Cloudflare
 
+### 11.23 Alinhamento de revisionamento
+
+Objetivo desta rodada:
+- reduzir a distancia entre o workspace local e o estado versionado do GitHub
+- transformar as frentes ja consolidadas localmente em commits rastreaveis e publicados
+
+Critério adotado:
+- commits por bloco funcional real
+- testes e build executados antes do fechamento
+- evitar deixar backend, frontend e migracoes relacionadas separadas artificialmente
+
+Meta operacional:
+- apos esta rodada, o repositório deve refletir com fidelidade o estado local relevante do produto
+
 ### 11.15 Deploy publicado desta rodada
 
 Publicado em `2026-07-11`:

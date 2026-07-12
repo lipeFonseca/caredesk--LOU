@@ -3,14 +3,14 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { format, formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { api } from '@/services/api'
 import { useAuthStore, useNotifStore, useSettingsStore, useThemeStore } from '@/store'
+import { api } from '@/services/api'
 import { getBranding } from '@/theme/branding'
+import Avatar from '@/components/common/Avatar'
 
 const NAV_ITEMS = [
   { to: '/', icon: 'dashboard', label: 'Visao Geral', end: true },
   { to: '/patients', icon: 'group', label: 'Pacientes', end: false },
-  { to: '/comunicacao', icon: 'chat', label: 'WhatsApp', end: false },
 ]
 
 function greeting(name) {
@@ -27,13 +27,9 @@ export default function AppLayout() {
 
   const { agent, logout, isAdmin } = useAuthStore()
   const { notifications, unreadCount, setNotifications, markRead, markAllRead } = useNotifStore()
-  const { settings, setSettings } = useSettingsStore()
+  const { settings } = useSettingsStore()
   const { dark, toggle: toggleDark } = useThemeStore()
   const branding = getBranding(settings)
-
-  useEffect(() => {
-    api.settings.get().then((data) => { if (data) setSettings(data) }).catch(() => {})
-  }, [setSettings])
 
   useEffect(() => {
     function handleOutsideClick(event) {
@@ -108,10 +104,9 @@ export default function AppLayout() {
                 alt={`Logo da clinica ${branding.clinicName}`}
                 className="h-16 w-16 rounded-[22px] border border-white/20 bg-white/15 object-cover shadow-card"
               />
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-[#dac8ab]">CS Portal</p>
-                <h1 className="mt-2 text-[2rem] leading-none text-white">{branding.clinicName}</h1>
-                <p className="mt-2 text-sm leading-6 text-[#ebddc8]/88">{branding.tagline}</p>
+              <div className="min-w-0 flex-1 pt-1">
+                <h1 className="text-[2rem] leading-none text-white">{branding.clinicName}</h1>
+                <p className="mt-3 text-sm leading-6 text-[#ebddc8]/88">{branding.tagline}</p>
               </div>
               <button
                 className="rounded-full border border-white/12 p-2 text-[#ebddc8] md:hidden"
@@ -172,17 +167,15 @@ export default function AppLayout() {
             </ul>
           </div>
 
-          <div className="mt-6 rounded-[28px] border border-white/8 bg-white/7 p-5 text-[#f3e6d2] backdrop-blur-sm">
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#d9c6a7]">Curadoria do dia</p>
-            <p className="mt-3 text-2xl leading-none text-white">{branding.heroTitle}</p>
-            <p className="mt-3 text-sm leading-6 text-[#e7dac4]/86">{branding.heroSubtitle}</p>
-          </div>
-
           <div className="mt-auto rounded-[28px] border border-white/8 bg-black/16 p-4 backdrop-blur-sm">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f4ebdd] text-[#19372f] text-sm font-bold">
-                {agent?.name?.charAt(0)?.toUpperCase() || 'A'}
-              </div>
+              <Avatar
+                name={agent?.name}
+                src={agent?.avatar_url}
+                size="md"
+                className="shrink-0 border border-white/10"
+                fallbackClassName="bg-[#f4ebdd] text-[#19372f]"
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-white">{agent?.name}</p>
                 <p className="text-xs uppercase tracking-[0.18em] text-[#d6c3a5]">

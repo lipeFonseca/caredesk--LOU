@@ -25,8 +25,7 @@ const statusLabel = { active: 'Ativo', paused: 'Pausado', discharged: 'Alta' }
 
 const typeConfig = {
   call:      { icon: 'call',      color: 'text-primary',     label: 'Ligação' },
-  whatsapp:  { icon: 'chat',      color: 'text-[#25D366]',   label: 'WhatsApp' },
-  email:     { icon: 'mail',      color: 'text-primary',     label: 'E-mail' },
+  email:     { icon: 'history',   color: 'text-primary',     label: 'Contato legado' },
   in_person: { icon: 'handshake', color: 'text-primary',     label: 'Presencial' },
 }
 
@@ -331,7 +330,6 @@ function PanelContent({ patient, onClose, isAdmin }) {
           {[
             { icon: 'open_in_full',   label: 'Ver Página\nCompleta',  to: `/patients/${patient.id}` },
             { icon: 'call',           label: 'Fazer\nLigação',       href: patient.phone ? `tel:${patient.phone}` : null },
-            { icon: 'chat',           label: 'Abrir\nWhatsApp',      href: patient.phone ? `https://wa.me/${String(patient.phone).replace(/\D/g, '')}` : null },
             { icon: 'edit',           label: 'Editar\nDados',         to: `/patients/${patient.id}` },
             ...(isAdmin()
               ? [{ icon: 'delete', label: 'Excluir\nPaciente', danger: true, to: `/patients/${patient.id}` }]

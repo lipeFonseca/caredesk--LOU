@@ -66,7 +66,7 @@ auth.post('/login', async (c) => {
 
   return c.json({
     token,
-    agent: { id: agent.id, name: agent.name, email: agent.email, role: agent.role }
+    agent: { id: agent.id, name: agent.name, email: agent.email, role: agent.role, avatar_url: agent.avatar_url || null }
   })
 })
 
@@ -74,7 +74,7 @@ auth.post('/login', async (c) => {
 auth.get('/me', authMiddleware, async (c) => {
   const { sub } = c.get('agent')
   const agent = await c.env.DB.prepare(
-    'SELECT id, name, email, role, created_at FROM agents WHERE id = ?'
+    'SELECT id, name, email, role, avatar_url, created_at FROM agents WHERE id = ?'
   ).bind(sub).first()
 
   if (!agent) return c.json({ error: 'Agente não encontrado' }, 404)

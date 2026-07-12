@@ -2,22 +2,23 @@ name = "caredesk-worker"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
-# account_id lido via variável de ambiente CLOUDFLARE_ACCOUNT_ID
+# account_id lido via variavel de ambiente CLOUDFLARE_ACCOUNT_ID
 
-# ── D1 Database ──────────────────────────────────────────────
 [[d1_databases]]
 binding       = "DB"
 database_name = "caredesk-sprint"
 database_id   = "ecf087ba-7eff-4c80-ac87-5ff72ce6fc46"
 
-# ── Variáveis de ambiente ─────────────────────────────────────
+[[r2_buckets]]
+binding     = "LOGO_BUCKET"
+bucket_name = "caredeskstorage"
+
 [vars]
 FRONTEND_URL = "https://caredesk-lou.pages.dev"
 APP_ENV      = "production"
 
-# ── Secrets (definir via: wrangler secret put NOME) ──────────
+# Secrets (definir via: wrangler secret put NOME)
 # JWT_SECRET
 
-# ── Cron Trigger (roda todo dia às 8h horário de Brasília = 11h UTC) ──
 [triggers]
 crons = ["0 11 * * *"]

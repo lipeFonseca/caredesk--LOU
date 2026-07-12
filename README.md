@@ -529,6 +529,18 @@ Aplicacao pratica para o login:
 
 Tudo isso precisa existir no repositorio, no worker e no frontend ao mesmo tempo.
 
+## Regra de revisionamento compativel
+
+Padrao adotado a partir desta consolidacao:
+- se o workspace local evoluir em uma frente estrutural relevante, o GitHub precisa ser atualizado na mesma rodada
+- backend, frontend, migracoes e testes relacionados devem subir juntos quando formarem um pacote funcional unico
+- nao deixar backlog grande de mudancas locais sem commit, porque isso distorce o estado real do produto
+
+Objetivo pratico:
+- repositorio e workspace devem continuar compatíveis
+- o deploy oficial deve refletir o produto real
+- o historico do Git deve explicar a evolucao do CareDesk em blocos legiveis
+
 ## Disciplina de documentacao
 
 `README.md` e `Status.md` devem permanecer como memoria viva do projeto.

@@ -88,7 +88,7 @@ export default function NewPatient() {
                 />
               </div>
               <div>
-                <label className="label">Telefone / WhatsApp</label>
+                <label className="label">Telefone</label>
                 <input
                   className="input"
                   placeholder="(85) 99999-9999"

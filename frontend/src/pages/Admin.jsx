@@ -2,32 +2,15 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/services/api'
 import BrandingSettingsTab from '@/components/admin/BrandingSettingsTab'
-import { useSettingsStore } from '@/store'
+import { useAuthStore, useSettingsStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
 import { formatProtocolDayShort, normalizeProtocolDays } from '@/utils/protocols'
+import Avatar from '@/components/common/Avatar'
 
 const TABS = [
   { id: 'protocol', label: 'Protocolo de Contatos', icon: 'route' },
   { id: 'agents',   label: 'Equipe',            icon: 'group' },
   { id: 'settings', label: 'Identidade Visual', icon: 'palette' },
-]
-
-const PROTOCOL_CHANNELS = [
-  { value: 'internal', label: 'Somente painel' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-]
-
-const TEMPLATE_VARIABLES = [
-  '{{clinica.nome}}',
-  '{{paciente.nome}}',
-  '{{paciente.telefone}}',
-  '{{paciente.procedimento}}',
-  '{{paciente.cirurgia_data}}',
-  '{{contato.dia}}',
-  '{{contato.data}}',
-  '{{contato.status}}',
-  '{{protocolo.nome}}',
-  '{{link.paciente}}',
 ]
 
 export default function Admin() {
@@ -138,7 +121,6 @@ function ProtocolTab() {
           {protocols.map(proto => {
             const days = normalizeProtocolDays(proto.days)
             const maxDay = days.filter(d => d > 0).length ? Math.max(...days.filter(d => d > 0)) : 0
-            const channelLabel = PROTOCOL_CHANNELS.find(item => item.value === proto.contact_channel)?.label || 'Somente painel'
             return (
               <div key={proto.id} className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -150,22 +132,6 @@ function ProtocolTab() {
                         {proto.is_default ? (
                           <span className="px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-primary/10 border border-primary/20 text-primary">Padrão</span>
                         ) : null}
-                        <span className="px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-surface-container-high border border-outline-variant text-on-surface-variant">
-                          {channelLabel}
-                        </span>
-                        {proto.contact_channel === 'whatsapp' ? (
-                          <span className="px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-surface-container-high border border-outline-variant text-on-surface-variant">
-                            Abertura manual na central
-                          </span>
-                        ) : proto.automation_enabled ? (
-                          <span className="px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-secondary/10 border border-secondary/20 text-secondary">
-                            Automação ligada
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-surface-container-high border border-outline-variant text-on-surface-variant">
-                            Automação desligada
-                          </span>
-                        )}
                         <span className="text-label-sm text-outline">{days.length} marcos · até {maxDay}d após cirurgia</span>
                         {proto.patient_count > 0 && (
                           <span className="text-label-sm text-on-surface-variant flex items-center gap-1">
@@ -252,9 +218,6 @@ function ProtocolModal({ proto, onClose, onSaved }) {
   const [description, setDesc]    = useState(proto?.description ?? '')
   const [color, setColor]         = useState(proto?.color ?? '#6366f1')
   const [isDefault, setIsDefault] = useState(proto?.is_default === 1)
-  const [contactChannel, setContactChannel] = useState(proto?.contact_channel ?? 'internal')
-  const [automationEnabled, setAutomationEnabled] = useState(proto?.automation_enabled === 1)
-  const [messageTemplate, setMessageTemplate] = useState(proto?.message_template ?? '')
   const [days, setDays]           = useState(Array.isArray(proto?.days) ? [...proto.days] : [])
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
@@ -290,9 +253,6 @@ function ProtocolModal({ proto, onClose, onSaved }) {
         color,
         is_default: isDefault,
         days,
-        contact_channel: contactChannel,
-        automation_enabled: contactChannel === 'whatsapp' ? false : automationEnabled,
-        message_template: messageTemplate || null,
       }
       if (isEdit) await api.protocols.update(proto.id, body)
       else        await api.protocols.create(body)
@@ -335,73 +295,6 @@ function ProtocolModal({ proto, onClose, onSaved }) {
           <input type="checkbox" checked={isDefault} onChange={e => setIsDefault(e.target.checked)} className="w-4 h-4 rounded border-outline-variant text-primary" />
           <span className="text-body-md text-on-surface">Definir como protocolo padrão para novos pacientes</span>
         </label>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Canal padrão do protocolo</label>
-            <select className="input" value={contactChannel} onChange={e => setContactChannel(e.target.value)}>
-              {PROTOCOL_CHANNELS.map(channel => (
-                <option key={channel.value} value={channel.value}>{channel.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">{contactChannel === 'whatsapp' ? 'Modo de envio' : 'Automação'}</label>
-            <button
-              type="button"
-              onClick={() => {
-                if (contactChannel === 'whatsapp') return
-                setAutomationEnabled(value => !value)
-              }}
-              disabled={contactChannel === 'whatsapp'}
-              className={`w-full rounded-xl border px-4 py-2.5 text-label-md font-label-md transition-colors ${
-                contactChannel === 'whatsapp'
-                  ? 'bg-surface-container-low border-outline-variant text-on-surface-variant cursor-default'
-                  : automationEnabled
-                  ? 'bg-secondary/10 border-secondary/30 text-secondary'
-                  : 'bg-surface-container-low border-outline-variant text-on-surface-variant'
-              }`}
-            >
-              {contactChannel === 'whatsapp' ? 'Manual pela Central de WhatsApp' : automationEnabled ? 'Ligado' : 'Desligado'}
-            </button>
-            {contactChannel === 'whatsapp' && (
-              <p className="text-label-sm text-on-surface-variant mt-2">
-                Para WhatsApp, o contato é aberto manualmente na Central de WhatsApp. O sistema não envia mais por QR Code ou API externa.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-3 rounded-xl border border-outline-variant bg-surface-container-low p-4">
-          <div>
-            <label className="label">Mensagem padrão deste protocolo</label>
-            <textarea
-              className="input min-h-[120px] resize-y"
-              value={messageTemplate}
-              onChange={e => setMessageTemplate(e.target.value)}
-              placeholder="Ex: Olá, {{paciente.nome}}. Seja bem-vindo(a) à {{clinica.nome}}..."
-            />
-            <p className="text-label-sm text-on-surface-variant mt-2">
-              Se ficar vazio, o sistema usa o template padrão configurado na aba do WhatsApp.
-            </p>
-          </div>
-          <div>
-            <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-2">Variáveis disponíveis</p>
-            <div className="flex flex-wrap gap-2">
-              {TEMPLATE_VARIABLES.map(variable => (
-                <button
-                  key={variable}
-                  type="button"
-                  onClick={() => setMessageTemplate(current => `${current}${current ? ' ' : ''}${variable}`)}
-                  className="px-2 py-1 rounded-full border border-outline-variant bg-surface text-label-sm text-on-surface-variant hover:border-primary/40 hover:text-primary transition-colors"
-                >
-                  {variable}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
         <hr className="border-outline-variant" />
 
         {/* Dias pré-cirurgia */}
@@ -584,9 +477,7 @@ function AgentsTab() {
         <ul className="space-y-2">
           {agents.map(a => (
             <li key={a.id} className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <span className="text-primary text-label-md font-semibold">{a.name.charAt(0).toUpperCase()}</span>
-              </div>
+              <Avatar name={a.name} src={a.avatar_url} size="md" className="shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-label-md font-label-md text-on-surface font-semibold">{a.name}</p>
@@ -634,17 +525,54 @@ function AgentsTab() {
 
 function AgentModal({ agent, onClose, onSaved }) {
   const isEdit = !!agent
+  const currentAgent = useAuthStore((state) => state.agent)
+  const updateAgent = useAuthStore((state) => state.updateAgent)
   const [form, setForm] = useState({
     name:             agent?.name ?? '',
     email:            agent?.email ?? '',
     password:         '',
     role:             agent?.role ?? 'agent',
     is_active:        agent?.is_active ?? 1,
+    avatar_url:       agent?.avatar_url ?? '',
   })
   const [saving, setSaving] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [error, setError]   = useState('')
 
   function set(field) { return e => { setForm(f => ({ ...f, [field]: e.target.value })); setError('') } }
+
+  async function handleAvatarUpload(file) {
+    if (!file || !agent?.id) return
+    setUploadingAvatar(true)
+    setError('')
+    try {
+      const data = await api.agents.uploadAvatar(agent.id, file)
+      const avatarUrl = data.avatar_url || ''
+      setForm((current) => ({ ...current, avatar_url: avatarUrl }))
+      onSaved()
+      if (currentAgent?.id === agent.id) updateAgent({ avatar_url: avatarUrl })
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel enviar o avatar.')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  async function handleAvatarRemove() {
+    if (!agent?.id) return
+    setUploadingAvatar(true)
+    setError('')
+    try {
+      await api.agents.removeAvatar(agent.id)
+      setForm((current) => ({ ...current, avatar_url: '' }))
+      onSaved()
+      if (currentAgent?.id === agent.id) updateAgent({ avatar_url: null })
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel remover o avatar.')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -667,6 +595,39 @@ function AgentModal({ agent, onClose, onSaved }) {
   return (
     <Modal open onClose={onClose} title={isEdit ? 'Editar agente' : 'Novo agente'}>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {isEdit ? (
+          <div className="rounded-[22px] border border-outline-variant bg-surface-container p-4">
+            <div className="flex items-start gap-4">
+              <Avatar name={form.name} src={form.avatar_url} size="xl" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-on-surface">Avatar do agente</p>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  Use este fluxo como referencia para futuros assets visuais do sistema.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <label className="btn-ghost cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+                      className="hidden"
+                      onChange={(event) => handleAvatarUpload(event.target.files?.[0])}
+                    />
+                    {uploadingAvatar ? 'Enviando...' : 'Fazer upload'}
+                  </label>
+                  {form.avatar_url && (
+                    <button type="button" onClick={handleAvatarRemove} className="btn-ghost" disabled={uploadingAvatar}>
+                      Remover
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-[18px] border border-outline-variant bg-surface-container-low px-4 py-3 text-sm text-on-surface-variant">
+            Salve o agente primeiro. O avatar fica disponivel na edicao, usando o mesmo fluxo organizado de storage.
+          </div>
+        )}
         <div><label className="label">Nome</label><input className="input" value={form.name} onChange={set('name')} required disabled={saving} /></div>
         <div><label className="label">E-mail</label><input type="email" className="input" value={form.email} onChange={set('email')} required disabled={saving} /></div>
         {!isEdit && (

@@ -7,7 +7,6 @@ import Patients     from '@/pages/Patients'
 import PatientDetail from '@/pages/PatientDetail'
 import NewPatient   from '@/pages/NewPatient'
 import Admin        from '@/pages/Admin'
-import WhatsApp     from '@/pages/WhatsApp'
 
 function PrivateRoute({ children, adminOnly = false }) {
   const { isAuthenticated, isAdmin } = useAuthStore()
@@ -29,8 +28,6 @@ export default function Router() {
           <Route path="patients" element={<Patients />} />
           <Route path="patients/new" element={<NewPatient />} />
           <Route path="patients/:id" element={<PatientDetail />} />
-          <Route path="comunicacao" element={<WhatsApp />} />
-          <Route path="whatsapp" element={<Navigate to="/comunicacao" replace />} />
           <Route path="admin" element={
             <PrivateRoute adminOnly><Admin /></PrivateRoute>
           } />

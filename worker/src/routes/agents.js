@@ -1,14 +1,34 @@
 import { Hono } from 'hono'
 import { authMiddleware, adminOnly } from '../middleware/auth.js'
 import { hashPassword } from './auth.js'
+import {
+  buildAssetResponse,
+  deleteAssetIfPresent,
+  putImageAsset,
+  sanitizeScopedAssetKey,
+} from '../utils/storage.js'
 
 const agents = new Hono()
+
+agents.get('/avatar/:key', async (c) => {
+  if (!c.env.LOGO_BUCKET) {
+    return c.json({ error: 'Storage de avatars nao configurado' }, 503)
+  }
+
+  const key = sanitizeScopedAssetKey(c.req.param('key'), ['avatars/agents'])
+  if (!key) return c.json({ error: 'Avatar nao encontrado' }, 404)
+
+  const response = await buildAssetResponse(c.env.LOGO_BUCKET, key)
+  if (!response) return c.json({ error: 'Avatar nao encontrado' }, 404)
+  return response
+})
+
 agents.use('*', authMiddleware)
 
 // ── GET /api/agents ───────────────────────────────────────────
 agents.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT id, name, email, role, is_active, created_at FROM agents ORDER BY name'
+    'SELECT id, name, email, role, is_active, avatar_url, created_at FROM agents ORDER BY name'
   ).all()
   return c.json(results)
 })
@@ -42,7 +62,7 @@ agents.post('/', adminOnly, async (c) => {
   ).run()
 
   return c.json({
-    id, name, email: email.toLowerCase(), role: role || 'agent'
+    id, name, email: email.toLowerCase(), role: role || 'agent', avatar_url: null
   }, 201)
 })
 
@@ -59,6 +79,59 @@ agents.patch('/:id', adminOnly, async (c) => {
   await c.env.DB.prepare(
     `UPDATE agents SET ${sets} WHERE id = ?`
   ).bind(...fields.map(f => body[f]), id).run()
+
+  return c.json({ success: true })
+})
+
+agents.post('/:id/avatar', adminOnly, async (c) => {
+  const id = c.req.param('id')
+
+  if (!c.env.LOGO_BUCKET) {
+    return c.json({ error: 'Storage de avatars nao configurado no Worker' }, 503)
+  }
+
+  const existingAgent = await c.env.DB.prepare(
+    'SELECT id, avatar_storage_key FROM agents WHERE id = ?'
+  ).bind(id).first()
+  if (!existingAgent) return c.json({ error: 'Agente nao encontrado' }, 404)
+
+  const formData = await c.req.formData()
+  const file = formData.get('file') || formData.get('avatar')
+
+  let objectKey
+  try {
+    const stored = await putImageAsset(c.env.LOGO_BUCKET, file, {
+      folder: 'avatars/agents',
+      maxSizeMb: 3,
+    })
+    objectKey = stored.objectKey
+  } catch (err) {
+    return c.json({ error: err.message || 'Nao foi possivel enviar o avatar' }, 400)
+  }
+
+  await deleteAssetIfPresent(c.env.LOGO_BUCKET, existingAgent.avatar_storage_key)
+
+  const avatarUrl = new URL(`/api/agents/avatar/${encodeURIComponent(objectKey)}`, c.req.url).toString()
+  await c.env.DB.prepare(
+    'UPDATE agents SET avatar_url = ?, avatar_storage_key = ? WHERE id = ?'
+  ).bind(avatarUrl, objectKey, id).run()
+
+  return c.json({ success: true, avatar_url: avatarUrl })
+})
+
+agents.delete('/:id/avatar', adminOnly, async (c) => {
+  const id = c.req.param('id')
+
+  const existingAgent = await c.env.DB.prepare(
+    'SELECT id, avatar_storage_key FROM agents WHERE id = ?'
+  ).bind(id).first()
+  if (!existingAgent) return c.json({ error: 'Agente nao encontrado' }, 404)
+
+  await deleteAssetIfPresent(c.env.LOGO_BUCKET, existingAgent.avatar_storage_key)
+
+  await c.env.DB.prepare(
+    'UPDATE agents SET avatar_url = NULL, avatar_storage_key = NULL WHERE id = ?'
+  ).bind(id).run()
 
   return c.json({ success: true })
 })
