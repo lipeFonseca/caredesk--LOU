@@ -239,6 +239,7 @@ Correcao adicional confirmada:
 - se o wrapper ficar apenas na coluna direita, o resultado visual volta para um estado incorreto e contradiz a especificacao
 - a coluna direita nao deve ter um container estrutural redundante em volta do bloco de conteudo; o visual correto deixa o conteudo respirar dentro da faixa glass
 - as bordas internas da coluna direita tambem devem ser minimizadas; o formulario nao precisa de caixa-moldura separada quando a propria faixa glass ja organiza o bloco
+- o efeito glass suave deve existir apenas na coluna direita, com translucidez, blur e brilho interno discretos, sem reduzir contraste tipografico
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

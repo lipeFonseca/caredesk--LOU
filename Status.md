@@ -783,6 +783,17 @@ Refino adicional:
 - a coluna direita ficou sem moldura estrutural externa e sem caixa interna do formulario
 - a organizacao visual agora depende da faixa glass, da hierarquia tipografica e dos campos em si
 
+### 11.26 Glass suave restrito a coluna direita
+
+Validado em `2026-07-12`:
+- o pedido seguinte foi manter a composicao limpa, mas devolver um tratamento glass leve apenas na faixa direita
+- a coluna institucional da esquerda nao deve receber esse efeito
+
+Correcao aplicada:
+- a coluna direita ganhou `glass` suave por gradiente translucido, `backdrop-blur` e brilho interno discreto
+- os textos permaneceram com a mesma hierarquia e contraste para preservar legibilidade elegante
+- a miniatura administrativa foi alinhada ao mesmo comportamento
+
 ### 11.15 Deploy publicado desta rodada
 
 Publicado em `2026-07-11`:

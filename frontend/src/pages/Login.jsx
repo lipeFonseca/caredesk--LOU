@@ -86,9 +86,10 @@ export default function Login() {
               </div>
             </section>
 
-            <section className="flex items-center justify-center bg-[rgba(29,24,24,0.62)] p-6 backdrop-blur-xl backdrop-saturate-150 sm:p-8 lg:p-10">
+            <section className="relative flex items-center justify-center overflow-hidden border-l border-white/8 bg-[linear-gradient(180deg,rgba(34,28,29,0.68),rgba(24,20,21,0.50))] p-6 backdrop-blur-2xl backdrop-saturate-150 sm:p-8 lg:p-10">
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.04))]" />
               <div className="w-full max-w-md">
-                <div className="mb-8 text-center lg:text-left">
+                <div className="relative mb-8 text-center lg:text-left">
                   <img
                     src={branding.logoUrl}
                     alt={`Logo da clinica ${branding.clinicName}`}
@@ -99,7 +100,7 @@ export default function Login() {
                   <p className="mt-2 text-sm leading-6 text-[#d4c7c0]">{branding.tagline}</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleSubmit} className="relative space-y-5">
                   <div>
                     <label className="label text-[#cec4cf]">Usuario</label>
                     <input
@@ -155,7 +156,7 @@ export default function Login() {
                   </button>
                 </form>
 
-                <p className="mt-7 text-center text-xs uppercase tracking-[0.18em] text-[#cbbfdf] lg:text-left">
+                <p className="relative mt-7 text-center text-xs uppercase tracking-[0.18em] text-[#cbbfdf] lg:text-left">
                   Cuidado humano com rotina organizada
                 </p>
               </div>

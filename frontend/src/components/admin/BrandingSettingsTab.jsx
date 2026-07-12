@@ -359,14 +359,15 @@ export default function BrandingSettingsTab() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-center bg-[rgba(29,24,24,0.62)] px-5 py-6 backdrop-blur-xl backdrop-saturate-150">
+                  <div className="relative flex items-center justify-center overflow-hidden border-l border-white/8 bg-[linear-gradient(180deg,rgba(34,28,29,0.68),rgba(24,20,21,0.50))] px-5 py-6 backdrop-blur-2xl backdrop-saturate-150">
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.04))]" />
                     <div className="w-full max-w-[17rem]">
-                      <div className="mb-4">
+                      <div className="relative mb-4">
                         <p className="text-[10px] uppercase tracking-[0.28em] text-[#cfc4d3]">Entrar no painel</p>
                         <p className="mt-2 text-lg font-semibold text-[#f7f0ea]">{branding.clinicName}</p>
                         <p className="mt-1 text-sm text-[#d4c7c0]">{branding.tagline}</p>
                       </div>
-                      <div className="space-y-3">
+                      <div className="relative space-y-3">
                         <div className="rounded-2xl bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
                           nome de usuario
                         </div>
@@ -375,7 +376,7 @@ export default function BrandingSettingsTab() {
                         </div>
                         <div className="btn-primary justify-center">Entrar</div>
                       </div>
-                      <p className="mt-5 text-[10px] uppercase tracking-[0.22em] text-[#cbbfdf]">
+                      <p className="relative mt-5 text-[10px] uppercase tracking-[0.22em] text-[#cbbfdf]">
                         Cuidado humano com rotina organizada
                       </p>
                     </div>
