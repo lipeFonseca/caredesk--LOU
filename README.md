@@ -554,11 +554,16 @@ O workflow oficial agora foi alinhado para acompanhamento melhor da evolucao:
 - `run-name` passa a refletir melhor a origem da publicacao
 - `concurrency` continua serializando por branch, mas sem cancelar deploy anterior em andamento
 - com `cancel-in-progress: false`, novos runs nao apagam a leitura da evolucao recente no `Actions`
+- `workflow_dispatch` agora aceita `target` (`all`, `worker`, `frontend`) e `reason`
+- em `push` para `main`, o workflow detecta o escopo alterado e publica apenas o que realmente mudou
+- mudanca so em `frontend/` nao precisa redeployar o worker
+- mudanca so em `worker/` nao precisa republicar o frontend
 
 Efeito esperado:
 - o `Actions` passa a preservar melhor a sequencia de publicacoes
 - a aba deixa de dar a sensacao de que um deploy substituiu o outro no proprio historico do GitHub
 - continua existindo apenas um dominio principal publicado, mas com runs mais legiveis e rastreaveis
+- o historico fica mais honesto, porque cada run passa a refletir melhor o pacote real publicado
 
 ## Regra dura de consistencia entre GitHub e Cloudflare
 

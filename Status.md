@@ -874,3 +874,22 @@ Regra consolidada:
 - glass suave continua restrito apenas a coluna direita
 - imagem institucional da esquerda, tipografia e bloco inferior passam a nascer da mesma estrutura nas duas telas
 - qualquer proximo refinamento da composicao do login deve acontecer primeiro no componente compartilhado, e nao em duas arvores JSX separadas
+
+### 11.30 Workflow oficial agora detecta escopo de deploy
+
+Consolidado em `2026-07-12`:
+- o fluxo oficial ainda publicava worker e frontend em todo `push` para `main`, mesmo quando so uma metade do produto tinha mudado
+- isso aumentava ruido no `Actions`, alongava publicacoes pequenas e mantinha uma diferenca desnecessaria entre o que mudou e o que era republicado
+
+Correcao aplicada:
+- `.github/workflows/deploy.yml` ganhou um job inicial de deteccao de escopo (`changes`)
+- em `push`, o workflow agora compara os arquivos alterados e decide separadamente se precisa publicar `worker`, `frontend` ou ambos
+- em `workflow_dispatch`, o operador agora escolhe `target = all | worker | frontend`
+- o `run-name` manual ficou mais informativo e passou a aceitar um `reason`
+- o job de frontend foi alinhado para `wrangler@4`, no mesmo patamar do fluxo manual local mais recente
+
+Regra operacional consolidada:
+- mudanca so em `frontend/` deve gerar deploy apenas do frontend
+- mudanca so em `worker/` deve gerar deploy apenas do worker
+- publicacao manual oficial pelo GitHub agora pode ser direcionada por alvo, sem republicar a outra metade do sistema sem necessidade
+- deploy manual local continua existindo para contingencia, mas o trilho principal rastreavel fica mais fiel ao pacote real publicado
