@@ -9,22 +9,34 @@ const PRESET_MAP = {
   'solid-line': 'Solid line',
 }
 
-export default function LoginPulsingBorder({ config, className = '', children }) {
+export default function LoginPulsingBorder({ config, className = '', children, radius = 36 }) {
   const prefersReducedMotion = useReducedMotion()
   const isEnabled = Boolean(config?.enabled) && !prefersReducedMotion
   const shaderProps = useMemo(() => buildShaderProps(config, pulsingBorderPresets), [config])
   const borderInset = useMemo(() => resolveBorderInset(config), [config])
+  const outerRadius = Math.max(0, Number(radius) || 0)
+  const innerRadius = Math.max(0, outerRadius - borderInset - 1)
 
   return (
-    <div className={`relative overflow-hidden rounded-[32px] ${className}`.trim()}>
+    <div
+      className={`relative overflow-hidden ${className}`.trim()}
+      style={{ borderRadius: `${outerRadius}px` }}
+    >
       {isEnabled && shaderProps ? (
-        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+          aria-hidden="true"
+          style={{ borderRadius: `${outerRadius}px` }}
+        >
           <PulsingBorder {...shaderProps} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
       ) : null}
       <div
-        className="relative z-10 rounded-[26px] border border-outline-variant/60 bg-surface"
-        style={isEnabled ? { margin: `${borderInset}px` } : undefined}
+        className="relative z-10 border border-outline-variant/60 bg-surface"
+        style={{
+          borderRadius: `${innerRadius}px`,
+          ...(isEnabled ? { margin: `${borderInset}px` } : undefined),
+        }}
       >
         {children}
       </div>

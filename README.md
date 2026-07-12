@@ -243,6 +243,8 @@ Correcao adicional confirmada:
 - o efeito glass suave deve existir apenas na coluna direita, com translucidez, blur e brilho interno discretos, sem reduzir contraste tipografico
 - a miniatura da aba `Identidade Visual` nao pode ter markup proprio para o card de login; ela deve reutilizar a mesma estrutura-base da tela publica
 - a forma correta de evitar regressao e centralizar a composicao em um componente compartilhado, deixando login publicado e preview administrativa presos a mesma fonte estrutural
+- o shader nao pode usar cantos fixos se o card real muda de raio entre login publico e miniatura; a geometria da borda precisa herdar o mesmo `radius` do card que ela envolve
+- o raio interno do wrapper pulsante tambem precisa ser derivado do `inset` ativo; se o inner wrapper mantiver um `rounded` fixo, algumas quinas ficam com “ponta” visual mesmo quando o restante parece arredondado
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

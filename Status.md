@@ -911,3 +911,29 @@ Regra operacional consolidada:
 - mudanca so em `worker/` deve gerar deploy apenas do worker
 - publicacao manual oficial pelo GitHub agora pode ser direcionada por alvo, sem republicar a outra metade do sistema sem necessidade
 - deploy manual local continua existindo para contingencia, mas o trilho principal rastreavel fica mais fiel ao pacote real publicado
+
+### 11.31 Geometria sincronizada da borda pulsante no login
+
+Validado em `2026-07-12`:
+- alguns cantos do glow do login pareciam arredondados e outros mostravam uma “ponta” visual
+- a causa raiz nao estava nas cores nem no bloom, e sim na geometria desalinhada entre o shader e o card real
+
+Causa raiz confirmada:
+- `frontend/src/components/ui/LoginPulsingBorder.jsx` ainda usava valores fixos de raio (`32px` externo e `26px` interno)
+- o login publico usava um card maior (`36px`) e a miniatura administrativa usava outro (`24px`)
+- como o `inner wrapper` tambem mantinha um `rounded` proprio e fixo, o shader seguia uma silhueta e o card seguia outra
+
+Correcao aplicada:
+- `LoginPulsingBorder` agora recebe `radius` explicito
+- o raio externo do shader e o clipping do wrapper passam a obedecer esse mesmo valor
+- o raio interno passa a ser calculado a partir de `radius - inset - 1`, sincronizando a curvatura com a espessura visivel do efeito
+- `frontend/src/pages/Login.jsx` passou a usar `radius={36}`
+- `frontend/src/components/admin/BrandingSettingsTab.jsx` passou a usar `radius={24}`
+- os wrappers filhos imediatos deixaram de reimpor um `rounded` concorrente e passaram a herdar a geometria correta
+
+Resultado esperado:
+- a borda pulsante passa a acompanhar melhor o formato real do card
+- o login publico e a miniatura administrativa mantêm a mesma logica geométrica, mesmo com raios diferentes
+
+Validacao:
+- `frontend`: `npm run build` ok em `2026-07-12`

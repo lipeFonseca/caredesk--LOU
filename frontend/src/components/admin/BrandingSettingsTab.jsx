@@ -336,8 +336,8 @@ export default function BrandingSettingsTab() {
           <div>
             <p className="mb-3 text-sm font-semibold text-on-surface">Preview da tela de login</p>
             <div className="rounded-[24px] bg-surface-container/50 p-4" style={loginPageBackgroundStyle}>
-              <LoginPulsingBorder config={branding.loginBorder} className="overflow-hidden rounded-[24px] text-[#f8f1e6]">
-                <div className="overflow-hidden rounded-[24px] border border-outline-variant/70 bg-[#1d342d]">
+              <LoginPulsingBorder config={branding.loginBorder} radius={24} className="overflow-hidden text-[#f8f1e6]">
+                <div className="overflow-hidden border border-outline-variant/70 bg-[#1d342d]" style={{ borderRadius: 'inherit' }}>
                   <LoginCardLayout branding={branding} compact>
                     <div className="w-full max-w-[17rem]">
                       <div className="relative mb-4">
