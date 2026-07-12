@@ -241,6 +241,8 @@ Correcao adicional confirmada:
 - a coluna direita nao deve ter um container estrutural redundante em volta do bloco de conteudo; o visual correto deixa o conteudo respirar dentro da faixa glass
 - as bordas internas da coluna direita tambem devem ser minimizadas; o formulario nao precisa de caixa-moldura separada quando a propria faixa glass ja organiza o bloco
 - o efeito glass suave deve existir apenas na coluna direita, com translucidez, blur e brilho interno discretos, sem reduzir contraste tipografico
+- a miniatura da aba `Identidade Visual` nao pode ter markup proprio para o card de login; ela deve reutilizar a mesma estrutura-base da tela publica
+- a forma correta de evitar regressao e centralizar a composicao em um componente compartilhado, deixando login publicado e preview administrativa presos a mesma fonte estrutural
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

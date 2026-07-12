@@ -5,6 +5,7 @@ import { Eye, EyeOff, LogIn } from 'lucide-react'
 import { useAuthStore, useSettingsStore } from '@/store'
 import { api } from '@/services/api'
 import { getBranding } from '@/theme/branding'
+import LoginCardLayout from '@/components/login/LoginCardLayout'
 import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
 
 export default function Login() {
@@ -62,40 +63,8 @@ export default function Login() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="relative grid overflow-hidden lg:grid-cols-[1.15fr_0.85fr]"
           >
-            <section
-              className="relative hidden min-h-[620px] overflow-hidden bg-[#1d342d] p-10 text-[#f8f1e6] lg:flex lg:flex-col"
-              style={branding.loginImageUrl ? {
-                backgroundImage: `linear-gradient(180deg, rgba(21, 36, 31, 0.68), rgba(21, 36, 31, 0.9)), url("${branding.loginImageUrl}")`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              } : undefined}
-            >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%)]" />
-              <div className="relative">
-                <p className="text-[11px] uppercase tracking-[0.3em] text-[#d6c2a2]">Acesso institucional</p>
-                <h1 className="mt-4 text-display-lg text-white">{branding.heroTitle}</h1>
-                <p className="mt-4 max-w-md text-body-lg text-[#ece1cf]/88">{branding.heroSubtitle}</p>
-              </div>
-
-              <div className="relative mt-auto rounded-[28px] border border-white/10 bg-white/8 p-5 backdrop-blur-sm">
-                <div className="flex items-center gap-4">
-                  <img
-                    src={branding.logoUrl}
-                    alt={`Logo da clinica ${branding.clinicName}`}
-                    className="h-16 w-16 rounded-[20px] border border-white/15 bg-white/10 object-cover"
-                  />
-                  <div>
-                    <h2 className="text-headline-sm text-white">{branding.clinicName}</h2>
-                    <p className="mt-1 text-sm text-[#e7dac4]/84">{branding.tagline}</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="relative flex items-center justify-center overflow-hidden border-l border-white/8 bg-[linear-gradient(180deg,rgba(34,28,29,0.68),rgba(24,20,21,0.50))] p-6 backdrop-blur-2xl backdrop-saturate-150 sm:p-8 lg:p-10">
-              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.04))]" />
+            <LoginCardLayout branding={branding}>
               <div className="w-full max-w-md">
                 <div className="relative mb-8 text-center lg:text-left">
                   <img
@@ -168,7 +137,7 @@ export default function Login() {
                   Cuidado humano com rotina organizada
                 </p>
               </div>
-            </section>
+            </LoginCardLayout>
           </motion.div>
         </div>
       </LoginPulsingBorder>

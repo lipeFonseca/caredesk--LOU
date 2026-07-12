@@ -856,3 +856,21 @@ Regra pratica para o futuro:
 - se qualquer ferramenta (Codex ou Claude Code) travar com erro de permissao num caminho especifico do projeto, comparar a ACL desse caminho com a de uma pasta irma via `icacls` antes de qualquer correcao
 - nunca rodar `icacls /reset` na raiz do projeto (`caredesk-sprint`) — a permissao de escrita de ambas as ferramentas depende de uma entrada explicita definida exatamente ali
 - corrigir sempre no nivel mais especifico possivel (a pasta ou arquivo com problema), nunca num ancestral maior do que o necessario
+
+### 11.29 Layout-base compartilhado entre login publico e preview administrativa
+
+Validado em `2026-07-12`:
+- o repositório local estava limpo e alinhado com `origin/main`
+- apesar disso, a tela publica de login e a miniatura da aba `Identidade Visual` ainda mantinham markup paralelo para a mesma composicao
+- essa duplicacao explicava parte das regressões visuais recentes: uma tela era corrigida e a outra podia voltar a divergir
+
+Correcao estrutural aplicada:
+- criado `frontend/src/components/login/LoginCardLayout.jsx` como fonte unica do layout-base do card de login
+- `frontend/src/pages/Login.jsx` passou a reutilizar esse layout compartilhado para a tela publica
+- `frontend/src/components/admin/BrandingSettingsTab.jsx` passou a reutilizar o mesmo layout compartilhado em modo compacto para a previsualizacao
+
+Regra consolidada:
+- glow pulsante continua envolvendo o card principal inteiro
+- glass suave continua restrito apenas a coluna direita
+- imagem institucional da esquerda, tipografia e bloco inferior passam a nascer da mesma estrutura nas duas telas
+- qualquer proximo refinamento da composicao do login deve acontecer primeiro no componente compartilhado, e nao em duas arvores JSX separadas

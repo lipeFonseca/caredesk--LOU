@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/services/api'
+import LoginCardLayout from '@/components/login/LoginCardLayout'
 import { useSettingsStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
 import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor } from '@/theme/branding'
@@ -156,13 +157,6 @@ export default function BrandingSettingsTab() {
 
   const activeTheme = VISUAL_THEMES.find((theme) => theme.primary.toLowerCase() === String(form.primary_color).toLowerCase())
   const branding = getBranding(form)
-  const loginPreviewStyle = branding.loginImageUrl
-    ? {
-        backgroundImage: `linear-gradient(180deg, rgba(21, 36, 31, 0.74), rgba(21, 36, 31, 0.88)), url("${branding.loginImageUrl}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      }
-    : undefined
   const loginPageBackgroundStyle = branding.loginBackgroundImageUrl
     ? {
         backgroundImage: `url("${branding.loginBackgroundImageUrl}")`,
@@ -344,50 +338,32 @@ export default function BrandingSettingsTab() {
             <div className="rounded-[24px] bg-surface-container/50 p-4" style={loginPageBackgroundStyle}>
               <LoginPulsingBorder config={branding.loginBorder} className="overflow-hidden rounded-[24px] text-[#f8f1e6]">
                 <div className="overflow-hidden rounded-[24px] border border-outline-variant/70 bg-[#1d342d]">
-                  <div className="grid min-h-[22rem] gap-0 md:grid-cols-[1.12fr_0.88fr]">
-                    <div
-                      className="relative flex min-h-[15rem] flex-col justify-between bg-[#1d342d] p-5"
-                      style={loginPreviewStyle}
-                    >
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%)]" />
-                      <div className="relative max-w-[16rem]">
-                        <p className="text-[10px] uppercase tracking-[0.28em] text-[#d6c2a2]">Acesso institucional</p>
-                        <h4 className="mt-3 text-2xl font-semibold text-white">{branding.heroTitle}</h4>
-                        <p className="mt-3 text-sm leading-6 text-[#ece1cf]/88">{branding.heroSubtitle}</p>
+                  <LoginCardLayout branding={branding} compact>
+                    <div className="w-full max-w-[17rem]">
+                      <div className="relative mb-4">
+                        <img
+                          src={branding.logoUrl}
+                          alt={`Logo da clinica ${branding.clinicName}`}
+                          className="h-14 w-14 rounded-[18px] border border-white/12 bg-[rgba(255,255,255,0.10)] object-cover shadow-card"
+                        />
+                        <p className="mt-4 text-[10px] uppercase tracking-[0.28em] text-[#cfc4d3]">Entrar no painel</p>
+                        <p className="mt-2 text-lg font-semibold text-[#f7f0ea]">{branding.clinicName}</p>
+                        <p className="mt-1 text-sm text-[#d4c7c0]">{branding.tagline}</p>
                       </div>
-                      <div className="relative mt-8 rounded-[20px] border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
-                        <div className="flex items-center gap-3">
-                          <img src={branding.logoUrl} alt={`Logo da clinica ${branding.clinicName}`} className="h-12 w-12 rounded-[16px] border border-white/15 bg-white/10 object-contain p-1.5" />
-                          <div>
-                            <p className="text-sm font-semibold text-white">{branding.clinicName}</p>
-                            <p className="mt-1 text-xs text-[#e7dac4]/84">{branding.tagline}</p>
-                          </div>
+                      <div className="relative space-y-3">
+                        <div className="rounded-2xl border border-white/10 bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
+                          nome de usuario
                         </div>
+                        <div className="rounded-2xl border border-white/10 bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
+                          ********
+                        </div>
+                        <div className="btn-primary justify-center">Entrar</div>
                       </div>
+                      <p className="relative mt-5 text-[10px] uppercase tracking-[0.22em] text-[#cbbfdf]">
+                        Cuidado humano com rotina organizada
+                      </p>
                     </div>
-                    <div className="relative flex items-center justify-center overflow-hidden border-l border-white/8 bg-[linear-gradient(180deg,rgba(34,28,29,0.68),rgba(24,20,21,0.50))] px-5 py-6 backdrop-blur-2xl backdrop-saturate-150">
-                      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.04))]" />
-                      <div className="w-full max-w-[17rem]">
-                        <div className="relative mb-4">
-                          <p className="text-[10px] uppercase tracking-[0.28em] text-[#cfc4d3]">Entrar no painel</p>
-                          <p className="mt-2 text-lg font-semibold text-[#f7f0ea]">{branding.clinicName}</p>
-                          <p className="mt-1 text-sm text-[#d4c7c0]">{branding.tagline}</p>
-                        </div>
-                        <div className="relative space-y-3">
-                          <div className="rounded-2xl bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
-                            nome de usuario
-                          </div>
-                          <div className="rounded-2xl bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
-                            ********
-                          </div>
-                          <div className="btn-primary justify-center">Entrar</div>
-                        </div>
-                        <p className="relative mt-5 text-[10px] uppercase tracking-[0.22em] text-[#cbbfdf]">
-                          Cuidado humano com rotina organizada
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  </LoginCardLayout>
                 </div>
               </LoginPulsingBorder>
             </div>
