@@ -1,14 +1,57 @@
 const DEFAULT_TAGLINE = 'Acompanhamento pos-cirurgico com presenca e previsibilidade.'
 const DEFAULT_HERO_TITLE = 'Cuidado premium em cada etapa da jornada do paciente.'
 const DEFAULT_HERO_SUBTITLE = 'Organize contatos, acompanhe protocolos e conduza o retorno com uma interface mais humana, elegante e clara.'
+const DEFAULT_PRIMARY_COLOR = '#5f8fba'
+const DEFAULT_TIMEZONE = 'America/Fortaleza'
+const DEFAULT_LOGIN_BORDER_COLORS = ['#0dc1fd', '#d915ef', '#ff3f2ecc']
+const DEFAULT_LOGIN_BORDER_COLOR_BACK = '#00000000'
+const DEFAULT_LOGIN_BORDER_PRESET = 'default'
+const DEFAULT_LOGIN_BORDER_INTENSITY = 0.2
+const DEFAULT_LOGIN_BORDER_SPEED = 1
+const DEFAULT_LOGIN_BORDER_THICKNESS = 0.1
+const DEFAULT_LOGIN_BORDER_BLOOM = 0.25
+
+export function normalizeBrandingSettings(settings = {}) {
+  return {
+    clinic_name: coerceString(settings.clinic_name),
+    clinic_tagline: coerceString(settings.clinic_tagline),
+    hero_title: coerceString(settings.hero_title),
+    hero_subtitle: coerceString(settings.hero_subtitle),
+    primary_color: sanitizePrimaryColor(settings.primary_color),
+    logo_url: sanitizeBrandUrl(settings.logo_url),
+    background_image_url: sanitizeBrandUrl(settings.background_image_url),
+    login_image_url: sanitizeBrandUrl(settings.login_image_url),
+    favicon_url: sanitizeBrandUrl(settings.favicon_url),
+    login_border_effect_enabled: coerceBooleanish(settings.login_border_effect_enabled),
+    login_border_preset: normalizeLoginBorderPreset(settings.login_border_preset),
+    login_border_color_1: sanitizeColorString(settings.login_border_color_1, DEFAULT_LOGIN_BORDER_COLORS[0]),
+    login_border_color_2: sanitizeColorString(settings.login_border_color_2, DEFAULT_LOGIN_BORDER_COLORS[1]),
+    login_border_color_3: sanitizeColorString(settings.login_border_color_3, DEFAULT_LOGIN_BORDER_COLORS[2]),
+    login_border_color_back: sanitizeColorString(settings.login_border_color_back, DEFAULT_LOGIN_BORDER_COLOR_BACK),
+    login_border_intensity: coerceNumber(settings.login_border_intensity, DEFAULT_LOGIN_BORDER_INTENSITY, 0, 1),
+    login_border_speed: coerceNumber(settings.login_border_speed, DEFAULT_LOGIN_BORDER_SPEED, 0, 2),
+    login_border_thickness: coerceNumber(settings.login_border_thickness, DEFAULT_LOGIN_BORDER_THICKNESS, 0, 1),
+    login_border_bloom: coerceNumber(settings.login_border_bloom, DEFAULT_LOGIN_BORDER_BLOOM, 0, 1),
+    timezone: coerceString(settings.timezone) || DEFAULT_TIMEZONE,
+    contact_protocol_days: coerceString(settings.contact_protocol_days),
+  }
+}
 
 export function getBranding(settings = {}) {
-  const clinicName = settings.clinic_name?.trim() || 'CareDesk'
-  const tagline = settings.clinic_tagline?.trim() || DEFAULT_TAGLINE
-  const heroTitle = settings.hero_title?.trim() || DEFAULT_HERO_TITLE
-  const heroSubtitle = settings.hero_subtitle?.trim() || DEFAULT_HERO_SUBTITLE
-  const logoUrl = settings.logo_url?.trim() || buildInitialsLogo(clinicName)
-  const faviconUrl = settings.favicon_url?.trim() || logoUrl
+  const normalized = normalizeBrandingSettings(settings)
+  const clinicName = normalized.clinic_name.trim() || 'CareDesk'
+  const tagline = normalized.clinic_tagline.trim() || DEFAULT_TAGLINE
+  const heroTitle = normalized.hero_title.trim() || DEFAULT_HERO_TITLE
+  const heroSubtitle = normalized.hero_subtitle.trim() || DEFAULT_HERO_SUBTITLE
+  const logoUrl = normalized.logo_url || buildInitialsLogo(clinicName)
+  const faviconUrl = normalized.favicon_url || logoUrl
+  const backgroundImageUrl = normalized.background_image_url
+  const loginImageUrl = normalized.login_image_url
+  const loginBorderColors = [
+    normalized.login_border_color_1,
+    normalized.login_border_color_2,
+    normalized.login_border_color_3,
+  ].filter(Boolean)
 
   return {
     clinicName,
@@ -17,8 +60,47 @@ export function getBranding(settings = {}) {
     heroSubtitle,
     logoUrl,
     faviconUrl,
-    backgroundImageUrl: settings.background_image_url?.trim() || '',
+    backgroundImageUrl,
+    loginImageUrl,
+    loginBorder: {
+      enabled: normalized.login_border_effect_enabled,
+      preset: normalized.login_border_preset,
+      colors: loginBorderColors.length ? loginBorderColors : [...DEFAULT_LOGIN_BORDER_COLORS],
+      colorBack: normalized.login_border_color_back,
+      intensity: normalized.login_border_intensity,
+      speed: normalized.login_border_speed,
+      thickness: normalized.login_border_thickness,
+      bloom: normalized.login_border_bloom,
+    },
   }
+}
+
+export function sanitizePrimaryColor(value) {
+  return /^#([0-9a-f]{6})$/i.test(String(value || '').trim())
+    ? String(value).trim()
+    : DEFAULT_PRIMARY_COLOR
+}
+
+export function sanitizeBrandUrl(value) {
+  const normalized = String(value || '').trim()
+  if (!normalized) return ''
+
+  if (normalized.startsWith('data:image/')) return normalized
+
+  try {
+    const parsed = new URL(normalized)
+    if (!['http:', 'https:'].includes(parsed.protocol)) return ''
+    return parsed.toString()
+  } catch {
+    return ''
+  }
+}
+
+export function sanitizeColorString(value, fallback = '#000000') {
+  const normalized = String(value || '').trim()
+  return /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(normalized)
+    ? normalized
+    : fallback
 }
 
 export function buildInitialsLogo(name = 'CareDesk') {
@@ -54,4 +136,27 @@ function escapeXml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&apos;')
+}
+
+function coerceString(value) {
+  return typeof value === 'string' ? value : ''
+}
+
+function coerceBooleanish(value) {
+  if (typeof value === 'boolean') return value
+  const normalized = String(value || '').trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
+}
+
+function coerceNumber(value, fallback, min, max) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return fallback
+  return Math.min(max, Math.max(min, numeric))
+}
+
+function normalizeLoginBorderPreset(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  return ['default', 'circle', 'northern-lights', 'solid-line'].includes(normalized)
+    ? normalized
+    : DEFAULT_LOGIN_BORDER_PRESET
 }

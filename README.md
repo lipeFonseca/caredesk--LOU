@@ -510,6 +510,25 @@ Efeito esperado:
 - a aba deixa de dar a sensacao de que um deploy substituiu o outro no proprio historico do GitHub
 - continua existindo apenas um dominio principal publicado, mas com runs mais legiveis e rastreaveis
 
+## Regra dura de consistencia entre GitHub e Cloudflare
+
+Aprendizado operacional consolidado em `2026-07-12`:
+- se uma mudanca visual existir apenas em deploy manual local, ela nao esta protegida
+- no proximo `push`, o GitHub Actions publica o estado versionado do repositorio e pode sobrescrever a producao com um estado mais antigo
+
+Conclusao obrigatoria:
+- mudanca de interface que precisa sobreviver ao deploy oficial deve estar commitada e publicada no GitHub
+- deploy manual serve para validar rapido, nao para definir sozinho o estado canonico do produto
+
+Aplicacao pratica para o login:
+- tela de login premium
+- branding publico
+- imagem exclusiva do login
+- borda pulsante
+- preview da aba de identidade visual
+
+Tudo isso precisa existir no repositorio, no worker e no frontend ao mesmo tempo.
+
 ## Disciplina de documentacao
 
 `README.md` e `Status.md` devem permanecer como memoria viva do projeto.

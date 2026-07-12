@@ -2,20 +2,14 @@ import { useEffect, useState } from 'react'
 import { api } from '@/services/api'
 import { useSettingsStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
-import { getBranding } from '@/theme/branding'
+import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor } from '@/theme/branding'
+import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
 
 export default function BrandingSettingsTab() {
   const { setSettings } = useSettingsStore()
+  const defaultForm = getDefaultFormState()
   const [form, setFormState] = useState({
-    clinic_name: '',
-    clinic_tagline: '',
-    hero_title: '',
-    hero_subtitle: '',
-    primary_color: '#5f8fba',
-    logo_url: '',
-    background_image_url: '',
-    favicon_url: '',
-    timezone: 'America/Fortaleza',
+    ...defaultForm,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -25,14 +19,20 @@ export default function BrandingSettingsTab() {
 
   useEffect(() => {
     api.settings.get()
-      .then((data) => { if (data) setFormState((current) => ({ ...current, ...data })) })
+      .then((data) => {
+        if (!data) return
+        setFormState({ ...defaultForm, ...normalizeBrandingSettings(data) })
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
   function set(field) {
     return (event) => {
-      setFormState((current) => ({ ...current, [field]: event.target.value }))
+      const nextValue = field === 'primary_color'
+        ? sanitizePrimaryColor(event.target.value)
+        : event.target.value
+      setFormState((current) => ({ ...current, [field]: nextValue }))
       setSuccess(false)
       setError('')
     }
@@ -42,6 +42,22 @@ export default function BrandingSettingsTab() {
     setFormState((current) => ({ ...current, primary_color: theme.primary }))
     setSuccess(false)
     setError('')
+  }
+
+  function setToggle(field) {
+    return (event) => {
+      setFormState((current) => ({ ...current, [field]: event.target.checked }))
+      setSuccess(false)
+      setError('')
+    }
+  }
+
+  function setNumber(field) {
+    return (event) => {
+      setFormState((current) => ({ ...current, [field]: Number(event.target.value) }))
+      setSuccess(false)
+      setError('')
+    }
   }
 
   async function handleAssetUpload(type, file) {
@@ -57,11 +73,19 @@ export default function BrandingSettingsTab() {
       const keyMap = {
         logo: 'logo_url',
         background: 'background_image_url',
+        login: 'login_image_url',
         favicon: 'favicon_url',
       }
 
       const field = keyMap[type]
-      setFormState((current) => ({ ...current, [field]: data[field] || '' }))
+      const nextValue = sanitizeBrandUrl(data[field] || '')
+      setFormState((current) => ({ ...current, [field]: nextValue }))
+      const persisted = await api.settings.get().catch(() => null)
+      if (persisted) {
+        const normalized = normalizeBrandingSettings(persisted)
+        setFormState({ ...defaultForm, ...normalized })
+        setSettings(normalized)
+      }
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
@@ -82,10 +106,17 @@ export default function BrandingSettingsTab() {
       const keyMap = {
         logo: 'logo_url',
         background: 'background_image_url',
+        login: 'login_image_url',
         favicon: 'favicon_url',
       }
 
       setFormState((current) => ({ ...current, [keyMap[type]]: '' }))
+      const persisted = await api.settings.get().catch(() => null)
+      if (persisted) {
+        const normalized = normalizeBrandingSettings(persisted)
+        setFormState({ ...defaultForm, ...normalized })
+        setSettings(normalized)
+      }
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
@@ -101,8 +132,15 @@ export default function BrandingSettingsTab() {
     setError('')
 
     try {
-      await api.settings.update(form)
-      setSettings(form)
+      await api.settings.update({
+        ...buildSettingsPayload(form),
+      })
+      const persisted = await api.settings.get()
+      if (persisted) {
+        const normalized = normalizeBrandingSettings(persisted)
+        setFormState({ ...defaultForm, ...normalized })
+        setSettings(normalized)
+      }
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
@@ -116,6 +154,13 @@ export default function BrandingSettingsTab() {
 
   const activeTheme = VISUAL_THEMES.find((theme) => theme.primary.toLowerCase() === String(form.primary_color).toLowerCase())
   const branding = getBranding(form)
+  const loginPreviewStyle = branding.loginImageUrl
+    ? {
+        backgroundImage: `linear-gradient(180deg, rgba(21, 36, 31, 0.74), rgba(21, 36, 31, 0.88)), url("${branding.loginImageUrl}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : undefined
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -224,6 +269,52 @@ export default function BrandingSettingsTab() {
               <option value="America/Belem">America/Belem (BRT -3)</option>
             </select>
           </div>
+
+          <div className="rounded-[22px] border border-outline-variant bg-surface-container px-4 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-on-surface-variant">Borda pulsante do login</p>
+                <h3 className="mt-2 text-sm font-semibold text-on-surface">Efeito premium do card de acesso</h3>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  O efeito vive apenas no card de login e pode ter as cores ajustadas por aqui.
+                </p>
+              </div>
+              <label className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface px-3 py-2 text-sm text-on-surface cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-outline-variant"
+                  checked={form.login_border_effect_enabled}
+                  onChange={setToggle('login_border_effect_enabled')}
+                />
+                Ativar
+              </label>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="label">Preset</label>
+                <select className="input" value={form.login_border_preset} onChange={set('login_border_preset')}>
+                  <option value="default">Default</option>
+                  <option value="circle">Circle</option>
+                  <option value="northern-lights">Northern lights</option>
+                  <option value="solid-line">Solid line</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <ColorInputField label="Cor 1" value={form.login_border_color_1} onChange={set('login_border_color_1')} />
+                <ColorInputField label="Cor 2" value={form.login_border_color_2} onChange={set('login_border_color_2')} />
+                <ColorInputField label="Cor 3" value={form.login_border_color_3} onChange={set('login_border_color_3')} />
+                <ColorInputField label="Fundo do shader" value={form.login_border_color_back} onChange={set('login_border_color_back')} />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <RangeField label="Intensidade" min="0" max="1" step="0.01" value={form.login_border_intensity} onChange={setNumber('login_border_intensity')} />
+              <RangeField label="Velocidade" min="0" max="2" step="0.01" value={form.login_border_speed} onChange={setNumber('login_border_speed')} />
+              <RangeField label="Espessura" min="0" max="1" step="0.01" value={form.login_border_thickness} onChange={setNumber('login_border_thickness')} />
+              <RangeField label="Bloom" min="0" max="1" step="0.01" value={form.login_border_bloom} onChange={setNumber('login_border_bloom')} />
+            </div>
+          </div>
         </section>
 
         <section className="card space-y-5">
@@ -236,7 +327,62 @@ export default function BrandingSettingsTab() {
           <div className="space-y-4">
             <BrandAssetField title="Logo" description="Usada na sidebar, login e cards institucionais." imageUrl={form.logo_url} placeholder="https://..." value={form.logo_url} onChange={set('logo_url')} onUpload={(file) => handleAssetUpload('logo', file)} onRemove={() => handleRemoveAsset('logo')} loading={uploadingAsset === 'logo'} />
             <BrandAssetField title="Imagem de fundo" description="Compoe o hero principal do painel e a atmosfera da marca." imageUrl={form.background_image_url} placeholder="https://..." value={form.background_image_url} onChange={set('background_image_url')} onUpload={(file) => handleAssetUpload('background', file)} onRemove={() => handleRemoveAsset('background')} loading={uploadingAsset === 'background'} tall />
+            <BrandAssetField title="Imagem da pagina de login" description="Aplica uma imagem exclusiva para a lateral institucional da tela de login. Se ficar vazia, a tela permanece sem imagem." imageUrl={form.login_image_url} placeholder="https://..." value={form.login_image_url} onChange={set('login_image_url')} onUpload={(file) => handleAssetUpload('login', file)} onRemove={() => handleRemoveAsset('login')} loading={uploadingAsset === 'login'} tall />
             <BrandAssetField title="Favicon" description="Atualiza o icone da aba do navegador." imageUrl={form.favicon_url} placeholder="https://..." value={form.favicon_url} onChange={set('favicon_url')} onUpload={(file) => handleAssetUpload('favicon', file)} onRemove={() => handleRemoveAsset('favicon')} loading={uploadingAsset === 'favicon'} iconOnly />
+          </div>
+
+          <div className="rounded-[24px] border border-outline-variant bg-surface-container p-4">
+            <div>
+              <h3 className="text-sm font-semibold text-on-surface">Preview da tela de login</h3>
+              <p className="mt-1 text-sm text-on-surface-variant">Mostra a composicao completa com imagem institucional e card real de acesso.</p>
+            </div>
+            <div className="mt-4 overflow-hidden rounded-[24px] border border-outline-variant/70 bg-[#1d342d] text-[#f8f1e6]">
+              <LoginPulsingBorder config={branding.loginBorder}>
+                <div className="grid min-h-[24rem] gap-0 md:grid-cols-[1.12fr_0.88fr]">
+                  <div
+                    className="relative flex min-h-[15rem] flex-col justify-between bg-[#1d342d] p-5"
+                    style={loginPreviewStyle}
+                  >
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%)]" />
+                    <div className="relative max-w-[16rem]">
+                      <p className="text-[10px] uppercase tracking-[0.28em] text-[#d6c2a2]">Acesso institucional</p>
+                      <h4 className="mt-3 text-2xl font-semibold text-white">{branding.heroTitle}</h4>
+                      <p className="mt-3 text-sm leading-6 text-[#ece1cf]/88">{branding.heroSubtitle}</p>
+                    </div>
+                    <div className="relative mt-8 rounded-[20px] border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
+                      <div className="flex items-center gap-3">
+                        <img src={branding.logoUrl} alt={`Logo da clinica ${branding.clinicName}`} className="h-12 w-12 rounded-[16px] border border-white/15 bg-white/10 object-cover" />
+                        <div>
+                          <p className="text-sm font-semibold text-white">{branding.clinicName}</p>
+                          <p className="mt-1 text-xs text-[#e7dac4]/84">{branding.tagline}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-center bg-[rgba(29,24,24,0.62)] px-5 py-6 backdrop-blur-xl backdrop-saturate-150">
+                    <div className="w-full max-w-[17rem] rounded-[22px] border border-white/10 bg-[rgba(32,25,25,0.42)] p-4 backdrop-blur-md">
+                      <div className="mb-4">
+                        <p className="text-[10px] uppercase tracking-[0.28em] text-[#cfc4d3]">Entrar no painel</p>
+                        <p className="mt-2 text-lg font-semibold text-[#f7f0ea]">{branding.clinicName}</p>
+                        <p className="mt-1 text-sm text-[#d4c7c0]">{branding.tagline}</p>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="rounded-2xl border border-white/10 bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
+                          nome de usuario
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
+                          ********
+                        </div>
+                        <div className="btn-primary justify-center">Entrar</div>
+                      </div>
+                      <p className="mt-5 text-[10px] uppercase tracking-[0.22em] text-[#cbbfdf]">
+                        Cuidado humano com rotina organizada
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </LoginPulsingBorder>
+            </div>
           </div>
         </section>
       </div>
@@ -281,6 +427,85 @@ function BrandAssetField({ title, description, imageUrl, value, onChange, onUplo
           {imageUrl && <button type="button" onClick={onRemove} className="btn-ghost">Limpar</button>}
         </div>
       </div>
+    </div>
+  )
+}
+
+function Spinner() {
+  return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+}
+
+function getDefaultFormState() {
+  return {
+    clinic_name: '',
+    clinic_tagline: '',
+    hero_title: '',
+    hero_subtitle: '',
+    primary_color: '#5f8fba',
+    logo_url: '',
+    background_image_url: '',
+    login_image_url: '',
+    favicon_url: '',
+    login_border_effect_enabled: false,
+    login_border_preset: 'default',
+    login_border_color_1: '#0dc1fd',
+    login_border_color_2: '#d915ef',
+    login_border_color_3: '#ff3f2ecc',
+    login_border_color_back: '#00000000',
+    login_border_intensity: 0.2,
+    login_border_speed: 1,
+    login_border_thickness: 0.1,
+    login_border_bloom: 0.25,
+    timezone: 'America/Fortaleza',
+  }
+}
+
+function buildSettingsPayload(form) {
+  const normalized = normalizeBrandingSettings(form)
+  return {
+    clinic_name: normalized.clinic_name,
+    clinic_tagline: normalized.clinic_tagline,
+    hero_title: normalized.hero_title,
+    hero_subtitle: normalized.hero_subtitle,
+    primary_color: sanitizePrimaryColor(normalized.primary_color),
+    logo_url: sanitizeBrandUrl(normalized.logo_url),
+    background_image_url: sanitizeBrandUrl(normalized.background_image_url),
+    login_image_url: sanitizeBrandUrl(normalized.login_image_url),
+    favicon_url: sanitizeBrandUrl(normalized.favicon_url),
+    login_border_effect_enabled: normalized.login_border_effect_enabled,
+    login_border_preset: normalized.login_border_preset,
+    login_border_color_1: normalized.login_border_color_1,
+    login_border_color_2: normalized.login_border_color_2,
+    login_border_color_3: normalized.login_border_color_3,
+    login_border_color_back: normalized.login_border_color_back,
+    login_border_intensity: normalized.login_border_intensity,
+    login_border_speed: normalized.login_border_speed,
+    login_border_thickness: normalized.login_border_thickness,
+    login_border_bloom: normalized.login_border_bloom,
+    timezone: normalized.timezone,
+  }
+}
+
+function ColorInputField({ label, value, onChange }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <div className="flex items-center gap-2">
+        <input type="color" className="h-11 w-11 rounded-xl border border-outline-variant cursor-pointer shrink-0" value={String(value).slice(0, 7)} onChange={onChange} />
+        <input className="input" value={value} onChange={onChange} />
+      </div>
+    </div>
+  )
+}
+
+function RangeField({ label, min, max, step, value, onChange }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <label className="label">{label}</label>
+        <span className="text-xs text-on-surface-variant">{Number(value).toFixed(2)}</span>
+      </div>
+      <input type="range" className="w-full accent-primary" min={min} max={max} step={step} value={value} onChange={onChange} />
     </div>
   )
 }

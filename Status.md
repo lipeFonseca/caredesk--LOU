@@ -707,6 +707,37 @@ Clarificacao operacional adicionada ao projeto:
 - `package.json` ganhou aliases `deploy:manual:*` para deixar clara a natureza desses comandos
 - `README.md` agora define o GitHub Actions como trilha oficial de historico de publicacao
 
+### 11.22 Regressao explicada do login premium
+
+Causa raiz confirmada em `2026-07-12`:
+- o login premium havia sido publicado manualmente no Cloudflare
+- depois disso, um `push` menor acionou o `GitHub Actions`
+- o workflow republicou o estado do repositorio, que ainda nao continha todo o pacote visual do login
+- resultado: a producao voltou para um estado anterior da tela de login
+
+Regra operacional endurecida:
+- nenhuma mudanca visual critica pode ficar apenas no deploy manual
+- o estado canonico do produto precisa morar no GitHub antes do proximo deploy oficial
+
+Pacote minimo que precisa andar junto para o login premium nao regredir:
+- `frontend/src/App.jsx`
+- `frontend/src/services/api.js`
+- `frontend/src/store/index.js`
+- `frontend/src/theme/branding.js`
+- `frontend/src/pages/Login.jsx`
+- `frontend/src/components/admin/BrandingSettingsTab.jsx`
+- `frontend/src/components/ui/LoginPulsingBorder.jsx`
+- `frontend/package.json`
+- `frontend/package-lock.json`
+- `worker/src/routes/notifications.js`
+- `worker/src/utils/storage.js`
+- `worker/src/db/schema.sql`
+- `worker/migrations/0003_login-branding.sql`
+- `worker/migrations/0004_login-border-settings.sql`
+
+Decisao:
+- a correcao definitiva e publicar esse pacote coordenado no GitHub, e nao apenas reaplicar deploy manual no Cloudflare
+
 ### 11.15 Deploy publicado desta rodada
 
 Publicado em `2026-07-11`:

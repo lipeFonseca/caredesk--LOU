@@ -1,5 +1,11 @@
 import { Hono } from 'hono'
 import { authMiddleware, adminOnly } from '../middleware/auth.js'
+import {
+  buildAssetResponse,
+  deleteAssetIfPresent,
+  putImageAsset,
+  sanitizeScopedAssetKey,
+} from '../utils/storage.js'
 
 const notifications = new Hono()
 notifications.use('*', authMiddleware)
@@ -50,19 +56,17 @@ settings.get('/logo/:key', async (c) => {
     return c.json({ error: 'Storage de branding nao configurado' }, 503)
   }
 
-  const key = sanitizeLogoKey(c.req.param('key'))
+  const key = sanitizeScopedAssetKey(c.req.param('key'), ['logos', 'backgrounds', 'favicons', 'login-images'])
   if (!key) return c.json({ error: 'Asset nao encontrado' }, 404)
 
-  const object = await c.env.LOGO_BUCKET.get(key)
-  if (!object) return c.json({ error: 'Asset nao encontrado' }, 404)
+  const response = await buildAssetResponse(c.env.LOGO_BUCKET, key)
+  if (!response) return c.json({ error: 'Asset nao encontrado' }, 404)
+  return response
+})
 
-  const headers = new Headers()
-  object.writeHttpMetadata(headers)
-  headers.set('etag', object.httpEtag)
-  headers.set('cache-control', 'public, max-age=86400')
-  headers.set('access-control-allow-origin', '*')
-
-  return new Response(object.body, { headers })
+settings.get('/public', async (c) => {
+  const settingsMap = await getSettingsMap(c.env.DB)
+  return c.json(buildPublicSettingsPayload(settingsMap))
 })
 
 settings.use('*', authMiddleware)
@@ -82,7 +86,18 @@ settings.patch('/', adminOnly, async (c) => {
     'primary_color',
     'logo_url',
     'background_image_url',
+    'login_image_url',
     'favicon_url',
+    'login_border_effect_enabled',
+    'login_border_preset',
+    'login_border_color_1',
+    'login_border_color_2',
+    'login_border_color_3',
+    'login_border_color_back',
+    'login_border_intensity',
+    'login_border_speed',
+    'login_border_thickness',
+    'login_border_bloom',
     'timezone',
     'contact_protocol_days',
   ]
@@ -129,31 +144,20 @@ async function uploadBrandAsset(c, type) {
 
   const formData = await c.req.formData()
   const file = formData.get('file') || formData.get(type)
-  if (!(file instanceof File)) {
-    return c.json({ error: 'Envie um arquivo valido' }, 400)
-  }
-
-  if (!isSupportedAssetType(file.type)) {
-    return c.json({ error: 'Formato invalido. Use PNG, JPG, SVG, WebP ou ICO' }, 400)
-  }
-
-  if (file.size > config.maxSizeMb * 1024 * 1024) {
-    return c.json({ error: `O arquivo deve ter no maximo ${config.maxSizeMb} MB` }, 400)
-  }
 
   const settingsMap = await getSettingsMap(c.env.DB)
   const currentKey = settingsMap[config.storageKey] || null
-  const objectKey = `${config.folder}/${crypto.randomUUID()}${extensionForMimeType(file.type, file.name)}`
+  let objectKey
 
-  await c.env.LOGO_BUCKET.put(objectKey, await file.arrayBuffer(), {
-    httpMetadata: {
-      contentType: file.type,
-      cacheControl: 'public, max-age=86400',
-    },
-  })
+  try {
+    const stored = await putImageAsset(c.env.LOGO_BUCKET, file, config)
+    objectKey = stored.objectKey
+  } catch (err) {
+    return c.json({ error: err.message || 'Nao foi possivel enviar o arquivo' }, 400)
+  }
 
   if (currentKey) {
-    await c.env.LOGO_BUCKET.delete(currentKey).catch(() => {})
+    await deleteAssetIfPresent(c.env.LOGO_BUCKET, currentKey)
   }
 
   const assetUrl = new URL(`/api/settings/logo/${encodeURIComponent(objectKey)}`, c.req.url).toString()
@@ -171,7 +175,7 @@ async function removeBrandAsset(c, type) {
   const currentKey = settingsMap[config.storageKey] || null
 
   if (currentKey && c.env.LOGO_BUCKET) {
-    await c.env.LOGO_BUCKET.delete(currentKey).catch(() => {})
+    await deleteAssetIfPresent(c.env.LOGO_BUCKET, currentKey)
   }
 
   await upsertSetting(c.env.DB, config.urlKey, '')
@@ -185,48 +189,43 @@ async function getSettingsMap(db) {
   return Object.fromEntries(results.map((row) => [row.key, row.value]))
 }
 
+function buildPublicSettingsPayload(settingsMap = {}) {
+  const allowed = [
+    'clinic_name',
+    'clinic_tagline',
+    'hero_title',
+    'hero_subtitle',
+    'primary_color',
+    'logo_url',
+    'background_image_url',
+    'login_image_url',
+    'favicon_url',
+    'login_border_effect_enabled',
+    'login_border_preset',
+    'login_border_color_1',
+    'login_border_color_2',
+    'login_border_color_3',
+    'login_border_color_back',
+    'login_border_intensity',
+    'login_border_speed',
+    'login_border_thickness',
+    'login_border_bloom',
+    'timezone',
+  ]
+
+  return Object.fromEntries(
+    allowed
+      .filter((key) => Object.hasOwn(settingsMap, key))
+      .map((key) => [key, settingsMap[key]])
+  )
+}
+
 async function upsertSetting(db, key, value) {
   await db.prepare(`
     INSERT INTO app_settings (key, value, updated_at)
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `).bind(key, String(value ?? '')).run()
-}
-
-function isSupportedAssetType(type) {
-  return [
-    'image/png',
-    'image/jpeg',
-    'image/webp',
-    'image/svg+xml',
-    'image/x-icon',
-    'image/vnd.microsoft.icon',
-  ].includes(type)
-}
-
-function extensionForMimeType(type, originalName = '') {
-  const byMime = {
-    'image/png': '.png',
-    'image/jpeg': '.jpg',
-    'image/webp': '.webp',
-    'image/svg+xml': '.svg',
-    'image/x-icon': '.ico',
-    'image/vnd.microsoft.icon': '.ico',
-  }
-
-  if (byMime[type]) return byMime[type]
-
-  const match = /\.[a-z0-9]+$/i.exec(originalName)
-  return match ? match[0].toLowerCase() : ''
-}
-
-function sanitizeLogoKey(value) {
-  if (!value) return null
-  const normalized = decodeURIComponent(value).replace(/^\/+/, '')
-  if (!/^(logos|backgrounds|favicons)\/[a-z0-9-]+\.(png|jpg|jpeg|webp|svg|ico)$/i.test(normalized)) {
-    return null
-  }
-  return normalized
 }
 
 const BRAND_ASSET_CONFIG = {
@@ -240,6 +239,12 @@ const BRAND_ASSET_CONFIG = {
     folder: 'backgrounds',
     urlKey: 'background_image_url',
     storageKey: 'background_image_storage_key',
+    maxSizeMb: 8,
+  },
+  login: {
+    folder: 'login-images',
+    urlKey: 'login_image_url',
+    storageKey: 'login_image_storage_key',
     maxSizeMb: 8,
   },
   favicon: {

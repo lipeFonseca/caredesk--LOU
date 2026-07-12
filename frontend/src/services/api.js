@@ -76,6 +76,12 @@ export const api = {
     list:          ()         => request('/agents'),
     create:        (body)     => request('/agents',     { method: 'POST',  body: JSON.stringify(body) }),
     update:        (id, body) => request(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    uploadAvatar:  (id, file) => {
+      const form = new FormData()
+      form.append('file', file)
+      return request(`/agents/${id}/avatar`, { method: 'POST', body: form })
+    },
+    removeAvatar:  (id)       => request(`/agents/${id}/avatar`, { method: 'DELETE' }),
     resetPassword: (id, body) => request(`/agents/${id}/reset-password`, { method: 'POST', body: JSON.stringify(body) }),
   },
 
@@ -97,6 +103,7 @@ export const api = {
 
   // ── Settings ────────────────────────────────────────────────
   settings: {
+    getPublic:     ()     => request('/settings/public'),
     get:           ()     => request('/settings'),
     update:        (body) => request('/settings',          { method: 'PATCH', body: JSON.stringify(body) }),
     uploadLogo:    (file) => {
@@ -112,14 +119,5 @@ export const api = {
     },
     removeAsset:   (type) => request(`/settings/assets/${type}`, { method: 'DELETE' }),
     updateProtocol: (days) => request('/settings/protocol', { method: 'PATCH', body: JSON.stringify({ days }) }),
-  },
-
-  whatsapp: {
-    getConfig:      ()         => request('/whatsapp/config'),
-    updateConfig:   (body)     => request('/whatsapp/config', { method: 'PUT', body: JSON.stringify(body) }),
-    listTemplates:  ()         => request('/whatsapp/templates'),
-    createTemplate: (body)     => request('/whatsapp/templates', { method: 'POST', body: JSON.stringify(body) }),
-    updateTemplate: (id, body) => request(`/whatsapp/templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-    deleteTemplate: (id)       => request(`/whatsapp/templates/${id}`, { method: 'DELETE' }),
   },
 }

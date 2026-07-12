@@ -9,8 +9,9 @@ CREATE TABLE IF NOT EXISTS agents (
   email       TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role        TEXT NOT NULL DEFAULT 'agent' CHECK (role IN ('admin', 'agent')),
-  telegram_chat_id TEXT,
   is_active   INTEGER NOT NULL DEFAULT 1,
+  avatar_url  TEXT,
+  avatar_storage_key TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS followup_logs (
   patient_id      TEXT NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   agent_id        TEXT REFERENCES agents(id) ON DELETE SET NULL,
   contact_date    TEXT NOT NULL DEFAULT (date('now')),
-  contact_type    TEXT NOT NULL DEFAULT 'call' CHECK (contact_type IN ('call', 'whatsapp', 'email', 'in_person')),
+  contact_type    TEXT NOT NULL DEFAULT 'call' CHECK (contact_type IN ('call', 'email', 'in_person')),
   outcome         TEXT NOT NULL DEFAULT 'reached' CHECK (outcome IN ('reached', 'no_answer', 'callback_scheduled')),
   notes           TEXT,
   next_followup_date TEXT,
@@ -51,7 +52,6 @@ CREATE TABLE IF NOT EXISTS notifications (
   agent_id        TEXT REFERENCES agents(id) ON DELETE SET NULL,
   type            TEXT NOT NULL CHECK (type IN ('followup_due', 'followup_overdue')),
   is_read         INTEGER NOT NULL DEFAULT 0,
-  sent_whatsapp   INTEGER NOT NULL DEFAULT 0,
   scheduled_for   TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -65,9 +65,6 @@ CREATE TABLE IF NOT EXISTS contact_protocols (
   color       TEXT NOT NULL DEFAULT '#6366f1',
   is_default  INTEGER NOT NULL DEFAULT 0,
   is_custom   INTEGER NOT NULL DEFAULT 0,
-  contact_channel TEXT NOT NULL DEFAULT 'internal',
-  automation_enabled INTEGER NOT NULL DEFAULT 0,
-  message_template TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -124,6 +121,19 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES
   ('clinic_name',           'CareDesk'),
   ('primary_color',         '#6366f1'),
   ('logo_url',              ''),
+  ('background_image_url',  ''),
+  ('login_image_url',       ''),
+  ('favicon_url',           ''),
+  ('login_border_effect_enabled', '0'),
+  ('login_border_preset',         'default'),
+  ('login_border_color_1',        '#0dc1fd'),
+  ('login_border_color_2',        '#d915ef'),
+  ('login_border_color_3',        '#ff3f2ecc'),
+  ('login_border_color_back',     '#00000000'),
+  ('login_border_intensity',      '0.20'),
+  ('login_border_speed',          '1.00'),
+  ('login_border_thickness',      '0.10'),
+  ('login_border_bloom',          '0.25'),
   ('timezone',              'America/Fortaleza'),
   ('contact_protocol_days', '[-2,0,2,5,15,30,60,90,120,180]');
 
