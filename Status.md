@@ -795,6 +795,24 @@ Correcao aplicada:
 - os textos permaneceram com a mesma hierarquia e contraste para preservar legibilidade elegante
 - a miniatura administrativa foi alinhada ao mesmo comportamento
 
+### 11.29 Atualizacao de actions do GitHub para Node 24
+
+Causa da mudanca em `2026-07-12`:
+- `actions/checkout@v4` e `actions/setup-node@v4`, usados em `.github/workflows/deploy.yml`, ainda declaravam runtime `node20`
+- o GitHub deprecou esse runtime; troca forcada para `node24` comeca em `16 jun 2026`, remocao definitiva de `node20` em `16 set 2026`
+
+Validacao feita antes de aplicar:
+- confirmado via `action.yml` real de cada action que `v5.0.0`/`v5.0.1` (`checkout`) e `v5.0.0` (`setup-node`) sao releases GA, nao pre-release
+- changelog de `checkout` v5: unica mudanca e o runtime, sem impacto de input/comportamento
+- changelog de `setup-node` v5: unico breaking change real e cache automatico condicionado ao campo `packageManager` no `package.json` — nem `worker/package.json` nem `frontend/package.json` tem esse campo, entao o comportamento local fica identico ao v4
+- runner `ubuntu-latest` hospedado ja atende o requisito minimo (`v2.327.1+`) automaticamente, sem acao necessaria
+
+Decisao de escopo:
+- atualizado apenas para v5 (a versao minima que resolve o problema), nao para os majors mais recentes (`checkout@v7`, `setup-node@v6`) — mesmo criterio usado para manter o Wrangler travado em `@4` alinhado ao `4.104.0` ja validado, evitando absorver mudancas nao relacionadas
+
+Arquivos alterados:
+- `.github/workflows/deploy.yml` (5 ocorrencias: 3x `actions/checkout`, 2x `actions/setup-node`)
+
 ### 11.15 Deploy publicado desta rodada
 
 Publicado em `2026-07-11`:

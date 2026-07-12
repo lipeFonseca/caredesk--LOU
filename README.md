@@ -565,6 +565,25 @@ Efeito esperado:
 - continua existindo apenas um dominio principal publicado, mas com runs mais legiveis e rastreaveis
 - o historico fica mais honesto, porque cada run passa a refletir melhor o pacote real publicado
 
+### Atualizacao de actions para Node 24 (12 jul 2026)
+
+Contexto:
+- o GitHub deprecou o runtime `node20` das actions publicadas, com desligamento definitivo em `16 set 2026`
+- `actions/checkout@v4` e `actions/setup-node@v4` ainda declaravam `using: node20` no proprio `action.yml`
+
+Verificacao feita antes de aplicar:
+- confirmado que `actions/checkout@v5` e `actions/setup-node@v5` sao releases GA (nao pre-release), ja migrados para `node24`
+- changelog de `checkout` v5.0.0/v5.0.1: unica mudanca e o runtime, sem alteracao de input ou comportamento
+- changelog de `setup-node` v5.0.0: unica mudanca de comportamento real e cache automatico quando existe campo `packageManager` no `package.json` — nenhum dos dois `package.json` do projeto tem esse campo, entao o comportamento fica identico ao v4
+- runners hospedados (`ubuntu-latest`) ja atendem o requisito minimo de versao (`v2.327.1+`) automaticamente
+
+Mudanca aplicada:
+- `actions/checkout@v4` → `actions/checkout@v5` (3 ocorrencias no workflow)
+- `actions/setup-node@v4` → `actions/setup-node@v5` (2 ocorrencias no workflow)
+
+Escopo mantido deliberadamente minimo:
+- nao subimos para `checkout@v7` nem `setup-node@v6` (majors mais novos existem, mas trazem mudancas nao relacionadas ao problema resolvido) — mesma logica de manter o Wrangler travado em `@4`, alinhado ao que ja foi validado (`4.104.0` no deploy manual), em vez de saltar para a versao mais recente sem necessidade
+
 ## Regra dura de consistencia entre GitHub e Cloudflare
 
 Aprendizado operacional consolidado em `2026-07-12`:
