@@ -336,8 +336,8 @@ export default function BrandingSettingsTab() {
               <h3 className="text-sm font-semibold text-on-surface">Preview da tela de login</h3>
               <p className="mt-1 text-sm text-on-surface-variant">Mostra a composicao completa com imagem institucional e card real de acesso.</p>
             </div>
-            <div className="mt-4 overflow-hidden rounded-[24px] border border-outline-variant/70 bg-[#1d342d] text-[#f8f1e6]">
-              <LoginPulsingBorder config={branding.loginBorder}>
+            <LoginPulsingBorder config={branding.loginBorder} className="mt-4 overflow-hidden rounded-[24px] text-[#f8f1e6]">
+              <div className="overflow-hidden rounded-[24px] border border-outline-variant/70 bg-[#1d342d]">
                 <div className="grid min-h-[24rem] gap-0 md:grid-cols-[1.12fr_0.88fr]">
                   <div
                     className="relative flex min-h-[15rem] flex-col justify-between bg-[#1d342d] p-5"
@@ -360,17 +360,17 @@ export default function BrandingSettingsTab() {
                     </div>
                   </div>
                   <div className="flex items-center justify-center bg-[rgba(29,24,24,0.62)] px-5 py-6 backdrop-blur-xl backdrop-saturate-150">
-                    <div className="w-full max-w-[17rem] rounded-[22px] border border-white/10 bg-[rgba(32,25,25,0.42)] p-4 backdrop-blur-md">
+                    <div className="w-full max-w-[17rem]">
                       <div className="mb-4">
                         <p className="text-[10px] uppercase tracking-[0.28em] text-[#cfc4d3]">Entrar no painel</p>
                         <p className="mt-2 text-lg font-semibold text-[#f7f0ea]">{branding.clinicName}</p>
                         <p className="mt-1 text-sm text-[#d4c7c0]">{branding.tagline}</p>
                       </div>
                       <div className="space-y-3">
-                        <div className="rounded-2xl border border-white/10 bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
+                        <div className="rounded-2xl bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
                           nome de usuario
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
+                        <div className="rounded-2xl bg-[rgba(35,29,29,0.55)] px-4 py-3 text-sm text-[#ab9faa]">
                           ********
                         </div>
                         <div className="btn-primary justify-center">Entrar</div>
@@ -381,8 +381,8 @@ export default function BrandingSettingsTab() {
                     </div>
                   </div>
                 </div>
-              </LoginPulsingBorder>
-            </div>
+              </div>
+            </LoginPulsingBorder>
           </div>
         </section>
       </div>

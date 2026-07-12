@@ -48,46 +48,46 @@ export default function Login() {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-8">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(184,136,74,0.14),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(40,75,64,0.18),transparent_32%)]" />
 
-      <div className="w-full max-w-5xl overflow-hidden rounded-[36px] border border-outline-variant/65 bg-surface-container-low shadow-modal">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="relative grid overflow-hidden lg:grid-cols-[1.15fr_0.85fr]"
-        >
-          <section
-            className="relative hidden min-h-[620px] overflow-hidden bg-[#1d342d] p-10 text-[#f8f1e6] lg:flex lg:flex-col"
-            style={branding.loginImageUrl ? {
-              backgroundImage: `linear-gradient(180deg, rgba(21, 36, 31, 0.68), rgba(21, 36, 31, 0.9)), url("${branding.loginImageUrl}")`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            } : undefined}
+      <LoginPulsingBorder config={branding.loginBorder} className="w-full max-w-5xl rounded-[36px] shadow-modal">
+        <div className="overflow-hidden rounded-[36px] border border-outline-variant/65 bg-surface-container-low">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="relative grid overflow-hidden lg:grid-cols-[1.15fr_0.85fr]"
           >
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%)]" />
-            <div className="relative">
-              <p className="text-[11px] uppercase tracking-[0.3em] text-[#d6c2a2]">Acesso institucional</p>
-              <h1 className="mt-4 text-display-lg text-white">{branding.heroTitle}</h1>
-              <p className="mt-4 max-w-md text-body-lg text-[#ece1cf]/88">{branding.heroSubtitle}</p>
-            </div>
+            <section
+              className="relative hidden min-h-[620px] overflow-hidden bg-[#1d342d] p-10 text-[#f8f1e6] lg:flex lg:flex-col"
+              style={branding.loginImageUrl ? {
+                backgroundImage: `linear-gradient(180deg, rgba(21, 36, 31, 0.68), rgba(21, 36, 31, 0.9)), url("${branding.loginImageUrl}")`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              } : undefined}
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%)]" />
+              <div className="relative">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-[#d6c2a2]">Acesso institucional</p>
+                <h1 className="mt-4 text-display-lg text-white">{branding.heroTitle}</h1>
+                <p className="mt-4 max-w-md text-body-lg text-[#ece1cf]/88">{branding.heroSubtitle}</p>
+              </div>
 
-            <div className="relative mt-auto rounded-[28px] border border-white/10 bg-white/8 p-5 backdrop-blur-sm">
-              <div className="flex items-center gap-4">
-                <img
-                  src={branding.logoUrl}
-                  alt={`Logo da clinica ${branding.clinicName}`}
-                  className="h-16 w-16 rounded-[20px] border border-white/15 bg-white/10 object-cover"
-                />
-                <div>
-                  <h2 className="text-headline-sm text-white">{branding.clinicName}</h2>
-                  <p className="mt-1 text-sm text-[#e7dac4]/84">{branding.tagline}</p>
+              <div className="relative mt-auto rounded-[28px] border border-white/10 bg-white/8 p-5 backdrop-blur-sm">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={branding.logoUrl}
+                    alt={`Logo da clinica ${branding.clinicName}`}
+                    className="h-16 w-16 rounded-[20px] border border-white/15 bg-white/10 object-cover"
+                  />
+                  <div>
+                    <h2 className="text-headline-sm text-white">{branding.clinicName}</h2>
+                    <p className="mt-1 text-sm text-[#e7dac4]/84">{branding.tagline}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section className="flex items-center justify-center p-6 sm:p-8 lg:p-10">
-            <LoginPulsingBorder config={branding.loginBorder} className="w-full max-w-md">
-              <div className="rounded-[30px] border border-white/10 bg-[rgba(29,24,24,0.62)] p-6 backdrop-blur-xl backdrop-saturate-150 sm:p-7">
+            <section className="flex items-center justify-center bg-[rgba(29,24,24,0.62)] p-6 backdrop-blur-xl backdrop-saturate-150 sm:p-8 lg:p-10">
+              <div className="w-full max-w-md">
                 <div className="mb-8 text-center lg:text-left">
                   <img
                     src={branding.logoUrl}
@@ -99,7 +99,7 @@ export default function Login() {
                   <p className="mt-2 text-sm leading-6 text-[#d4c7c0]">{branding.tagline}</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-5 rounded-[28px] border border-white/10 bg-[rgba(32,25,25,0.42)] p-6 backdrop-blur-md">
+                <form onSubmit={handleSubmit} className="space-y-5">
                   <div>
                     <label className="label text-[#cec4cf]">Usuario</label>
                     <input
@@ -155,14 +155,14 @@ export default function Login() {
                   </button>
                 </form>
 
-                <p className="mt-6 text-center text-xs uppercase tracking-[0.18em] text-[#cbbfdf] lg:text-left">
+                <p className="mt-7 text-center text-xs uppercase tracking-[0.18em] text-[#cbbfdf] lg:text-left">
                   Cuidado humano com rotina organizada
                 </p>
               </div>
-            </LoginPulsingBorder>
-          </section>
-        </motion.div>
-      </div>
+            </section>
+          </motion.div>
+        </div>
+      </LoginPulsingBorder>
     </div>
   )
 }

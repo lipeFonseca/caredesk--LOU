@@ -752,6 +752,37 @@ Critério adotado:
 Meta operacional:
 - apos esta rodada, o repositório deve refletir com fidelidade o estado local relevante do produto
 
+### 11.24 Correcao do escopo da borda pulsante
+
+Validado em `2026-07-12`:
+- a versao online ainda estava com o efeito preso apenas ao bloco da direita
+- isso contrariava a decisao consolidada de glow no card principal inteiro
+
+Correcao aplicada:
+- `frontend/src/pages/Login.jsx` agora envolve o card principal inteiro com `LoginPulsingBorder`
+- a coluna direita continua com glass e o bloco institucional da esquerda continua solido
+- `frontend/src/components/admin/BrandingSettingsTab.jsx` passou a reproduzir o mesmo comportamento na miniatura
+
+Resultado esperado:
+- o shader fica visivel no contorno do login completo
+- a preview administrativa volta a ser uma referencia fiel da tela publicada
+
+### 11.25 Simplificacao da coluna direita do login
+
+Validado em `2026-07-12`:
+- havia um container extra envolvendo toda a coluna direita
+- esse bloco criava borda redundante e deixava o layout mais pesado que o necessario
+
+Correcao aplicada:
+- o wrapper estrutural externo da coluna direita foi removido
+- o conteudo de acesso permanece centralizado
+- a caixa interna do formulario continua como unico agrupamento funcional visivel
+
+Refino adicional:
+- as bordas restantes marcadas visualmente como ruido tambem foram removidas
+- a coluna direita ficou sem moldura estrutural externa e sem caixa interna do formulario
+- a organizacao visual agora depende da faixa glass, da hierarquia tipografica e dos campos em si
+
 ### 11.15 Deploy publicado desta rodada
 
 Publicado em `2026-07-11`:

@@ -234,6 +234,12 @@ Refino visual consolidado em 12 jul 2026:
 - a area institucional da esquerda nao deve virar glass, para nao enfraquecer a imagem e o bloco editorial
 - a previa administrativa precisa espelhar exatamente essa divisao: esquerda editorial solida e direita translúcida
 
+Correcao adicional confirmada:
+- nao basta o preset existir; o `LoginPulsingBorder` precisa envolver o card principal inteiro do login
+- se o wrapper ficar apenas na coluna direita, o resultado visual volta para um estado incorreto e contradiz a especificacao
+- a coluna direita nao deve ter um container estrutural redundante em volta do bloco de conteudo; o visual correto deixa o conteudo respirar dentro da faixa glass
+- as bordas internas da coluna direita tambem devem ser minimizadas; o formulario nao precisa de caixa-moldura separada quando a propria faixa glass ja organiza o bloco
+
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal
 - se houver imagem de login configurada, o efeito nao deve prejudicar leitura e contraste
