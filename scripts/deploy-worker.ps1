@@ -5,6 +5,7 @@ $workerUrl = 'https://caredesk-worker.faugusto-thecoral.workers.dev'
 
 Write-Host ''
 Write-Host '==> Deploy do Worker' -ForegroundColor Cyan
+Write-Host 'Fluxo manual local: este comando publica no Cloudflare, mas nao cria novo run no GitHub Actions.' -ForegroundColor Yellow
 
 Push-Location $workerDir
 try {

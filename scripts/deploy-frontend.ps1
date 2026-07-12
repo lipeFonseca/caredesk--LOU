@@ -7,6 +7,7 @@ $pagesUrl = 'https://caredesk-lou.pages.dev'
 
 Write-Host ''
 Write-Host '==> Deploy do Frontend' -ForegroundColor Cyan
+Write-Host 'Fluxo manual local: este comando publica no Cloudflare Pages, mas nao cria novo run no GitHub Actions.' -ForegroundColor Yellow
 
 Push-Location $frontendDir
 try {

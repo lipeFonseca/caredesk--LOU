@@ -1,4 +1,11 @@
-name: Deploy
+name: Deploy CareDesk
+
+run-name: >-
+  ${{
+    github.event_name == 'workflow_dispatch'
+    && format('manual publish by {0}', github.actor)
+    || format('{0}', github.event.head_commit.message)
+  }}
 
 on:
   push:
@@ -7,8 +14,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-main
-  cancel-in-progress: true
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   deploy-worker:
