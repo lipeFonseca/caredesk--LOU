@@ -1,6 +1,3 @@
-PRAGMA defer_foreign_keys = ON;
-BEGIN TRANSACTION;
-
 CREATE TABLE patients_new (
   id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   name              TEXT NOT NULL,
@@ -37,16 +34,15 @@ CREATE TABLE notifications_new (
   agent_id      TEXT REFERENCES agents(id) ON DELETE SET NULL,
   type          TEXT NOT NULL CHECK (type IN ('followup_due', 'followup_overdue')),
   is_read       INTEGER NOT NULL DEFAULT 0,
-  sent_whatsapp INTEGER NOT NULL DEFAULT 0,
   scheduled_for TEXT NOT NULL,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 INSERT INTO notifications_new (
-  id, patient_id, agent_id, type, is_read, sent_whatsapp, scheduled_for, created_at
+  id, patient_id, agent_id, type, is_read, scheduled_for, created_at
 )
 SELECT
-  id, patient_id, agent_id, type, is_read, sent_whatsapp, scheduled_for, created_at
+  id, patient_id, agent_id, type, is_read, scheduled_for, created_at
 FROM notifications;
 
 DROP TABLE notifications;
@@ -54,7 +50,3 @@ ALTER TABLE notifications_new RENAME TO notifications;
 
 CREATE INDEX IF NOT EXISTS idx_notif_agent ON notifications(agent_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notif_date ON notifications(scheduled_for);
-
-DROP TABLE IF EXISTS telegram_config;
-
-COMMIT;

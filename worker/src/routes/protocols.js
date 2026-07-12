@@ -32,9 +32,6 @@ protocols.post('/', adminOnly, async (c) => {
     color,
     is_default,
     is_custom,
-    contact_channel,
-    automation_enabled,
-    message_template,
   } = body
   if (!name?.trim()) return c.json({ error: 'Nome é obrigatório' }, 400)
   if (!Array.isArray(days))   return c.json({ error: 'days deve ser um array' }, 400)
@@ -48,8 +45,8 @@ protocols.post('/', adminOnly, async (c) => {
   }
 
   await c.env.DB.prepare(`
-    INSERT INTO contact_protocols (id, name, description, days, color, is_default, is_custom, contact_channel, automation_enabled, message_template)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO contact_protocols (id, name, description, days, color, is_default, is_custom)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id,
     name.trim(),
@@ -57,10 +54,7 @@ protocols.post('/', adminOnly, async (c) => {
     JSON.stringify(sorted),
     color || '#6366f1',
     is_default ? 1 : 0,
-    is_custom ? 1 : 0,
-    normalizeChannel(contact_channel),
-    automation_enabled ? 1 : 0,
-    message_template || null
+    is_custom ? 1 : 0
   ).run()
 
   return c.json({
@@ -71,9 +65,6 @@ protocols.post('/', adminOnly, async (c) => {
     color: color || '#6366f1',
     is_default: is_default ? 1 : 0,
     is_custom: is_custom ? 1 : 0,
-    contact_channel: normalizeChannel(contact_channel),
-    automation_enabled: automation_enabled ? 1 : 0,
-    message_template: message_template || null,
     patient_count: 0,
   }, 201)
 })
@@ -89,9 +80,6 @@ protocols.patch('/:id', adminOnly, async (c) => {
   const description = 'description' in body ? (body.description || null) : existing.description
   const color       = body.color               ?? existing.color
   const is_default  = 'is_default' in body ? (body.is_default ? 1 : 0) : existing.is_default
-  const contactChannel = 'contact_channel' in body ? normalizeChannel(body.contact_channel) : (existing.contact_channel || 'internal')
-  const automationEnabled = 'automation_enabled' in body ? (body.automation_enabled ? 1 : 0) : existing.automation_enabled
-  const messageTemplate = 'message_template' in body ? (body.message_template || null) : existing.message_template
   const days        = Array.isArray(body.days)
     ? JSON.stringify([...new Set(body.days.map(Number))].filter(n => !isNaN(n)).sort((a, b) => a - b))
     : existing.days
@@ -104,9 +92,9 @@ protocols.patch('/:id', adminOnly, async (c) => {
   }
 
   await c.env.DB.prepare(`
-    UPDATE contact_protocols SET name = ?, description = ?, days = ?, color = ?, is_default = ?, contact_channel = ?, automation_enabled = ?, message_template = ?, updated_at = datetime('now')
+    UPDATE contact_protocols SET name = ?, description = ?, days = ?, color = ?, is_default = ?, updated_at = datetime('now')
     WHERE id = ?
-  `).bind(name, description, days, color, is_default, contactChannel, automationEnabled, messageTemplate, id).run()
+  `).bind(name, description, days, color, is_default, id).run()
 
   return c.json({
     id,
@@ -115,9 +103,6 @@ protocols.patch('/:id', adminOnly, async (c) => {
     days: JSON.parse(days),
     color,
     is_default,
-    contact_channel: contactChannel,
-    automation_enabled: automationEnabled,
-    message_template: messageTemplate,
   })
 })
 
@@ -133,7 +118,3 @@ protocols.delete('/:id', adminOnly, async (c) => {
 })
 
 export default protocols
-
-function normalizeChannel(value) {
-  return ['internal', 'whatsapp'].includes(value) ? value : 'internal'
-}

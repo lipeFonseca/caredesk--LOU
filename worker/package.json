@@ -2,11 +2,17 @@
   "name": "caredesk-worker",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev":    "wrangler dev --local",
+    "dev": "wrangler dev --local",
     "deploy": "wrangler deploy",
-    "db:init": "wrangler d1 execute caredesk --local --file=src/db/schema.sql",
-    "db:init:remote": "wrangler d1 execute caredesk --file=src/db/schema.sql"
+    "db:init": "wrangler d1 execute caredesk-sprint --local --file=src/db/schema.sql",
+    "db:init:remote": "wrangler d1 execute caredesk-sprint --remote --file=src/db/schema.sql",
+    "db:backfill": "wrangler d1 execute caredesk-sprint --local --file=migrations/0000_protocol-backfill.sql",
+    "db:backfill:remote": "wrangler d1 execute caredesk-sprint --remote --file=migrations/0000_protocol-backfill.sql",
+    "db:cleanup": "wrangler d1 execute caredesk-sprint --local --file=migrations/0001_contact-cleanup.sql",
+    "db:cleanup:remote": "wrangler d1 execute caredesk-sprint --remote --file=migrations/0001_contact-cleanup.sql",
+    "test": "node --test"
   },
   "dependencies": {
     "hono": "^4.4.0",

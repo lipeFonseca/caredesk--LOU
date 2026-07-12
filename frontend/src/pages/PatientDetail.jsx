@@ -17,7 +17,6 @@ import {
 
 const CONTACT_TYPES = [
   { value: 'call',      label: 'Ligação',    icon: 'call' },
-  { value: 'whatsapp',  label: 'WhatsApp',   icon: 'chat' },
   { value: 'in_person', label: 'Presencial', icon: 'handshake' },
 ]
 
@@ -92,7 +91,7 @@ export default function PatientDetail() {
         status:            data.status,
         notes:             data.notes || '',
         assigned_agent_id: data.assigned_agent_id || '',
-        protocol_id:       data.protocol_id || '',
+        protocol_id:       data.protocol_id || data.resolved_protocol_id || '',
       })
     } catch {
       navigate('/patients', { replace: true })
@@ -223,7 +222,6 @@ export default function PatientDetail() {
   const quickActions = [
     { icon: 'add',           label: 'Registrar\nContato', action: () => setAddOpen(true) },
     { icon: 'call',          label: 'Fazer\nLigação',      action: patient.phone ? () => window.open(`tel:${patient.phone}`) : null },
-    { icon: 'chat',          label: 'Abrir\nWhatsApp',     action: patient.phone ? () => window.open(`https://wa.me/${String(patient.phone).replace(/\D/g, '')}`, '_blank', 'noopener,noreferrer') : null },
     { icon: 'edit',          label: 'Editar\nDados',        action: () => setEditOpen(true) },
     isAdmin()
       ? { icon: 'delete', label: 'Excluir\nPaciente', action: () => setDelConfirm(true), danger: true }
@@ -329,19 +327,19 @@ export default function PatientDetail() {
                     <span className="material-symbols-outlined text-outline" style={{ fontSize: '14px' }}>route</span>
                     Protocolo de Contato
                   </p>
-                  {patient.protocol_name && (
+                  {patient.resolved_protocol_name && (
                     <span className="flex items-center gap-1.5 text-label-sm font-label-sm font-semibold text-on-surface">
-                      {patient.protocol_is_custom ? (
+                      {patient.resolved_protocol_is_custom ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#ede9fe] border border-[#ddd6fe] text-[#7c3aed] text-[11px] font-semibold">
                           <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>stars</span>
                           Protocolo Customizado
                         </span>
                       ) : (
                         <>
-                          {patient.protocol_color && (
-                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: patient.protocol_color }} />
+                          {patient.resolved_protocol_color && (
+                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: patient.resolved_protocol_color }} />
                           )}
-                          {patient.protocol_name}
+                          {patient.resolved_protocol_name}
                         </>
                       )}
                     </span>
@@ -669,8 +667,8 @@ export default function PatientDetail() {
                     }
                   }}
                 >
-                  <option value="">Manter protocolo atual ({patient.protocol_name ?? 'padrão'})</option>
-                  {protocols.filter(p => p.id !== patient.protocol_id).map(p => (
+                  <option value="">Manter protocolo atual ({patient.resolved_protocol_name ?? 'padrão'})</option>
+                  {protocols.filter(p => p.id !== (patient.protocol_id || patient.resolved_protocol_id)).map(p => (
                     <option key={p.id} value={p.id}>{p.name}{p.is_default ? ' (Padrão)' : ''}</option>
                   ))}
                   <option value="__custom__">✦ Criar protocolo personalizado para este paciente</option>
@@ -893,12 +891,11 @@ export default function PatientDetail() {
 function LogItem({ log }) {
   const typeConfig = {
     call:      { icon: 'call',      color: 'text-primary' },
-    whatsapp:  { icon: 'chat',      color: 'text-[#25D366]' },
-    email:     { icon: 'mail',      color: 'text-primary' },
+    email:     { icon: 'history',   color: 'text-primary' },
     in_person: { icon: 'handshake', color: 'text-primary' },
   }
   const typeLabel = {
-    call: 'Ligação', whatsapp: 'WhatsApp', email: 'E-mail', in_person: 'Presencial',
+    call: 'Ligação', email: 'Contato legado', in_person: 'Presencial',
   }
   const outcomeConfig = {
     reached:            { cls: 'bg-secondary-container/20 text-on-secondary-container', icon: 'check_circle', label: 'Contato realizado' },
