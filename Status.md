@@ -1206,3 +1206,21 @@ Prioridade geral recomendada: **Seguranca > Operacional/Deploy > Duplicacao de c
   2. Se confirmado, criar migration pra remover a coluna `protocol_days` de `patients` (padrao recreate-table, como as migrations `0001`/`0006`).
   3. Remover o branch `LEGACY` de `worker/src/utils/protocols.js` e do teste correspondente em `worker/test/protocols.test.js`.
 - **Risco de nao fazer:** nenhum — é so divida tecnica de uma coluna nao usada. Nao é urgente, mas fecha de vez a consolidacao de protocolos ja mencionada como pendente em varias secoes anteriores deste documento.
+
+### 11.32 Borda CSS duplicada no card de login
+
+Sintoma reportado em `2026-07-13`:
+- mesmo apos as correcoes de geometria da secao `11.31`, ainda aparecia uma "ponta" visual em cantos do card de login, mais visivel em screenshots com zoom
+
+Causa raiz identificada:
+- havia duas bordas CSS de 1px aplicadas em raios praticamente identicos, em elementos DOM separados: uma no wrapper interno do `LoginPulsingBorder.jsx` (`border-outline-variant/60`, sempre presente, serve de fallback estatico quando o efeito esta desativado) e outra redundante no `<div>` filho imediato, tanto em `Login.jsx` quanto no preview de `BrandingSettingsTab.jsx`
+- duas linhas finas sobrepostas, renderizadas por elementos distintos com anti-aliasing independente, sao um padrao classico para gerar esse tipo de costura visual nos cantos, especialmente sensivel em cantos arredondados
+
+Correcao aplicada:
+- removida a borda redundante do `<div>` interno em `frontend/src/pages/Login.jsx` (linha do card principal) e em `frontend/src/components/admin/BrandingSettingsTab.jsx` (preview da aba Identidade Visual)
+- a borda estatica de fallback do `LoginPulsingBorder.jsx` foi mantida intacta e continua aparecendo corretamente quando o efeito esta desativado (validado visualmente)
+
+Validacao:
+- `frontend`: `npm run build` ok em `2026-07-13`
+- testado com o efeito de borda pulsante desativado (`login_border_effect_enabled: false`) — contorno unico, limpo, sem regressao
+- nao foi possivel reproduzir a "ponta" de forma 100% consistente em capturas automatizadas (o rendering de WebGL em Chromium headless pode diferir do navegador real), mas a duplicacao de borda encontrada e um problema real e objetivamente redundante, independente de ser ou nao a causa unica do sintoma reportado

@@ -58,7 +58,7 @@ export default function Login() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(184,136,74,0.14),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(40,75,64,0.18),transparent_32%)]" />
 
       <LoginPulsingBorder config={branding.loginBorder} radius={36} className="w-full max-w-5xl shadow-modal">
-        <div className="overflow-hidden border border-outline-variant/65 bg-surface-container-low" style={{ borderRadius: 'inherit' }}>
+        <div className="overflow-hidden bg-surface-container-low" style={{ borderRadius: 'inherit' }}>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
