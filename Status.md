@@ -1224,3 +1224,19 @@ Validacao:
 - `frontend`: `npm run build` ok em `2026-07-13`
 - testado com o efeito de borda pulsante desativado (`login_border_effect_enabled: false`) — contorno unico, limpo, sem regressao
 - nao foi possivel reproduzir a "ponta" de forma 100% consistente em capturas automatizadas (o rendering de WebGL em Chromium headless pode diferir do navegador real), mas a duplicacao de borda encontrada e um problema real e objetivamente redundante, independente de ser ou nao a causa unica do sintoma reportado
+
+### 11.33 `fetch-depth: 2` insuficiente no job de deteccao de escopo
+
+Sintoma em `2026-07-13`:
+- push com 3 commits de uma vez fez o job `Detect Deploy Scope` falhar com `fatal: bad object <sha>` ao tentar `git diff` contra o `before` do evento de push
+
+Causa raiz:
+- o step de checkout desse job usava `fetch-depth: 2`, suficiente apenas quando o push traz exatamente 1 commit novo
+- quando um push agrupa varios commits, o `github.event.before` pode apontar para um commit mais antigo que o clone raso buscou, e o `git diff` falha por nao ter esse objeto localmente
+
+Correcao aplicada:
+- `fetch-depth: 2` trocado para `fetch-depth: 0` (historico completo) no checkout desse job especifico, unico lugar do workflow que faz `git diff` contra um commit arbitrario
+- os demais jobs (`deploy-worker`, `deploy-frontend`) continuam com checkout raso padrao, que nao precisa de historico completo
+
+Validacao:
+- proximo push deve concluir o job `Detect Deploy Scope` mesmo agrupando multiplos commits
