@@ -950,3 +950,259 @@ Refino complementar ainda em `2026-07-12`:
 - `LoginPulsingBorder` passou a expor `--login-card-inner-radius` como variavel CSS
 - `frontend/src/components/login/LoginCardLayout.jsx` passou a aplicar explicitamente esse raio nas quinas esquerdas e direitas das duas colunas
 - `frontend`: `npm run build` ok novamente apos o ajuste
+
+## 12. Plano de Acao Detalhado — Proximos Passos (analise de 2026-07-12)
+
+Este bloco registra uma auditoria completa do estado do projeto em `2026-07-12`, com um passo a passo detalhado o suficiente para qualquer agente (Claude Code, Codex ou humano) executar cada item sem depender de contexto de conversa anterior. Cada item traz: objetivo, arquivos exatos, estado atual, mudanca proposta, passos concretos e criterio de validacao. Nenhum destes itens foi implementado ainda — este bloco e so o plano.
+
+Prioridade geral recomendada: **Seguranca > Operacional/Deploy > Duplicacao de codigo > Performance > Testes > Roadmap de produto**. Dentro de cada bloco, os itens estao na ordem sugerida de execucao.
+
+### 12.1 Seguranca
+
+#### 12.1.1 — Corrigir IDOR em `PATCH /api/notifications/:id/read`
+
+- **Objetivo:** impedir que um agente autenticado marque como lida a notificacao de outro agente.
+- **Arquivo:** `worker/src/routes/notifications.js`
+- **Estado atual:** a rota `notifications.patch('/:id/read', ...)` faz `UPDATE notifications SET is_read = 1 WHERE id = ?`, sem filtrar por `agent_id`. Qualquer agente autenticado pode chamar essa rota com o `id` de uma notificacao de outro agente e ela sera marcada como lida.
+- **Mudanca proposta:** adicionar `AND agent_id = ?` ao `WHERE`, ligando o valor a `c.get('agent').sub` (mesmo padrao ja usado em `notifications.post('/read-all', ...)`, poucas linhas abaixo, que ja filtra por `agent_id = ?`).
+- **Passos:**
+  1. Abrir `worker/src/routes/notifications.js`, localizar `notifications.patch('/:id/read', ...)`.
+  2. Trocar o SQL para `UPDATE notifications SET is_read = 1 WHERE id = ? AND agent_id = ?`.
+  3. Adicionar `agent.sub` como segundo `.bind(...)`, obtendo `agent` via `const agent = c.get('agent')` no topo do handler.
+  4. Opcional (recomendado): verificar `result.meta.changes` apos o `.run()` e retornar `404` se `changes === 0` (nenhuma notificacao daquele agente com aquele id foi encontrada).
+- **Validacao:** login como agente A, tentar `PATCH /api/notifications/<id-de-notificacao-do-agente-B>/read` autenticado como A — deve falhar silenciosamente (nenhuma linha afetada) ou retornar 404, nunca 200 com sucesso real sobre a notificacao de B. Rodar `npm test` no worker (nao deve quebrar nada, esse arquivo nao tem teste dedicado hoje).
+
+#### 12.1.2 — Reforcar rate limit de login (hoje so por IP)
+
+- **Objetivo:** reduzir a chance de contornar o rate limit girando IP, sem penalizar demais usuarios atras do mesmo IP/NAT.
+- **Arquivo:** `worker/src/routes/auth.js`, tabela `login_rate_limit` em `worker/src/db/schema.sql`.
+- **Estado atual:** o rate limit de `POST /api/auth/login` usa como chave apenas o IP (`CF-Connecting-IP` ou fallback), com bloqueio apos 5 tentativas por 15 minutos.
+- **Mudanca proposta:** adicionar uma segunda checagem de rate limit, com chave sendo o email normalizado (lowercase, trim) usado na tentativa de login, independente do IP. Bloquear a tentativa se **qualquer uma** das duas chaves (IP ou email) estiver com o limite atingido.
+- **Passos:**
+  1. Na tabela `login_rate_limit`, a `key` ja e um `TEXT PRIMARY KEY` generico — pode reusar a mesma tabela prefixando a chave (ex: `ip:1.2.3.4` vs `email:admin@caredesk.local`) para nao precisar de nova tabela/migration.
+  2. Em `worker/src/routes/auth.js`, no handler de `POST /login`, antes de validar a senha: checar e incrementar tanto `ip:<ip>` quanto `email:<email_normalizado>` na tabela, com a mesma logica de bloqueio ja existente (5 tentativas / 15 min).
+  3. Em caso de sucesso no login, limpar **ambas** as chaves (IP e email) associadas aquela tentativa, nao so a atual.
+- **Validacao:** simular 5 tentativas erradas para o mesmo email vindas de IPs diferentes — a 6a deve ser bloqueada mesmo com IP novo. `npm test` no worker continua passando.
+
+#### 12.1.3 — Tornar `verifyPassword` resistente a timing attack
+
+- **Objetivo:** eliminar a comparacao insegura de hash de senha.
+- **Arquivo:** `worker/src/routes/auth.js`, funcao `verifyPassword`.
+- **Estado atual:** a comparacao final do hash calculado com o hash armazenado usa `.every(...)`, que sai do loop no primeiro byte diferente — vulneravel a timing attack em teoria (mitigado na pratica pelo custo do PBKDF2, mas nao e a pratica correta).
+- **Mudanca proposta:** reusar o padrao `timingSafeEqual` ja implementado em `worker/src/middleware/auth.js` (usado hoje para comparar assinatura de JWT) para comparar os bytes do hash.
+- **Passos:**
+  1. Exportar `timingSafeEqual` de `worker/src/middleware/auth.js` (hoje pode ser funcao interna nao exportada — confirmar e ajustar o `export` se necessario).
+  2. Importar essa funcao em `worker/src/routes/auth.js`.
+  3. Trocar a comparacao `.every(...)` dentro de `verifyPassword` para usar `timingSafeEqual` sobre os arrays de bytes do hash calculado vs. armazenado.
+- **Validacao:** login com senha correta continua funcionando; login com senha errada continua sendo rejeitado; `npm test` no worker passa.
+
+#### 12.1.4 — Segunda camada de protecao em `POST /api/setup/admin`
+
+- **Objetivo:** nao depender de uma unica variavel de ambiente (`APP_ENV`) para impedir recriacao do admin sem autenticacao em producao.
+- **Arquivo:** `worker/src/routes/setup.js`, `worker/wrangler.toml` (secrets).
+- **Estado atual:** a rota inteira e bloqueada com `if (c.env.APP_ENV === 'production') return 403`. Se essa variavel estiver ausente ou errada em algum ambiente, a rota fica aberta e permite recriar o admin com senha arbitraria, sem autenticacao.
+- **Mudanca proposta:** exigir tambem um header com um segredo dedicado (ex: `X-Setup-Token`), comparado a uma nova secret `SETUP_TOKEN` do Worker. Sem o header correto, a rota falha mesmo que `APP_ENV` esteja mal configurado.
+- **Passos:**
+  1. Definir `SETUP_TOKEN` via `wrangler secret put SETUP_TOKEN` (worker) — nao versionar o valor.
+  2. Em `worker/src/routes/setup.js`, alem do guard de `APP_ENV`, adicionar checagem: `if (c.req.header('X-Setup-Token') !== c.env.SETUP_TOKEN) return c.json({ error: 'Nao autorizado' }, 403)`.
+  3. Atualizar `worker/scripts/create-admin.js` para enviar esse header (ler de uma env var local, ex: `SETUP_TOKEN`).
+  4. Atualizar `.dev.vars.example` e `README.md` (secao de setup local) documentando a nova variavel.
+- **Validacao:** `node scripts/create-admin.js ...` continua funcionando localmente com o token configurado; chamar a rota sem o header (mesmo com `APP_ENV` != production) deve falhar.
+
+#### 12.1.5 — Decisao sobre `password_reset_tokens` e `RESEND_API_KEY` (feature orfa)
+
+- **Objetivo:** eliminar a ambiguidade de uma tabela e uma credencial que existem no schema/env mas nao tem nenhuma rota funcional associada.
+- **Arquivos:** `worker/src/db/schema.sql` (tabela `password_reset_tokens`), `worker/.dev.vars.example` (`RESEND_API_KEY`).
+- **Estado atual:** a tabela existe desde o schema inicial, a credencial de email existe no `.dev.vars.example`, mas nenhuma rota emite ou valida token de reset — a unica forma de resetar senha hoje e um admin autenticado usar `POST /api/agents/:id/reset-password`.
+- **Duas opcoes, escolher uma:**
+  - **Opcao A — Implementar de vez:** criar `POST /api/auth/forgot-password` (recebe email, gera token, grava hash em `password_reset_tokens`, envia email via Resend usando `RESEND_API_KEY`) e `POST /api/auth/reset-password` (recebe token + nova senha, valida `expires_at`/`used`, atualiza `password_hash`, marca token como usado). Precisa de tela nova no frontend (`/esqueci-senha`, `/redefinir-senha/:token`).
+  - **Opcao B — Remover:** apagar a tabela `password_reset_tokens` do `schema.sql` (+ migration `DROP TABLE`), remover `RESEND_API_KEY` do `.dev.vars.example`, documentar em `README.md` que reset de senha e feito exclusivamente por admin.
+- **Recomendacao:** Opcao B no curto prazo (reduz superficie sem remover funcionalidade que ninguem usa), Opcao A se o produto realmente precisar de self-service de reset de senha no futuro.
+- **Validacao:** se opcao B, `npm run db:init` local continua criando o schema sem erro, sem a tabela.
+
+### 12.2 Operacional / Deploy
+
+#### 12.2.1 — Alinhar versao do Wrangler no `worker/package.json`
+
+- **Objetivo:** eliminar o aviso "The version of Wrangler you are using is now out-of-date" que aparece no job `Deploy Worker` do GitHub Actions, e alinhar com a versao ja validada manualmente (`4.104.0`) e usada no job `Deploy Frontend` (`wrangler@4`).
+- **Arquivo:** `worker/package.json`
+- **Estado atual:** `"devDependencies": { "wrangler": "^3.65.0" }` — o job `Deploy Worker` do CI roda `npx wrangler deploy` dentro de `worker/`, que resolve essa versao antiga via `npm ci`.
+- **Mudanca proposta:** atualizar para `"wrangler": "^4.0.0"` (ou fixar em `4.104.0` se quiser reprodutibilidade exata).
+- **Passos:**
+  1. Editar `worker/package.json`, trocar a versao do `wrangler` em `devDependencies`.
+  2. Rodar `npm install` dentro de `worker/` para atualizar `worker/package-lock.json`.
+  3. Rodar `npx wrangler --version` dentro de `worker/` para confirmar que resolveu para 4.x.
+  4. Testar localmente: `npm run dev` (sobe o worker local) e, se possivel, `npx wrangler deploy --dry-run` (ou um deploy real de teste) para garantir que nada quebrou com a major nova.
+- **Validacao:** proximo run do GitHub Actions (`Deploy Worker`) nao deve mais mostrar o aviso de versao desatualizada nos logs.
+
+#### 12.2.2 — Pinar versao do Wrangler nos scripts de deploy manual
+
+- **Objetivo:** eliminar divergencia de versao entre deploy manual local e o pipeline do GitHub Actions.
+- **Arquivos:** `scripts/deploy-worker.ps1`, `scripts/deploy-frontend.ps1`
+- **Estado atual:** ambos chamam `npx wrangler deploy` / `npx wrangler pages deploy` sem versao pinada — resolve para o que estiver disponivel/instalado no ambiente local no momento.
+- **Mudanca proposta:** trocar para `npx wrangler@4 deploy` / `npx wrangler@4 pages deploy ...` explicitamente em ambos os scripts, mesma major usada no CI.
+- **Passos:**
+  1. Editar as duas linhas de comando nos respectivos `.ps1`.
+  2. Rodar `npm run deploy:manual:worker` e `npm run deploy:manual:frontend` uma vez cada para confirmar que ainda funcionam.
+- **Validacao:** scripts continuam publicando com sucesso; `npx wrangler@4 --version` mostra a mesma major usada no Actions.
+
+#### 12.2.3 — Runbook unico para aplicar todas as migrations
+
+- **Objetivo:** evitar o que aconteceu durante a sessao de `2026-07-12` (D1 local desatualizado, faltando as migrations `0002` a `0006`, descoberto no meio de um teste).
+- **Arquivos:** `worker/package.json` (scripts), `worker/migrations/*.sql`
+- **Estado atual:** `db:init`/`db:init:remote`, `db:backfill`/`db:backfill:remote` e `db:cleanup`/`db:cleanup:remote` cobrem só `schema.sql`, `0000` e `0001`. As migrations `0002` a `0006` nao tem script npm — precisam de `wrangler d1 execute caredesk-sprint [--remote] --file=migrations/000X_nome.sql` manual, uma por uma, na ordem certa.
+- **Mudanca proposta:** criar um script (`worker/scripts/run-migrations.js` ou similar) que:
+  1. Le todos os arquivos em `worker/migrations/*.sql`, ordenados pelo prefixo numerico.
+  2. Aplica cada um via `wrangler d1 execute caredesk-sprint --file=<arquivo>` (local) ou `--remote` (remoto), na ordem.
+  3. Registra localmente (ex: em um arquivo `worker/migrations/.applied` ou tabela `_migrations` no proprio D1) quais ja foram aplicadas, para nao reaplicar (as migrations usam `INSERT OR IGNORE`/recreate-table, entao reaplicar nao quebra dados, mas evita trabalho/tempo desnecessario).
+  4. Adicionar `worker/package.json`: `"db:migrate": "node scripts/run-migrations.js"` e `"db:migrate:remote": "node scripts/run-migrations.js --remote"`.
+- **Validacao:** rodar `npm run db:migrate` num D1 local vazio (só com `schema.sql` aplicado) deve deixar o schema identico ao de um D1 que rodou `schema.sql` + todas as migrations manualmente uma a uma.
+
+#### 12.2.4 — Documentar a fricção recorrente de ACL entre Codex e Claude Code
+
+- **Objetivo:** nao perder tempo re-diagnosticando o mesmo problema a cada nova pasta/arquivo afetado.
+- **Estado atual:** já documentado em `README.md` (secao "Ambiente local com multiplas ferramentas de IA") e `Status.md` (`11.28`), mas o problema se repetiu em pelo menos 4 caminhos diferentes numa unica sessao (`worker/migrations/`, `frontend/src/components/admin/BrandingSettingsTab.jsx`, `frontend/src/pages/Login.jsx`, `.github/workflows/deploy.yml`).
+- **Acao recomendada:** nenhuma mudanca de codigo — so manter o procedimento ja documentado (`takeown /F <caminho> /R /D Y` + `icacls <caminho> /reset /T`, nunca na raiz do projeto) como resposta padrao sempre que uma das ferramentas travar com erro de permissao num caminho especifico. Nao vale tentar "resolver de vez" via reset na raiz — ja identificado como arriscado (apagaria a entrada `CodexSandboxUsers` que vive explicitamente ali).
+
+### 12.3 Duplicacao de codigo (risco de bug silencioso)
+
+#### 12.3.1 — Extrair logica de contato compartilhada entre `PatientDetail.jsx` e `PatientPanel.jsx`
+
+- **Objetivo:** parar de precisar editar dois arquivos toda vez que uma regra de exibicao de contato mudar (aconteceu ao adicionar WhatsApp/Email nesta sessao).
+- **Arquivos afetados:** `frontend/src/pages/PatientDetail.jsx`, `frontend/src/components/PatientPanel.jsx`
+- **Estado atual:** os dois arquivos definem separadamente: `typeConfig` (icone + cor por `contact_type`), `typeLabel`/`label` por tipo, `outcomeConfig`, `urgencyBadge`, `statusLabel`, `getInitials`. Sao objetos praticamente identicos, mantidos por copy-paste.
+- **Mudanca proposta:** criar `frontend/src/utils/contactDisplay.js` exportando `CONTACT_TYPE_CONFIG` (icone, cor, label por tipo — hoje `call`, `whatsapp`, `email`, `in_person`), `OUTCOME_CONFIG`, `URGENCY_BADGE`, `STATUS_LABEL` e `getInitials(name)`. Importar esses exports nos dois arquivos, removendo as copias locais.
+- **Passos:**
+  1. Criar o novo arquivo `frontend/src/utils/contactDisplay.js` com os objetos consolidados (usar a versao de `PatientDetail.jsx` como base, ja que é a mais completa/atual).
+  2. Em `PatientDetail.jsx`: remover as definicoes locais de `CONTACT_TYPES` (adaptar para gerar a partir do novo `CONTACT_TYPE_CONFIG`), `typeConfig`, `typeLabel`, `outcomeConfig` dentro de `LogItem`, `urgencyBadge`, `statusLabel`, `getInitials` — importar do novo util.
+  3. Em `PatientPanel.jsx`: mesma limpeza — importar `typeConfig`, `outcomeConfig`, `urgencyBadge`, `statusLabel`, `getInitials` do novo util.
+  4. Build (`npm run build`) e checagem visual das duas telas (detalhe completo do paciente e o painel lateral via `Patients.jsx`) para confirmar que nada mudou visualmente.
+- **Validacao:** `npm run build` sem erro; abrir um paciente com contatos de tipos variados (`call`, `whatsapp`, `email`, `in_person`) tanto na pagina completa quanto no painel lateral e conferir que icones/labels aparecem identicos a antes da refatoracao.
+
+#### 12.3.2 — Consolidar helpers de mistura de cor entre `visualThemes.js` e `darkPalette.js`
+
+- **Objetivo:** evitar que um ajuste no algoritmo de mistura de cor seja feito num arquivo e esquecido no outro.
+- **Arquivos:** `frontend/src/theme/visualThemes.js`, `frontend/src/theme/darkPalette.js`
+- **Estado atual:** as duas funcoes `mix`, `normalizeHex`, `hexToRgb`, `rgbToHex`, `hexToRgbTriplet` existem duplicadas (implementacao identica) nos dois arquivos.
+- **Mudanca proposta:** criar `frontend/src/theme/colorUtils.js` com essas 5 funcoes exportadas; importar em ambos `visualThemes.js` e `darkPalette.js`, removendo as copias locais.
+- **Passos:**
+  1. Criar `frontend/src/theme/colorUtils.js` movendo as 5 funcoes pra la (exportadas).
+  2. Atualizar `visualThemes.js` e `darkPalette.js` pra importar dessas funcoes em vez de defini-las localmente.
+  3. `npm run build` e conferir visualmente que a troca de tema (claro/escuro, e os 5 temas predefinidos no admin) continua identica.
+- **Validacao:** build sem erro; trocar entre os 5 temas visuais no admin e alternar dark/light — cores devem ficar identicas ao comportamento anterior.
+
+#### 12.3.3 — Unificar defaults de branding entre `useSettingsStore` e `BrandingSettingsTab`
+
+- **Objetivo:** ter uma unica fonte de verdade pros valores default de branding.
+- **Arquivos:** `frontend/src/store/index.js` (objeto `settings` default de `useSettingsStore`), `frontend/src/components/admin/BrandingSettingsTab.jsx` (`getDefaultFormState()`)
+- **Estado atual:** os dois objetos tem os mesmos ~20 campos com os mesmos valores default, mantidos separadamente.
+- **Mudanca proposta:** exportar uma constante `DEFAULT_BRANDING_SETTINGS` (provavelmente de `frontend/src/theme/branding.js`, que ja concentra a logica de branding) e usar essa mesma constante tanto no `useSettingsStore` quanto em `getDefaultFormState()`.
+- **Passos:**
+  1. Em `frontend/src/theme/branding.js`, exportar `DEFAULT_BRANDING_SETTINGS` com todos os campos e valores default hoje espalhados nos dois arquivos.
+  2. Em `frontend/src/store/index.js`, trocar o objeto `settings` inicial para spread desse default (`{ ...DEFAULT_BRANDING_SETTINGS }`).
+  3. Em `BrandingSettingsTab.jsx`, trocar `getDefaultFormState()` para retornar `{ ...DEFAULT_BRANDING_SETTINGS }`.
+- **Validacao:** `npm run build`; abrir o admin com um `app_settings` vazio/novo (D1 local recem-criado) e confirmar que os campos aparecem com os mesmos defaults de antes.
+
+#### 12.3.4 — Remover dependencia morta `jose` do worker
+
+- **Arquivo:** `worker/package.json`
+- **Estado atual:** `jose` está listada em `dependencies` mas nunca é importada em nenhum arquivo de `worker/src` — o JWT é implementado manualmente em `worker/src/middleware/auth.js` via Web Crypto.
+- **Passos:** remover a linha `"jose": "^5.6.3"` de `worker/package.json`, rodar `npm install` em `worker/` pra atualizar o lockfile.
+- **Validacao:** `npm test` e `npm run dev` no worker continuam funcionando normalmente (confirma que realmente nao era usada).
+
+#### 12.3.5 — Remover funcao morta `SettingsTab()` de `Admin.jsx`
+
+- **Arquivo:** `frontend/src/pages/Admin.jsx`
+- **Estado atual:** existe uma funcao `SettingsTab()` (por volta da linha 722) que implementa uma versao antiga/simplificada de configuracoes gerais, mas nunca e referenciada no componente `Admin()` — a aba "Identidade Visual" usa `BrandingSettingsTab` (componente importado separado).
+- **Passos:**
+  1. Confirmar via busca (`grep -n "SettingsTab" frontend/src/pages/Admin.jsx`) que a unica ocorrencia e a propria definicao (nenhum uso).
+  2. Remover a funcao inteira.
+  3. Remover imports que só eram usados por ela, se sobrarem sem uso (checar `useSettingsStore`, `VISUAL_THEMES` — confirmar se ainda sao usados em outra parte do arquivo antes de remover o import).
+- **Validacao:** `npm run build` sem erro (confirma que nada mais dependia dessa funcao).
+
+#### 12.3.6 — Decidir sobre os tokens `colors.urgency.*` nao usados no Tailwind
+
+- **Arquivo:** `frontend/tailwind.config.js`
+- **Estado atual:** existe um grupo `colors.urgency` (`ok`/`soon`/`due`/`overdue`) com valores hex fixos, mas `Patients.jsx`, `Dashboard.jsx` e `PatientDetail.jsx` reimplementam as mesmas cores de urgencia inline (`bg-[#fff8e1]` etc.) em vez de usar `bg-urgency-*`/`text-urgency-*`.
+- **Duas opcoes:**
+  - **Opcao A:** adotar os tokens de verdade — trocar as cores inline dos 3 arquivos pelas classes `urgency-*` do Tailwind, garantindo que os hex batam com os ja usados hoje (comparar valor por valor antes de trocar, pra nao mudar a aparencia).
+  - **Opcao B:** remover o grupo `colors.urgency` do `tailwind.config.js`, ja que nunca foi adotado.
+- **Recomendacao:** Opcao A se o objetivo e consistencia visual de longo prazo (facilita trocar a paleta de urgencia num lugar so no futuro); Opcao B se o objetivo e so reduzir superficie de configuracao morta agora.
+- **Validacao:** captura de tela antes/depois das 3 telas (Patients, Dashboard, PatientDetail) pra confirmar que as cores de urgencia continuam identicas visualmente.
+
+### 12.4 Performance
+
+#### 12.4.1 — Lazy-load do shader `@paper-design/shaders-react`
+
+- **Objetivo:** tirar o bundle principal de cima dos `500 kB` (aviso presente em todo build do frontend desde que o shader foi adotado).
+- **Arquivos:** `frontend/src/components/ui/LoginPulsingBorder.jsx`, `frontend/src/pages/Login.jsx`, `frontend/src/components/admin/BrandingSettingsTab.jsx`
+- **Estado atual:** `LoginPulsingBorder.jsx` importa `{ PulsingBorder, pulsingBorderPresets }` de `@paper-design/shaders-react` de forma estatica no topo do arquivo — isso inclui a lib inteira no bundle principal (`index-*.js`), mesmo em paginas que nao renderizam o componente.
+- **Mudanca proposta:** trocar para import dinamico via `React.lazy`, carregando o shader só quando o componente `LoginPulsingBorder` realmente monta (tela de login e preview do admin).
+- **Passos:**
+  1. Criar um componente interno `LoginPulsingBorderInner` (ou renomear o conteudo atual) que faz o `import` estatico de `@paper-design/shaders-react` como hoje.
+  2. No arquivo `LoginPulsingBorder.jsx` exportado publicamente, envolver esse componente interno com `React.lazy(() => import('./LoginPulsingBorderInner'))`.
+  3. Envolver o uso desse lazy component com `<Suspense fallback={...}>` — o fallback pode ser simplesmente `children` sem o efeito (ja que o proprio componente ja trata `isEnabled=false` como fallback pra borda estatica), ou `null`.
+  4. Como `Login.jsx` e `BrandingSettingsTab.jsx` já importam `LoginPulsingBorder` normalmente, nenhuma mudanca é necessária nesses dois arquivos além de garantir que o `Suspense` esteja no lugar certo (dentro do proprio `LoginPulsingBorder.jsx` é o mais simples, sem precisar tocar nos consumidores).
+- **Validacao:** `npm run build` — o bundle principal deve cair visivelmente abaixo de `500 kB`; a lib do shader deve aparecer como um chunk separado carregado sob demanda. Testar visualmente a tela de login e o preview do admin pra garantir que a borda pulsante ainda aparece (so que com um pequeno delay no primeiro carregamento, que é o comportamento esperado de lazy loading).
+
+#### 12.4.2 — Quebrar `PatientDetail.jsx` e `Admin.jsx` em componentes menores
+
+- **Objetivo:** reduzir o tamanho dos dois maiores arquivos do frontend (995 e 885 linhas respectivamente em `2026-07-12`), facilitando manutencao e reduzindo o risco descrito em `12.3.1`.
+- **`frontend/src/pages/PatientDetail.jsx` — quebra sugerida:**
+  - Extrair o modal "Registrar Contato" (incluindo o builder de protocolo customizado inline) para `frontend/src/components/patient/RegisterContactModal.jsx`.
+  - Extrair o modal "Editar Paciente" para `frontend/src/components/patient/EditPatientModal.jsx`.
+  - Extrair `LogItem` para `frontend/src/components/patient/ContactLogItem.jsx` (e reusar em `PatientPanel.jsx` tambem, complementando o item `12.3.1`).
+- **`frontend/src/pages/Admin.jsx` — quebra sugerida:**
+  - Extrair `ProtocolTab` (+ `ProtocolModal`, `DayChip`) para `frontend/src/components/admin/ProtocolTab.jsx`.
+  - Extrair `AgentsTab` (+ `AgentModal`, `ResetPasswordModal`) para `frontend/src/components/admin/AgentsTab.jsx`.
+  - Isso alem de reduzir o tamanho do arquivo, torna a remocao do `SettingsTab()` morto (item `12.3.5`) mais segura de revisar isoladamente.
+- **Validacao:** `npm run build` sem erro; percorrer manualmente os fluxos de registrar contato, editar paciente, criar/editar protocolo e criar/editar agente, conferindo que nada mudou de comportamento.
+
+### 12.5 Testes automatizados
+
+#### 12.5.1 — Configurar Vitest no frontend
+
+- **Objetivo:** sair de zero cobertura de teste no frontend.
+- **Passos:**
+  1. `npm install -D vitest @testing-library/react @testing-library/jest-dom jsdom` em `frontend/`.
+  2. Configurar `test` em `frontend/vite.config.js` (ambiente `jsdom`) e adicionar script `"test": "vitest run"` em `frontend/package.json`.
+  3. Primeiro alvo de teste: `frontend/src/utils/protocols.js` (espelha `worker/src/utils/protocols.js`, que ja tem testes no backend — usar os mesmos casos de `worker/test/protocols.test.js` como referencia, adaptando pra `buildProtocolTimeline`/`getNextFollowup`/etc.).
+  4. Segundo alvo: `frontend/src/theme/branding.js` (`sanitizeBrandUrl`, `sanitizePrimaryColor`, `sanitizeColorString` — funcoes puras, faceis de testar, e criticas para seguranca/XSS).
+- **Validacao:** `npm test` roda e passa no CI (considerar adicionar como step no `deploy-frontend` job do workflow, antes do build).
+
+#### 12.5.2 — Expandir testes do worker alem de `utils/protocols.js`
+
+- **Objetivo:** cobrir a logica de negocio critica que hoje depende so de teste manual.
+- **Alvos sugeridos, em ordem de prioridade:**
+  1. `worker/src/utils/storage.js` — `sanitizeScopedAssetKey` (camada de seguranca contra path traversal, testavel sem precisar de R2 real), `isSupportedImageAssetType`, `extensionForMimeType`.
+  2. `worker/src/middleware/auth.js` — `signToken`/`verifyToken` (gerar token, verificar, testar expiracao e assinatura invalida).
+  3. `worker/src/routes/auth.js` — `hashPassword`/`verifyPassword` (incluindo o caso especial do `$PLACEHOLDER_HASH$`).
+- **Validacao:** `npm test` no worker continua rodando via `node --test`, sem precisar de framework novo.
+
+#### 12.5.3 — Formalizar os scripts de verificacao visual (Playwright) usados nesta sessao
+
+- **Objetivo:** nao reinventar o driver de teste visual a cada sessao — nesta mesma sessao, scripts Playwright ad-hoc foram criados no scratchpad (fora do repositorio) pra validar upload de imagens, layout da aba de identidade visual e o seletor de tipos de contato, e depois descartados.
+- **Mudanca proposta:** criar uma skill de projeto (`.claude/skills/run/SKILL.md` ou equivalente) documentando como subir `worker` + `frontend` localmente e dirigir via Playwright, com os comandos exatos ja validados nesta sessao (login com `admin`/`CareDesk2026!`, portas `5173`/`8787`, etc.), para que a proxima sessao nao precise redescobrir isso.
+- **Validacao:** proxima vez que uma mudanca visual precisar de verificacao, o fluxo deve ser "invocar a skill" em vez de escrever um script novo do zero.
+
+### 12.6 Roadmap de produto (nao e divida tecnica — e evolucao planejada)
+
+#### 12.6.1 — `avatars/patients` (imagem de perfil do paciente)
+
+- Proximo passo natural depois de `avatars/agents` (ja entregue), seguindo a ordem ja definida na secao "Ordem recomendada de implementacao" do `README.md`.
+- Reusar o mesmo nucleo de storage (`worker/src/utils/storage.js`, `BRAND_ASSET_CONFIG`-like pattern) e o mesmo padrao de rotas (`POST/DELETE /api/patients/:id/avatar`, espelhando `worker/src/routes/agents.js`).
+- Precisa de migration nova (`avatar_url`, `avatar_storage_key` em `patients`) e de UI no cadastro/detalhe do paciente.
+
+#### 12.6.2 — `attachments/patients` (anexos clinicos)
+
+- So depois de `avatars/patients`, por decisao ja registrada no `README.md`.
+- Precisa de tabela nova (não cabe em 2 colunas simples como avatar — são N anexos por paciente), com os campos descritos na secao "Metadados que devem ficar no D1" do `README.md` (`owner_type`, `owner_id`, `storage_key`, `mime_type`, `file_size`, `category`, `uploaded_by`, etc.).
+
+#### 12.6.3 — Decidir sobre `patients.protocol_days` (coluna legada)
+
+- **Estado atual:** a coluna ainda existe em `patients` e é o ultimo nivel de fallback (`LEGACY`) na cadeia de resolucao de protocolo (`worker/src/utils/protocols.js`), atras de `LINKED` → `DEFAULT` → `GLOBAL`.
+- **Passos para avaliar remocao:**
+  1. Rodar uma query no D1 remoto: `SELECT COUNT(*) FROM patients WHERE protocol_id IS NULL` — se o resultado for `0`, nenhum paciente depende mais do fallback legado (todos tem `protocol_id` valido).
+  2. Se confirmado, criar migration pra remover a coluna `protocol_days` de `patients` (padrao recreate-table, como as migrations `0001`/`0006`).
+  3. Remover o branch `LEGACY` de `worker/src/utils/protocols.js` e do teste correspondente em `worker/test/protocols.test.js`.
+- **Risco de nao fazer:** nenhum — é so divida tecnica de uma coluna nao usada. Nao é urgente, mas fecha de vez a consolidacao de protocolos ja mencionada como pendente em varias secoes anteriores deste documento.
