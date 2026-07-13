@@ -943,3 +943,10 @@ Refino adicional ainda em `2026-07-12`:
 - a causa residual estava na `roundness` herdada do preset do shader, que podia continuar mais “reta” do que a silhueta real do card
 - `LoginPulsingBorder` passou a impor um piso de `roundness` derivado do `radius`, preservando `circle` como caso extremo e evitando que presets mais retos deformem as quinas do glow
 - `frontend`: `npm run build` ok novamente apos esse ajuste fino
+
+Refino complementar ainda em `2026-07-12`:
+- mesmo depois do ajuste de `roundness`, a ponta visual persistia mais no lado direito
+- a causa residual final estava na propria coluna direita do layout: como ela usa `backdrop-blur`, depender apenas do clipping do pai nao era suficiente para arredondar visualmente o bloco
+- `LoginPulsingBorder` passou a expor `--login-card-inner-radius` como variavel CSS
+- `frontend/src/components/login/LoginCardLayout.jsx` passou a aplicar explicitamente esse raio nas quinas esquerdas e direitas das duas colunas
+- `frontend`: `npm run build` ok novamente apos o ajuste

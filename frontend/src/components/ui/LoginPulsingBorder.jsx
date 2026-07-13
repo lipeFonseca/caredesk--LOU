@@ -20,7 +20,11 @@ export default function LoginPulsingBorder({ config, className = '', children, r
   return (
     <div
       className={`relative overflow-hidden ${className}`.trim()}
-      style={{ borderRadius: `${outerRadius}px` }}
+      style={{
+        borderRadius: `${outerRadius}px`,
+        '--login-card-outer-radius': `${outerRadius}px`,
+        '--login-card-inner-radius': `${innerRadius}px`,
+      }}
     >
       {isEnabled && shaderProps ? (
         <div
@@ -71,7 +75,7 @@ function resolveBorderInset(config = {}) {
 
 function resolveShaderRoundness(config = {}, presetRoundness = 0.25, outerRadius = 36) {
   const normalizedRadius = Math.min(1, Math.max(0, outerRadius / 96))
-  const derivedRoundness = 0.18 + (normalizedRadius * 0.52)
+  const derivedRoundness = 0.5 + (normalizedRadius * 0.45)
   const presetValue = typeof presetRoundness === 'number' ? presetRoundness : 0.25
 
   if (config.preset === 'circle') return 1

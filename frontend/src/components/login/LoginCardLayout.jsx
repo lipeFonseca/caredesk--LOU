@@ -30,10 +30,19 @@ export default function LoginCardLayout({ branding, children, compact = false })
   const rightSectionClassName = compact
     ? 'relative flex items-center justify-center overflow-hidden border-l border-white/8 bg-[linear-gradient(180deg,rgba(34,28,29,0.68),rgba(24,20,21,0.50))] px-5 py-6 backdrop-blur-2xl backdrop-saturate-150'
     : 'relative flex items-center justify-center overflow-hidden border-l border-white/8 bg-[linear-gradient(180deg,rgba(34,28,29,0.68),rgba(24,20,21,0.50))] p-6 backdrop-blur-2xl backdrop-saturate-150 sm:p-8 lg:p-10'
+  const leftSectionStyle = {
+    ...getLoginImageStyle(branding.loginImageUrl),
+    borderTopLeftRadius: 'var(--login-card-inner-radius)',
+    borderBottomLeftRadius: 'var(--login-card-inner-radius)',
+  }
+  const rightSectionStyle = {
+    borderTopRightRadius: 'var(--login-card-inner-radius)',
+    borderBottomRightRadius: 'var(--login-card-inner-radius)',
+  }
 
   return (
     <div className={shellClassName}>
-      <section className={leftSectionClassName} style={getLoginImageStyle(branding.loginImageUrl)}>
+      <section className={leftSectionClassName} style={leftSectionStyle}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%)]" />
         <div className="relative">
           <p className="text-[11px] uppercase tracking-[0.3em] text-[#d6c2a2]">Acesso institucional</p>
@@ -56,7 +65,7 @@ export default function LoginCardLayout({ branding, children, compact = false })
         </div>
       </section>
 
-      <section className={rightSectionClassName}>
+      <section className={rightSectionClassName} style={rightSectionStyle}>
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.04))]" />
         {children}
       </section>
