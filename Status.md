@@ -937,3 +937,9 @@ Resultado esperado:
 
 Validacao:
 - `frontend`: `npm run build` ok em `2026-07-12`
+
+Refino adicional ainda em `2026-07-12`:
+- depois da sincronizacao do `radius`, as quinas arredondadas melhoraram, mas ainda restavam pontas visuais em alguns presets
+- a causa residual estava na `roundness` herdada do preset do shader, que podia continuar mais “reta” do que a silhueta real do card
+- `LoginPulsingBorder` passou a impor um piso de `roundness` derivado do `radius`, preservando `circle` como caso extremo e evitando que presets mais retos deformem as quinas do glow
+- `frontend`: `npm run build` ok novamente apos esse ajuste fino

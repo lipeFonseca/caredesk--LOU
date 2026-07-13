@@ -245,6 +245,8 @@ Correcao adicional confirmada:
 - a forma correta de evitar regressao e centralizar a composicao em um componente compartilhado, deixando login publicado e preview administrativa presos a mesma fonte estrutural
 - o shader nao pode usar cantos fixos se o card real muda de raio entre login publico e miniatura; a geometria da borda precisa herdar o mesmo `radius` do card que ela envolve
 - o raio interno do wrapper pulsante tambem precisa ser derivado do `inset` ativo; se o inner wrapper mantiver um `rounded` fixo, algumas quinas ficam com “ponta” visual mesmo quando o restante parece arredondado
+- mesmo com `radius` sincronizado, alguns presets ainda deixam a curva do shader “reta demais” nas quinas; por isso o `roundness` efetivo tambem precisa respeitar um piso derivado do raio do card
+- no CareDesk, preset visual nao pode ter prioridade sobre a silhueta do card; a assinatura premium depende de o glow seguir a forma do container antes de qualquer variacao cosmetica
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

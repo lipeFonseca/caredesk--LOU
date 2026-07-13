@@ -12,10 +12,10 @@ const PRESET_MAP = {
 export default function LoginPulsingBorder({ config, className = '', children, radius = 36 }) {
   const prefersReducedMotion = useReducedMotion()
   const isEnabled = Boolean(config?.enabled) && !prefersReducedMotion
-  const shaderProps = useMemo(() => buildShaderProps(config, pulsingBorderPresets), [config])
   const borderInset = useMemo(() => resolveBorderInset(config), [config])
   const outerRadius = Math.max(0, Number(radius) || 0)
   const innerRadius = Math.max(0, outerRadius - borderInset - 1)
+  const shaderProps = useMemo(() => buildShaderProps(config, pulsingBorderPresets, outerRadius), [config, outerRadius])
 
   return (
     <div
@@ -44,15 +44,18 @@ export default function LoginPulsingBorder({ config, className = '', children, r
   )
 }
 
-function buildShaderProps(config = {}, presets = []) {
+function buildShaderProps(config = {}, presets = [], outerRadius = 36) {
   const presetName = PRESET_MAP[config.preset] || PRESET_MAP.default
   const preset = presets.find((candidate) => candidate.name === presetName) || presets[0]
   if (!preset?.params) return null
+
+  const resolvedRoundness = resolveShaderRoundness(config, preset.params.roundness, outerRadius)
 
   return {
     ...preset.params,
     colors: Array.isArray(config.colors) && config.colors.length ? config.colors : preset.params.colors,
     colorBack: config.colorBack || '#00000000',
+    roundness: resolvedRoundness,
     intensity: typeof config.intensity === 'number' ? config.intensity : preset.params.intensity,
     speed: typeof config.speed === 'number' ? config.speed : preset.params.speed,
     thickness: typeof config.thickness === 'number' ? config.thickness : preset.params.thickness,
@@ -64,4 +67,14 @@ function resolveBorderInset(config = {}) {
   const thickness = typeof config.thickness === 'number' ? config.thickness : 0.1
   const normalized = Math.min(1, Math.max(0, thickness))
   return 4 + (normalized * 8)
+}
+
+function resolveShaderRoundness(config = {}, presetRoundness = 0.25, outerRadius = 36) {
+  const normalizedRadius = Math.min(1, Math.max(0, outerRadius / 96))
+  const derivedRoundness = 0.18 + (normalizedRadius * 0.52)
+  const presetValue = typeof presetRoundness === 'number' ? presetRoundness : 0.25
+
+  if (config.preset === 'circle') return 1
+
+  return Math.min(1, Math.max(presetValue, derivedRoundness))
 }
