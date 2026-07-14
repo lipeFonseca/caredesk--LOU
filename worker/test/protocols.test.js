@@ -30,7 +30,6 @@ test('resolvePatientProtocol falls back to default protocol before global settin
   const resolution = resolvePatientProtocol(
     {
       protocol_id: null,
-      protocol_days: '7,15,30',
     },
     {
       defaultProtocol: {
@@ -51,7 +50,6 @@ test('resolvePatientProtocol uses global setting when there is no linked or defa
   const resolution = resolvePatientProtocol(
     {
       protocol_id: null,
-      protocol_days: '',
     },
     {
       defaultProtocol: null,
@@ -63,11 +61,10 @@ test('resolvePatientProtocol uses global setting when there is no linked or defa
   assert.equal(resolution.source, PROTOCOL_DAY_SOURCES.GLOBAL)
 })
 
-test('resolvePatientProtocol keeps legacy patient days only as final compatibility fallback', () => {
+test('resolvePatientProtocol falls back to EMPTY when nothing resolves', () => {
   const resolution = resolvePatientProtocol(
     {
       protocol_id: null,
-      protocol_days: '30,7,15',
     },
     {
       defaultProtocol: null,
@@ -75,8 +72,8 @@ test('resolvePatientProtocol keeps legacy patient days only as final compatibili
     }
   )
 
-  assert.deepEqual(resolution.days, [7, 15, 30])
-  assert.equal(resolution.source, PROTOCOL_DAY_SOURCES.LEGACY)
+  assert.deepEqual(resolution.days, [])
+  assert.equal(resolution.source, PROTOCOL_DAY_SOURCES.EMPTY)
 })
 
 test('attachResolvedProtocol exposes stable resolved_* fields for the frontend', () => {

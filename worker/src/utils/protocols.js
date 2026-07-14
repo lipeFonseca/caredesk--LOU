@@ -4,7 +4,6 @@ export const PROTOCOL_DAY_SOURCES = Object.freeze({
   LINKED: 'linked_protocol',
   DEFAULT: 'default_protocol',
   GLOBAL: 'global_setting',
-  LEGACY: 'legacy_patient',
   EMPTY: 'empty',
 })
 
@@ -114,19 +113,6 @@ export function resolvePatientProtocol(patient, context = {}) {
     return buildResolvedProtocol({
       source: PROTOCOL_DAY_SOURCES.GLOBAL,
       days: globalDays,
-    })
-  }
-
-  const legacyDays = parseProtocolDays(patient.protocol_days)
-  if (legacyDays.length) {
-    return buildResolvedProtocol({
-      source: PROTOCOL_DAY_SOURCES.LEGACY,
-      days: legacyDays,
-      protocolId: patient.protocol_id ?? null,
-      protocolName: patient.protocol_name ?? null,
-      protocolDescription: patient.protocol_description ?? null,
-      protocolColor: patient.protocol_color ?? null,
-      protocolIsCustom: patient.protocol_is_custom ?? 0,
     })
   }
 

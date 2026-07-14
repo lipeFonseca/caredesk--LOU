@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS patients (
   procedure       TEXT NOT NULL,
   surgery_date    TEXT NOT NULL,
   assigned_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
-  protocol_days   TEXT NOT NULL DEFAULT '7,15,30,60,90',
   protocol_id     TEXT REFERENCES contact_protocols(id) ON DELETE SET NULL,
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'discharged')),
   notes           TEXT,
