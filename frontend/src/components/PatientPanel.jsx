@@ -12,35 +12,13 @@ import {
   getNextFollowup,
   normalizeProtocolDays,
 } from '@/utils/protocols'
-
-const urgencyBadge = {
-  overdue: { cls: 'bg-error-container text-on-error-container border border-error/30',   label: 'Atrasado' },
-  due:     { cls: 'bg-[#fff8e1] text-[#f57f17] border border-[#ffecb3]',                label: 'Vence hoje' },
-  soon:    { cls: 'bg-[#fff3e0] text-[#ef6c00] border border-[#ffe0b2]',                label: 'Em breve' },
-  ok:      { cls: 'bg-[#e8f5e9] text-[#2e7d32] border border-[#c8e6c9]',               label: 'Em dia' },
-  none:    { cls: 'bg-surface-container-highest text-on-surface-variant border border-outline-variant', label: '—' },
-}
-
-const statusLabel = { active: 'Ativo', paused: 'Pausado', discharged: 'Alta' }
-
-const typeConfig = {
-  call:      { icon: 'call',      color: 'text-primary',     label: 'Ligação' },
-  whatsapp:  { icon: 'chat',      color: 'text-primary',     label: 'WhatsApp' },
-  email:     { icon: 'mail',      color: 'text-primary',     label: 'Email' },
-  in_person: { icon: 'handshake', color: 'text-primary',     label: 'Presencial' },
-}
-
-const outcomeConfig = {
-  reached:            { cls: 'bg-secondary-container/20 text-on-secondary-container', icon: 'check_circle', label: 'Contato realizado' },
-  no_answer:          { cls: 'bg-surface-container-high text-on-surface-variant',     icon: 'phone_missed',  label: 'Sem resposta' },
-  callback_scheduled: { cls: 'bg-[#fff8e1] text-[#f57f17]',                           icon: 'schedule',      label: 'Retorno agendado' },
-}
-
-function getInitials(name = '') {
-  const parts = name.trim().split(/\s+/)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return (parts[0]?.[0] ?? '?').toUpperCase()
-}
+import {
+  CONTACT_TYPE_CONFIG,
+  OUTCOME_CONFIG,
+  STATUS_LABEL,
+  URGENCY_BADGE,
+  getInitials,
+} from '@/utils/contactDisplay'
 
 export default function PatientPanel({ patientId, onClose }) {
   const { isAdmin } = useAuthStore()
@@ -126,7 +104,7 @@ export default function PatientPanel({ patientId, onClose }) {
 function PanelContent({ patient, onClose, isAdmin }) {
   const getProtocolDays = useSettingsStore(s => s.getProtocolDays)
   const protocolDays    = normalizeProtocolDays(patient.protocol_days_parsed ?? getProtocolDays())
-  const urg             = urgencyBadge[patient.followup_urgency] ?? urgencyBadge.none
+  const urg             = URGENCY_BADGE[patient.followup_urgency] ?? URGENCY_BADGE.none
   const nextFollowup    = getNextFollowup(patient, protocolDays)
   const timeline        = buildProtocolTimeline(patient, protocolDays)
   const initials        = getInitials(patient.name)
@@ -153,7 +131,7 @@ function PanelContent({ patient, onClose, isAdmin }) {
               {urg.label}
             </span>
             <span className="px-2.5 py-0.5 rounded-full text-label-sm font-label-sm uppercase tracking-wider bg-surface-container-high text-on-surface-variant border border-outline-variant">
-              {statusLabel[patient.status]}
+              {STATUS_LABEL[patient.status]}
             </span>
           </div>
         </div>
@@ -385,8 +363,8 @@ function PanelContent({ patient, onClose, isAdmin }) {
         ) : (
           <div className="relative pl-6 border-l-2 border-surface-container-high space-y-6">
             {patient.followup_logs.map(log => {
-              const tc = typeConfig[log.contact_type] ?? typeConfig.call
-              const oc = outcomeConfig[log.outcome] ?? outcomeConfig.no_answer
+              const tc = CONTACT_TYPE_CONFIG[log.contact_type] ?? CONTACT_TYPE_CONFIG.call
+              const oc = OUTCOME_CONFIG[log.outcome]           ?? OUTCOME_CONFIG.no_answer
               return (
                 <div key={log.id} className="relative">
                   <div className="absolute -left-[29px] w-4 h-4 rounded-full bg-secondary text-on-secondary flex items-center justify-center border-4 border-white shadow-sm">

@@ -14,39 +14,15 @@ import {
   getNextFollowup,
   normalizeProtocolDays,
 } from '@/utils/protocols'
-
-const CONTACT_TYPES = [
-  { value: 'call',      label: 'Ligação',    icon: 'call' },
-  { value: 'whatsapp',  label: 'WhatsApp',   icon: 'chat' },
-  { value: 'email',     label: 'Email',      icon: 'mail' },
-  { value: 'in_person', label: 'Presencial', icon: 'handshake' },
-]
-
-const OUTCOMES = [
-  { value: 'reached',            label: 'Contactado' },
-  { value: 'no_answer',          label: 'Sem resposta' },
-  { value: 'callback_scheduled', label: 'Retorno agendado' },
-]
-
-const statusLabel = {
-  active:     'Ativo',
-  paused:     'Pausado',
-  discharged: 'Alta',
-}
-
-const urgencyBadge = {
-  overdue: { cls: 'bg-error-container text-on-error-container border border-error/30',   label: 'Atrasado' },
-  due:     { cls: 'bg-[#fff8e1] text-[#f57f17] border border-[#ffecb3]',                label: 'Vence hoje' },
-  soon:    { cls: 'bg-[#fff3e0] text-[#ef6c00] border border-[#ffe0b2]',                label: 'Em breve' },
-  ok:      { cls: 'bg-[#e8f5e9] text-[#2e7d32] border border-[#c8e6c9]',               label: 'Em dia' },
-  none:    { cls: 'bg-surface-container-highest text-on-surface-variant border border-outline-variant', label: '—' },
-}
-
-function getInitials(name = '') {
-  const parts = name.trim().split(/\s+/)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return (parts[0]?.[0] ?? '?').toUpperCase()
-}
+import {
+  CONTACT_TYPES,
+  CONTACT_TYPE_CONFIG,
+  OUTCOMES,
+  OUTCOME_CONFIG,
+  STATUS_LABEL,
+  URGENCY_BADGE,
+  getInitials,
+} from '@/utils/contactDisplay'
 
 function buildInitialLogForm(patient = null) {
   return {
@@ -222,7 +198,7 @@ export default function PatientDetail() {
   const nextFollowup = getNextFollowup(patient, patientProtocolDays)
   const timeline     = buildProtocolTimeline(patient, patientProtocolDays)
   const initials     = getInitials(patient.name)
-  const urg          = urgencyBadge[patient.followup_urgency] ?? urgencyBadge.none
+  const urg          = URGENCY_BADGE[patient.followup_urgency] ?? URGENCY_BADGE.none
 
   const quickActions = [
     { icon: 'add',           label: 'Registrar\nContato', action: () => setAddOpen(true) },
@@ -264,7 +240,7 @@ export default function PatientDetail() {
                   {urg.label}
                 </span>
                 <span className="px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm border border-outline-variant uppercase tracking-wider">
-                  {statusLabel[patient.status]}
+                  {STATUS_LABEL[patient.status]}
                 </span>
               </div>
             </div>
@@ -651,9 +627,9 @@ export default function PatientDetail() {
                     </p>
                     <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant">
                       <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
-                        {CONTACT_TYPES.find((item) => item.value === patient.suggested_message_template.contact_type)?.icon ?? 'chat'}
+                        {CONTACT_TYPE_CONFIG[patient.suggested_message_template.contact_type]?.icon ?? 'chat'}
                       </span>
-                      Forma sugerida: {CONTACT_TYPES.find((item) => item.value === patient.suggested_message_template.contact_type)?.label ?? patient.suggested_message_template.contact_type}
+                      Forma sugerida: {CONTACT_TYPE_CONFIG[patient.suggested_message_template.contact_type]?.label ?? patient.suggested_message_template.contact_type}
                     </p>
                   </div>
 
@@ -963,22 +939,8 @@ export default function PatientDetail() {
 }
 
 function LogItem({ log }) {
-  const typeConfig = {
-    call:      { icon: 'call',      color: 'text-primary' },
-    whatsapp:  { icon: 'chat',      color: 'text-primary' },
-    email:     { icon: 'mail',      color: 'text-primary' },
-    in_person: { icon: 'handshake', color: 'text-primary' },
-  }
-  const typeLabel = {
-    call: 'Ligação', whatsapp: 'WhatsApp', email: 'Email', in_person: 'Presencial',
-  }
-  const outcomeConfig = {
-    reached:            { cls: 'bg-secondary-container/20 text-on-secondary-container', icon: 'check_circle', label: 'Contato realizado' },
-    no_answer:          { cls: 'bg-surface-container-high text-on-surface-variant',     icon: 'phone_missed',  label: 'Sem resposta' },
-    callback_scheduled: { cls: 'bg-[#fff8e1] text-[#f57f17]',                           icon: 'schedule',      label: 'Retorno agendado' },
-  }
-  const tc = typeConfig[log.contact_type] ?? typeConfig.call
-  const oc = outcomeConfig[log.outcome]   ?? outcomeConfig.no_answer
+  const tc = CONTACT_TYPE_CONFIG[log.contact_type] ?? CONTACT_TYPE_CONFIG.call
+  const oc = OUTCOME_CONFIG[log.outcome]           ?? OUTCOME_CONFIG.no_answer
 
   return (
     <div className="relative">
@@ -993,7 +955,7 @@ function LogItem({ log }) {
           <div className="flex items-center gap-2">
             <span className={`material-symbols-outlined ${tc.color}`} style={{ fontSize: '18px' }}>{tc.icon}</span>
             <span className="text-label-md font-label-md text-on-surface font-semibold">
-              {typeLabel[log.contact_type] ?? 'Contato'}
+              {CONTACT_TYPE_CONFIG[log.contact_type]?.label ?? 'Contato'}
             </span>
           </div>
           <span className="text-label-sm font-label-sm text-on-surface-variant">
@@ -1067,4 +1029,3 @@ function Modal({ open, onClose, title, children, wide = false }) {
 function Spinner() {
   return <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
 }
-
