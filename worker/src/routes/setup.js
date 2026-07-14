@@ -8,6 +8,13 @@ setup.use('*', async (c, next) => {
   if (c.env.APP_ENV === 'production') {
     return c.json({ error: 'Not available in production' }, 403)
   }
+
+  // Segunda camada opcional: se SETUP_TOKEN estiver configurado (recomendado em
+  // ambientes compartilhados), exige o header — nao depende so de APP_ENV estar certo.
+  if (c.env.SETUP_TOKEN && c.req.header('X-Setup-Token') !== c.env.SETUP_TOKEN) {
+    return c.json({ error: 'Não autorizado' }, 403)
+  }
+
   await next()
 })
 

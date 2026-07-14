@@ -30,10 +30,12 @@ notifications.get('/', async (c) => {
 })
 
 notifications.patch('/:id/read', async (c) => {
-  await c.env.DB.prepare('UPDATE notifications SET is_read = 1 WHERE id = ?')
-    .bind(c.req.param('id'))
+  const agent = c.get('agent')
+  const result = await c.env.DB.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND agent_id = ?')
+    .bind(c.req.param('id'), agent.sub)
     .run()
 
+  if (!result.meta.changes) return c.json({ error: 'Notificação não encontrada' }, 404)
   return c.json({ success: true })
 })
 

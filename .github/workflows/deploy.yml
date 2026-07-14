@@ -125,6 +125,9 @@ jobs:
       - name: Install worker dependencies
         run: npm ci
 
+      - name: Audit dependencies (non-blocking)
+        run: npm audit --audit-level=high || true
+
       - name: Validate Cloudflare credentials
         run: |
           test -n "${CLOUDFLARE_API_TOKEN}" || { echo "Secret CLOUDFLARE_API_TOKEN nao configurado"; exit 1; }
@@ -166,6 +169,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Audit dependencies (non-blocking)
+        run: npm audit --audit-level=high || true
 
       - name: Install Wrangler CLI
         run: npm install --global wrangler@4

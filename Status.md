@@ -1256,3 +1256,26 @@ Resultado esperado:
 
 Validacao:
 - `frontend`: `npm run build` ok em `2026-07-13`
+
+### 11.36 Hardening de seguranca (auditoria via mapa de aprendizados de seguranca)
+
+Aplicado em `2026-07-13`, a partir da leitura da nota externa "Seguranca em apps web locais" (vault Obsidian do usuario), cruzada com o codigo atual do projeto.
+
+Correcoes aplicadas (baixo risco, sem mudanca de schema):
+- **IDOR em `PATCH /api/notifications/:id/read`** (`worker/src/routes/notifications.js`): agora filtra por `agent_id` do token, alem do `id`; retorna `404` se nenhuma linha do proprio agente for afetada. Antes, qualquer agente autenticado podia marcar como lida a notificacao de outro.
+- **Timing leak no login** (`worker/src/routes/auth.js`): `verifyPassword` agora roda o PBKDF2 completo mesmo quando o email nao existe (usa um hash dummy fixo), e a comparacao final passou a ser byte a byte em tempo constante (`timingSafeEqualBytes`) em vez de `.every()` com early-exit.
+- **Rate limit de login por IP + email** (`worker/src/routes/auth.js`): alem da chave por IP, agora existe uma chave por email normalizado na mesma tabela `login_rate_limit` (prefixos `ip:`/`email:`); bloqueia se qualquer uma das duas estourar. Nao precisou de migration — a tabela ja era chave-valor generica.
+- **Segunda camada em `POST /api/setup/admin`** (`worker/src/routes/setup.js`): se a secret `SETUP_TOKEN` estiver configurada no Worker, exige o header `X-Setup-Token` alem do guard de `APP_ENV`. Opcional por design — sem a secret configurada, comportamento local continua identico ao anterior (nao quebra ambientes existentes). `worker/scripts/create-admin.js` atualizado para enviar o header quando `SETUP_TOKEN` estiver no ambiente local.
+- **Security headers na API** (`worker/src/index.js`): middleware `secureHeaders` do Hono adicionado — `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Opener-Policy`, HSTS, etc. `Cross-Origin-Resource-Policy` explicitamente setado para `cross-origin` (nao o default `same-origin`), porque a API e consumida de um dominio diferente (Pages) e serve as imagens de branding/avatar via `<img src>` — `same-origin` quebraria essas imagens.
+- **CSP e headers no frontend** (`frontend/public/_headers`, convencao nativa do Cloudflare Pages): `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`. `style-src` inclui `'unsafe-inline'` porque o app usa `style={{...}}` inline extensivamente (branding dinamico); `img-src` inclui `https:` amplo porque o admin pode configurar URLs de imagem arbitrarias; `connect-src` lista o worker de producao e `localhost:8787`.
+- **`npm audit --audit-level=high` no CI** (`.github/workflows/deploy.yml`): adicionado nos dois jobs de deploy, com `|| true` — nao bloqueante, so visibilidade por enquanto.
+
+Validacao feita antes de aplicar (sem tocar producao):
+- `worker`: `npm test` ok (6/6), login local com senha certa/errada continua funcionando, rate limit e IDOR testados manualmente com sucesso
+- `frontend`: `npm run build` ok
+- CSP validada com um servidor estatico local simulando os headers do Cloudflare Pages + worker local: paginas `/login` e `/admin` (com o shader WebGL da borda pulsante ativo) carregaram sem nenhuma violacao de CSP no console — o unico erro observado foi CORS bloqueando uma origem de teste nao whitelisted, comportamento esperado e correto
+- deploy real para uma branch de preview foi bloqueado pelo classificador de seguranca do Claude Code (deploy de producao sem aprovacao explicita do usuario) — respeitado, validacao feita 100% local
+
+Itens do plano de seguranca (secao 12.1) que ficaram fora desta rodada por decisao pendente do usuario:
+- `password_reset_tokens`/`RESEND_API_KEY` orfaos — decisao entre implementar de vez ou remover ainda nao tomada
+- migracao do token JWT de `localStorage` para cookie `HttpOnly` — nao aplicada nesta rodada porque frontend e worker vivem em dominios diferentes (`pages.dev` e `workers.dev`), o que exigiria `SameSite=None` + `Secure` e mudanca de arquitetura de sessao; risco de quebra maior que o beneficio imediato dado que o CSP ja reduz boa parte do vetor de XSS que tornaria isso critico. Registrado como recomendacao futura, nao implementado.

@@ -19,7 +19,10 @@ console.log(`  Senha: ${password}\n`)
 
 const res = await fetch(`${BASE}/api/setup/admin`, {
   method:  'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    ...(process.env.SETUP_TOKEN ? { 'X-Setup-Token': process.env.SETUP_TOKEN } : {}),
+  },
   body:    JSON.stringify({ name, email, password }),
 })
 

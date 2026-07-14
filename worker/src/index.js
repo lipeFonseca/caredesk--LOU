@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import { secureHeaders } from 'hono/secure-headers'
 
 import authRoutes      from './routes/auth.js'
 import patientRoutes   from './routes/patients.js'
@@ -28,6 +29,12 @@ app.use('*', cors({
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
+}))
+app.use('*', secureHeaders({
+  // API e consumida de um dominio diferente (Pages) — CORP 'same-origin' bloquearia
+  // as imagens de branding/avatar servidas aqui (<img src="...worker.../api/..."/>).
+  crossOriginResourcePolicy: 'cross-origin',
+  xFrameOptions: 'DENY',
 }))
 
 // ── Health check ─────────────────────────────────────────────

@@ -6,6 +6,22 @@ const auth = new Hono()
 const RATE_LIMIT_MAX      = 5   // tentativas antes do bloqueio
 const RATE_LIMIT_MINUTES  = 15  // minutos de bloqueio
 
+async function bumpRateLimit(db, key, currentAttempts) {
+  const attempts = currentAttempts + 1
+  const lockedUntil = attempts >= RATE_LIMIT_MAX
+    ? new Date(Date.now() + RATE_LIMIT_MINUTES * 60 * 1000).toISOString()
+    : null
+
+  await db.prepare(`
+    INSERT INTO login_rate_limit (key, attempts, locked_until, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET
+      attempts     = excluded.attempts,
+      locked_until = excluded.locked_until,
+      updated_at   = excluded.updated_at
+  `).bind(key, attempts, lockedUntil).run()
+}
+
 // ── POST /api/auth/login ──────────────────────────────────────
 auth.post('/login', async (c) => {
   const { email, password } = await c.req.json()
@@ -13,13 +29,19 @@ auth.post('/login', async (c) => {
     return c.json({ error: 'Email e senha são obrigatórios' }, 400)
   }
 
-  // Rate limiting por IP
+  // Rate limiting por IP e por email — bloqueia se qualquer uma das duas chaves estourar
   const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown'
-  const rl = await c.env.DB.prepare(
-    'SELECT attempts, locked_until FROM login_rate_limit WHERE key = ?'
-  ).bind(ip).first()
+  const emailKey = `email:${email.toLowerCase().trim()}`
+  const ipKey = `ip:${ip}`
 
-  if (rl?.locked_until && new Date(rl.locked_until) > new Date()) {
+  const [rlIp, rlEmail] = await Promise.all([
+    c.env.DB.prepare('SELECT attempts, locked_until FROM login_rate_limit WHERE key = ?').bind(ipKey).first(),
+    c.env.DB.prepare('SELECT attempts, locked_until FROM login_rate_limit WHERE key = ?').bind(emailKey).first(),
+  ])
+
+  const now = new Date()
+  if ((rlIp?.locked_until && new Date(rlIp.locked_until) > now) ||
+      (rlEmail?.locked_until && new Date(rlEmail.locked_until) > now)) {
     return c.json({ error: 'Muitas tentativas de login. Aguarde 15 minutos.' }, 429)
   }
 
@@ -27,31 +49,24 @@ auth.post('/login', async (c) => {
     'SELECT * FROM agents WHERE email = ? AND is_active = 1'
   ).bind(email.toLowerCase().trim()).first()
 
-  // Verificação de senha usando Web Crypto (bcrypt não disponível no Worker)
-  const valid = agent ? await verifyPassword(password, agent.password_hash) : false
+  // Verificação de senha usando Web Crypto (bcrypt não disponível no Worker).
+  // Sempre roda o PBKDF2 (com hash real ou dummy) para nao vazar por timing se o email existe.
+  const valid = await verifyPassword(password, agent ? agent.password_hash : DUMMY_HASH)
 
   if (!agent || !valid) {
-    // Incrementar contador de tentativas
-    const attempts = (rl?.attempts || 0) + 1
-    const lockedUntil = attempts >= RATE_LIMIT_MAX
-      ? new Date(Date.now() + RATE_LIMIT_MINUTES * 60 * 1000).toISOString()
-      : null
-    await c.env.DB.prepare(`
-      INSERT INTO login_rate_limit (key, attempts, locked_until, updated_at)
-      VALUES (?, ?, ?, datetime('now'))
-      ON CONFLICT(key) DO UPDATE SET
-        attempts     = excluded.attempts,
-        locked_until = excluded.locked_until,
-        updated_at   = excluded.updated_at
-    `).bind(ip, attempts, lockedUntil).run()
+    await Promise.all([
+      bumpRateLimit(c.env.DB, ipKey, rlIp?.attempts || 0),
+      bumpRateLimit(c.env.DB, emailKey, rlEmail?.attempts || 0),
+    ])
 
     return c.json({ error: 'Credenciais inválidas' }, 401)
   }
 
-  // Login bem-sucedido — zerar contador
-  await c.env.DB.prepare(
-    'DELETE FROM login_rate_limit WHERE key = ?'
-  ).bind(ip).run()
+  // Login bem-sucedido — zerar contadores
+  await Promise.all([
+    c.env.DB.prepare('DELETE FROM login_rate_limit WHERE key = ?').bind(ipKey).run(),
+    c.env.DB.prepare('DELETE FROM login_rate_limit WHERE key = ?').bind(emailKey).run(),
+  ])
 
   let token
   try {
@@ -124,9 +139,16 @@ export async function hashPassword(password) {
   return JSON.stringify({ salt: saltArr, hash: hashArr })
 }
 
+// Hash valido (mas de senha impossivel de adivinhar) usado so para equalizar
+// o tempo de resposta quando o email nao existe — nunca corresponde a uma senha real.
+const DUMMY_HASH = JSON.stringify({
+  salt: Array.from({ length: 16 }, (_, i) => i),
+  hash: Array.from({ length: 32 }, (_, i) => i * 7 % 256),
+})
+
 export async function verifyPassword(password, stored) {
   // Suporte ao placeholder do schema inicial
-  if (stored === '$PLACEHOLDER_HASH$') return false
+  if (stored === '$PLACEHOLDER_HASH$') stored = DUMMY_HASH
   try {
     const { salt, hash } = JSON.parse(stored)
     const enc = new TextEncoder()
@@ -138,10 +160,19 @@ export async function verifyPassword(password, stored) {
       keyMaterial, 256
     )
     const derived = Array.from(new Uint8Array(bits))
-    return derived.every((b, i) => b === hash[i])
+    return timingSafeEqualBytes(derived, hash)
   } catch {
     return false
   }
+}
+
+function timingSafeEqualBytes(a, b) {
+  const length = Math.max(a.length, b.length)
+  let diff = a.length === b.length ? 0 : 1
+  for (let i = 0; i < length; i += 1) {
+    diff |= (a[i] ?? 0) ^ (b[i] ?? 0)
+  }
+  return diff === 0
 }
 
 export default auth
