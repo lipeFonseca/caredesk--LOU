@@ -385,6 +385,22 @@ Motivo:
 - a largura antiga deixava a composicao apertada e reduzia a leitura da mensagem protocolar
 - o modal mais largo melhora escaneabilidade sem inflar desnecessariamente modais menores como editar e excluir
 
+### 11.39 Escala horizontal ampliada para todos os modais
+
+Refino aplicado:
+- a escala horizontal dos modais do projeto foi ampliada em aproximadamente 30%
+- a mudanca entrou nos modais compartilhados de `Admin`, `Protocolo de Mensagens` e `PatientDetail`
+
+Nova escala consolidada:
+- modal base administrativo: `max-w-[36rem]`
+- modal largo administrativo: `max-w-[55rem]`
+- modal base do detalhe do paciente: `max-w-[42rem]`
+- modal largo do detalhe do paciente: `max-w-[62rem]`
+
+Motivo:
+- a interface estava passando sensacao de aperto horizontal em varios fluxos
+- a ampliacao global deixa formularios, blocos de texto e acoes lado a lado com respiracao mais consistente
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:

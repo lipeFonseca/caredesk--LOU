@@ -253,6 +253,7 @@ Correcao adicional confirmada:
 - o selo textual `Acesso institucional` foi removido da coluna esquerda do login; a composicao ficou mais limpa e a hierarquia agora deve comecar direto no `heroTitle`
 - o fundo da pagina de login nao deve depender de classes soltas entre preview e pagina publica; a composicao externa precisa sair de um helper compartilhado para evitar regressao visual entre admin e tela real
 - quando o modal de `Registrar Contato` cresce com blocos de protocolo e mensagem sugerida, ele nao deve herdar a largura estreita dos modais simples; esse fluxo precisa de largura dedicada para leitura operacional confortavel
+- a largura de modais no CareDesk agora segue uma escala mais generosa; modais base e largos foram ampliados em cerca de 30% para reduzir sensacao de aperto em fluxos operacionais
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

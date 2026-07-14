@@ -1042,7 +1042,7 @@ function Modal({ open, onClose, title, children, wide = false }) {
             exit={{ opacity: 0, scale: .96, y: 16 }}
             transition={{ duration: .2, ease: [.16, 1, .3, 1] }}
             className={`fixed inset-x-4 top-[10vh] z-50 mx-auto bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant ${
-              wide ? 'max-w-3xl' : 'max-w-lg'
+              wide ? 'max-w-[62rem]' : 'max-w-[42rem]'
             }`}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">
@@ -1067,3 +1067,4 @@ function Modal({ open, onClose, title, children, wide = false }) {
 function Spinner() {
   return <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
 }
+
