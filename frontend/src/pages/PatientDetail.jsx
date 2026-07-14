@@ -998,14 +998,14 @@ function Modal({ open, onClose, title, children, wide = false }) {
             className="fixed inset-0 z-40 bg-black/40"
             onClick={onClose}
           />
-          <div className="fixed inset-0 z-50 flex items-start justify-center px-2 pt-[10vh]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2">
             <motion.div
               initial={{ opacity: 0, scale: .96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: .96, y: 16 }}
               transition={{ duration: .2, ease: [.16, 1, .3, 1] }}
               className={`w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant ${
-                wide ? 'max-w-[140rem]' : 'max-w-[94.5rem]'
+                wide ? 'max-w-[70rem]' : 'max-w-[47.25rem]'
               }`}
             >
               <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">

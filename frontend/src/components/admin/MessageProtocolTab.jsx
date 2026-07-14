@@ -407,13 +407,13 @@ function Modal({ open, onClose, title, children, wide = false }) {
             className="fixed inset-0 z-40 bg-black/40"
             onClick={onClose}
           />
-          <div className="fixed inset-0 z-50 flex items-start justify-center px-2 pt-[8vh]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2">
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 16 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className={`w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-modal ${wide ? 'max-w-[108rem]' : 'max-w-[81rem]'}`}
+              className={`w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-modal ${wide ? 'max-w-[54rem]' : 'max-w-[40.5rem]'}`}
             >
               <div className="flex items-center justify-between border-b border-outline-variant px-5 py-4">
                 <h3 className="text-headline-sm font-headline-sm text-on-surface">{title}</h3>

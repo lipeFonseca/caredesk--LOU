@@ -452,6 +452,26 @@ Resultado esperado:
 - mesma largura ampla mantida
 - animacao continua suave sem quebrar o posicionamento
 
+### 11.43 Recuo da escala e centralizacao total do modal
+
+Refino aplicado:
+- a escala anterior ficou grande demais no uso real e passou a dominar a tela
+- os modais foram reduzidos para uma largura intermediaria, mantendo conforto de leitura sem ocupar a viewport quase inteira
+- o surgimento do modal deixou de acontecer ancorado no topo e passou a ser centralizado no viewport
+
+Nova escala:
+- admin e mensagens: `max-w-[54rem]` no modo largo e `max-w-[40.5rem]` no modo base
+- detalhe do paciente: `max-w-[70rem]` no modo largo e `max-w-[47.25rem]` no modo base
+
+Posicionamento:
+- wrapper fixo agora usa `flex items-center justify-center`
+- padding externo simplificado para `p-2`, evitando efeito de card grudado no topo
+
+Resultado esperado:
+- modal visualmente equilibrado
+- leitura ainda confortavel
+- abertura centralizada de verdade na pagina
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:
