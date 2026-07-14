@@ -1446,4 +1446,30 @@ Validacao final desta rodada:
 - `frontend`: `npm run build` ok, sem aviso de chunk grande
 - producao: `/health` `200`, login funcionando, contagem de registros confirmada igual antes/depois do incidente de migration
 
+### 11.42 Fechamento da secao 12.3/12.5/12.6.3 — duplicacao de codigo, testes automatizados, coluna legada
+
+Aplicado em `2026-07-14`, continuando o plano de acao (secao 12) apos o `11.37`.
+
+**Duplicacao de codigo removida (`12.3`):**
+- `12.3.1`: `CONTACT_TYPES`/`OUTCOMES`/`STATUS_LABEL`/`URGENCY_BADGE`/`getInitials`, antes duplicados em `PatientDetail.jsx` e `PatientPanel.jsx` (ja levemente divergentes entre si), extraidos para `frontend/src/utils/contactDisplay.js`; o `LogItem` local de `PatientDetail.jsx` tambem tinha sua propria copia de `typeConfig`/`typeLabel`/`outcomeConfig`, removida e repontada pro modulo compartilhado
+- `12.3.2`: `normalizeHex`/`mix`/`interpolate`/`hexToRgb`/`rgbToHex`/`hexToRgbTriplet` estavam copiados identicos em `theme/visualThemes.js` e `darkPalette.js`; extraidos para `theme/colorUtils.js`
+- `12.3.3`: `useSettingsStore` (defaults iniciais da store) e `BrandingSettingsTab.getDefaultFormState()` cada um mantinha sua propria copia dos valores default de branding (tagline, hero copy, cores/preset/intensidade da borda de login etc). `theme/branding.js` ja tinha essas constantes internamente (usadas em `getBranding()`); passaram a ser exportadas e ambos os consumidores importam da mesma fonte — `getDefaultFormState()` virou uma chamada direta a `normalizeBrandingSettings({})`
+- `12.3.5`: removida `SettingsTab()` de `Admin.jsx` — implementacao antiga da aba "Identidade Visual", sem nenhuma referencia ativa desde que `BrandingSettingsTab` assumiu a aba; junto saíram os imports `VISUAL_THEMES`/`useSettingsStore`, que so essa funcao usava
+- `12.3.6`: confirmado por busca no codigo que nenhuma classe `urgency-ok/soon/due/overdue` do Tailwind e usada em lugar nenhum (a estilizacao de urgencia hoje vem inline de `URGENCY_BADGE`); tokens `colors.urgency.*` removidos de `tailwind.config.js`
+
+**Testes automatizados (`12.5`):**
+- `12.5.1`: `frontend` nao tinha test runner. Instalado `vitest`, configurado `test: { environment: 'node' }` em `vite.config.js` (reaproveita o alias `@` ja existente) e `npm test` (`vitest run`) em `package.json`. Cobertura inicial: `utils/protocols.test.js` (normalizacao/milestones/timeline/urgencia/labels — 14 casos) e `theme/branding.test.js` (sanitizadores de cor/URL, defaults, `getBranding` — 18 casos). `32/32` passando
+- `12.5.2`: testes do worker expandidos alem de `utils/protocols.js`. `worker/test/storage.test.js` cobre `sanitizeScopedAssetKey` (guarda contra path traversal e extensao fora da whitelist em chaves de asset no R2), `isSupportedImageAssetType`, `extensionForMimeType`. `worker/test/auth-middleware.test.js` cobre `signToken`/`authMiddleware`/`adminOnly` via um contexto Hono fake (token valido, header ausente, sem `Bearer`, token malformado, secret errado, assinatura adulterada, token expirado, checagem de role). `25/25` passando no worker
+
+**Coluna legada `patients.protocol_days` removida (`12.6.3`):**
+- consultado o D1 remoto (`SELECT COUNT(*) ... WHERE protocol_id IS NULL`): `0` de `2` pacientes — o branch `LEGACY` de `resolvePatientProtocol()` ja estava morto havia tempo, porque todo paciente resolve via `LINKED`, `DEFAULT` ou `GLOBAL` antes de chegar nele
+- testado `ALTER TABLE patients DROP COLUMN protocol_days` primeiro no D1 **local**, para confirmar que o SQLite do D1 suporta `DROP COLUMN` nativamente (suporta) antes de tocar em producao
+- recontagem feita de novo imediatamente antes de aplicar no remoto (ainda `0`/`2`) — migration `0009_drop-legacy-patient-protocol-days.sql` aplicada local e remoto via `run-migrations.js`
+- removidos do codigo: o branch `LEGACY` inteiro em `resolvePatientProtocol()`, a constante `PROTOCOL_DAY_SOURCES.LEGACY`, a coluna em `schema.sql` e o teste que cobria esse branch (substituido por um teste cobrindo o fallback pra `EMPTY`)
+
+Validacao final desta rodada:
+- `worker`: `npm test` ok (`25/25`)
+- `frontend`: `npm test` ok (`32/32`), `npm run build` ok
+- producao: contagem de `patients` confirmada igual (`2`) antes/depois da migration, `/health` `200` logo apos aplicar
+
 **Efeito colateral pego no proprio deploy do GitHub Actions:** o job `Deploy Worker` falhou logo apos o push — `wrangler` `4.110.0` exige Node.js `22+`, e o workflow ainda usava `node-version: 20` nos dois jobs de deploy. Corrigido para `22` em `deploy-worker` e `deploy-frontend` no mesmo `.github/workflows/deploy.yml`. Consequencia direta de resolver `^4.0.0` para a ultima 4.x disponivel; nao afeta ambiente local (ja em Node 24 nas maquinas usadas nesta sessao).
