@@ -401,6 +401,36 @@ Motivo:
 - a interface estava passando sensacao de aperto horizontal em varios fluxos
 - a ampliacao global deixa formularios, blocos de texto e acoes lado a lado com respiracao mais consistente
 
+### 11.40 Segunda ampliacao agressiva da largura dos modais
+
+Refino aplicado:
+- como a primeira ampliacao ainda pareceu sutil na percepcao visual, a largura dos modais foi aberta novamente
+- a nova escala prioriza leitura horizontal evidente, especialmente em fluxos com formularios extensos e blocos de mensagem
+
+Nova escala ajustada:
+- modal base administrativo: `max-w-[54rem]`
+- modal largo administrativo: `max-w-[82rem]`
+- modal base do detalhe do paciente: `max-w-[63rem]`
+- modal largo do detalhe do paciente: `max-w-[93rem]`
+
+Motivo:
+- o ganho anterior nao estava perceptivel o bastante no uso real
+- esta segunda rodada busca tornar a diferenca visual imediatamente clara, sem depender de comparacao fina
+
+### 11.41 Largura explicita por viewport nos modais
+
+Correcao estrutural:
+- foi identificado que ampliar apenas `max-width` nao garantia aumento perceptivel, porque o modal ainda podia ficar preso ao comportamento do container fixo
+- os modais agora usam largura explicita baseada em viewport e centralizacao por `left-1/2` + `translate-x`, em vez de depender apenas de `inset-x`
+
+Nova base:
+- modais administrativos: `w-[calc(100vw-1rem)]`, com `max-w-[81rem]` no modo base e `max-w-[108rem]` no modo largo
+- modal do detalhe do paciente: `w-[calc(100vw-1rem)]`, com `max-w-[94.5rem]` no modo base e `max-w-[140rem]` no modo largo
+
+Efeito esperado:
+- o crescimento horizontal deve finalmente ficar visivel em telas desktop comuns
+- o modal `Registrar Contato` deixa de parecer estreito mesmo quando carrega blocos longos de protocolo e mensagem
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:

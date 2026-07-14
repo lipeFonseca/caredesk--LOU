@@ -1041,8 +1041,8 @@ function Modal({ open, onClose, title, children, wide = false }) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: .96, y: 16 }}
             transition={{ duration: .2, ease: [.16, 1, .3, 1] }}
-            className={`fixed inset-x-4 top-[10vh] z-50 mx-auto bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant ${
-              wide ? 'max-w-[62rem]' : 'max-w-[42rem]'
+            className={`fixed left-1/2 top-[10vh] z-50 w-[calc(100vw-1rem)] -translate-x-1/2 bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant ${
+              wide ? 'max-w-[140rem]' : 'max-w-[94.5rem]'
             }`}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">
