@@ -1352,3 +1352,5 @@ Validacao final desta rodada:
 - `worker`: `npm test` ok (6/6)
 - `frontend`: `npm run build` ok, sem aviso de chunk grande
 - producao: `/health` `200`, login funcionando, contagem de registros confirmada igual antes/depois do incidente de migration
+
+**Efeito colateral pego no proprio deploy do GitHub Actions:** o job `Deploy Worker` falhou logo apos o push — `wrangler` `4.110.0` exige Node.js `22+`, e o workflow ainda usava `node-version: 20` nos dois jobs de deploy. Corrigido para `22` em `deploy-worker` e `deploy-frontend` no mesmo `.github/workflows/deploy.yml`. Consequencia direta de resolver `^4.0.0` para a ultima 4.x disponivel; nao afeta ambiente local (ja em Node 24 nas maquinas usadas nesta sessao).
