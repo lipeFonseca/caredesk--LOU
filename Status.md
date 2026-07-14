@@ -533,6 +533,30 @@ Conclusao:
 - a UI publicada ainda nao exibe navegacao multipagina visivel porque a base atual tem apenas `2` pacientes totais, abaixo do `PAGE_SIZE=20`
 - nao ha evidencia de regressao funcional; falta apenas massa real de dados para validar visualmente o estado de varias paginas no frontend publicado
 
+### 11.47 Validacao visual multipagina (dados sinteticos locais) + incidente na migration `0010` no remoto
+
+Complementa o `11.46`: como producao so tinha `2` pacientes, a navegacao entre paginas nunca chegou a renderizar de verdade. Validado a parte, localmente:
+
+**UI multipagina, busca e Dashboard (Playwright, `worker`+`frontend` locais, `25` pacientes sinteticos):**
+- pagina 1: `20` linhas, "Mostrando 1–20 de 25 pacientes"
+- pagina 2: `5` linhas, "Mostrando 21–25 de 25 pacientes"
+- busca por `"Teste 1"`: `11` resultados (`1`, `10`-`19`), badge de total atualiza pra `11`
+- Dashboard: KPI "Pacientes ativos" = `25` (confirma que `Dashboard.jsx` consumindo `data.patients` sem `page` continua trazendo a base ativa inteira, sem paginar)
+- zero erros de console/pagina
+- dados sinteticos removidos do D1 local ao final, sem deixar residuo
+
+**Incidente: migration `0010` aplicada parcialmente no D1 remoto:**
+- `node scripts/run-migrations.js --remote` reportou sucesso e marcou `0010_patient_query_indexes.sql` como aplicada na tabela `_migrations`, mas so o primeiro `CREATE INDEX` do arquivo (`idx_patients_surgery_date`) realmente foi criado no banco — os outros dois (`idx_patients_protocol`, `idx_followups_patient_date`) ficaram faltando, sem nenhum erro reportado pelo `wrangler`
+- localmente (`--local`) o mesmo arquivo aplicou os `3` indices sem problema — a falha e especifica de multiplas instrucoes `CREATE INDEX` seguidas via `--file` no D1 remoto
+- `0008_protocol-message-templates.sql` (tambem multi-instrucao: `CREATE TABLE` + `CREATE INDEX`) foi conferido a parte e esta integro no remoto — nao e uma falha generalizada de todo `--file` multi-instrucao, parece um caso pontual
+- corrigido aplicando os `2` indices faltantes manualmente via `--command` (um de cada vez), depois confirmado com `SELECT name FROM sqlite_master WHERE type='index' ...` que os `3` indices existem no remoto
+- **licao para o runbook:** depois de qualquer migration multi-instrucao aplicada via `--remote`, nao confiar so no exit code do `wrangler`/no que o script marca em `_migrations` — vale conferir o resultado real no schema (`sqlite_master`) antes de dar como concluido, pelo menos ate esse comportamento do D1 remoto ser mais bem entendido
+
+Validacao final:
+- `worker`: `npm test` ok (`25/25`)
+- `frontend`: `npm test` ok (`32/32`), `npm run build` ok
+- producao: os `3` indices confirmados presentes via `sqlite_master`; `/health` `200`
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:
