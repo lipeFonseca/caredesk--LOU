@@ -562,7 +562,7 @@ export default function PatientDetail() {
       </div>
 
       {/* ── Modal: Registrar Contato ──────────────────────────── */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Registrar Contato">
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Registrar Contato" wide>
         <form onSubmit={handleAddLog} className="space-y-4">
 
           {/* Datas */}
@@ -1026,7 +1026,7 @@ function LogItem({ log }) {
   )
 }
 
-function Modal({ open, onClose, title, children }) {
+function Modal({ open, onClose, title, children, wide = false }) {
   return (
     <AnimatePresence>
       {open && (
@@ -1041,7 +1041,9 @@ function Modal({ open, onClose, title, children }) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: .96, y: 16 }}
             transition={{ duration: .2, ease: [.16, 1, .3, 1] }}
-            className="fixed inset-x-4 top-[10vh] z-50 mx-auto max-w-lg bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant"
+            className={`fixed inset-x-4 top-[10vh] z-50 mx-auto bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant ${
+              wide ? 'max-w-3xl' : 'max-w-lg'
+            }`}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">
               <h3 className="text-headline-sm font-headline-sm text-on-surface">{title}</h3>

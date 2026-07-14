@@ -375,6 +375,16 @@ Comportamento operacional:
 - o agente pode copiar a mensagem ou jogar o texto nas observacoes do registro
 - se o marco existir, mas ainda nao houver template, a interface avisa explicitamente que falta cadastrar essa mensagem
 
+### 11.38 Modal de registro de contato alargado
+
+Refino aplicado:
+- o modal `Registrar Contato` ganhou largura maior do que os modais simples da tela
+- a mudanca foi feita apenas nesse fluxo, porque ele agora concentra campos de contato, bloco de protocolo e mensagem sugerida
+
+Motivo:
+- a largura antiga deixava a composicao apertada e reduzia a leitura da mensagem protocolar
+- o modal mais largo melhora escaneabilidade sem inflar desnecessariamente modais menores como editar e excluir
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:
