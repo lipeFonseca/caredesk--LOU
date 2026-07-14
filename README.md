@@ -14,6 +14,7 @@ Estado atual:
 Direcao atual do produto:
 - acompanhamento operacional por painel interno
 - protocolo de contato como regra central
+- mensagem protocolar manual vinculada aos marcos do protocolo
 - ligacao como principal acao operacional externa
 - modulo de mensagens pausado por decisao de produto
 - boot autenticado do frontend agora espera as configuracoes remotas antes do primeiro paint principal, evitando flash de branding antigo
@@ -368,6 +369,7 @@ Arquivos-chave:
 - `README.md`: visao operacional e caminho recomendado
 - `Status.md`: espelho do estado real do projeto
 - `worker/src/utils/protocols.js`: regra central de resolucao de protocolo
+- `worker/src/utils/messageTemplates.js`: renderizacao das mensagens ligadas aos marcos do protocolo
 - `worker/src/utils/storage.js`: nucleo compartilhado dos assets em `R2`
 - `worker/src/routes/patients.js`: contrato principal de pacientes
 - `worker/src/services/scheduler.js`: geracao diaria de notificacoes internas
@@ -458,6 +460,23 @@ Campos principais retornados pelo backend:
 - `resolved_protocol_id`
 - `resolved_protocol_name`
 - `resolved_protocol_color`
+
+Camada adicional desta fase:
+- `protocol_message_templates` guarda uma mensagem por `protocol_id + day_offset`
+- o detalhe do paciente resolve o proximo marco pendente e tenta achar a mensagem correspondente
+- quando existir template, a API devolve a mensagem ja renderizada com os dados reais do paciente
+
+Placeholders suportados nas mensagens:
+- `{{patient_name}}`
+- `{{patient_phone}}`
+- `{{procedure}}`
+- `{{surgery_date}}`
+- `{{assigned_agent_name}}`
+- `{{clinic_name}}`
+- `{{protocol_name}}`
+- `{{milestone_label}}`
+- `{{milestone_date}}`
+- `{{contact_date}}`
 
 Implicacoes praticas:
 - scheduler e rotas de pacientes usam a mesma resolucao

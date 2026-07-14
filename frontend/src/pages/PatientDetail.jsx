@@ -48,6 +48,18 @@ function getInitials(name = '') {
   return (parts[0]?.[0] ?? '?').toUpperCase()
 }
 
+function buildInitialLogForm(patient = null) {
+  return {
+    contact_date: new Date().toISOString().split('T')[0],
+    contact_type: patient?.suggested_message_template?.contact_type || 'call',
+    outcome: 'reached',
+    notes: '',
+    next_followup_date: '',
+    is_extra_contact: false,
+    new_protocol_id: '',
+  }
+}
+
 export default function PatientDetail() {
   const { id }          = useParams()
   const navigate        = useNavigate()
@@ -63,17 +75,10 @@ export default function PatientDetail() {
   const [protocols,  setProtocols]  = useState([])
   const [customProto, setCustomProto] = useState({ name: 'Personalizado', days: [-2, 0], manualType: 'after', manualDay: '' })
 
-  const [logForm, setLogForm] = useState({
-    contact_date:       new Date().toISOString().split('T')[0],
-    contact_type:       'call',
-    outcome:            'reached',
-    notes:              '',
-    next_followup_date: '',
-    is_extra_contact:   false,
-    new_protocol_id:    '',
-  })
+  const [logForm, setLogForm] = useState(buildInitialLogForm())
 
   const [editForm, setEditForm] = useState({})
+  const [messageCopied, setMessageCopied] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -85,6 +90,7 @@ export default function PatientDetail() {
           : Promise.resolve(),
       ])
       setPatient(data)
+      setLogForm(buildInitialLogForm(data))
       setEditForm({
         name:              data.name,
         phone:             data.phone || '',
@@ -156,12 +162,9 @@ export default function PatientDetail() {
       }
 
       setAddOpen(false)
-      setLogForm({
-        contact_date: new Date().toISOString().split('T')[0],
-        contact_type: 'call', outcome: 'reached', notes: '',
-        next_followup_date: '', is_extra_contact: false, new_protocol_id: '',
-      })
+      setLogForm(buildInitialLogForm(patient))
       setCustomProto({ name: 'Personalizado', days: [-2, 0], manualType: 'after', manualDay: '' })
+      setMessageCopied(false)
       load()
     } catch (err) {
       alert(err.message)
@@ -631,6 +634,75 @@ export default function PatientDetail() {
               onChange={e => setLogForm(f => ({ ...f, notes: e.target.value }))}
             />
           </div>
+
+          {!logForm.is_extra_contact && patient.next_protocol_step && (
+            patient.suggested_message_template ? (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-label-sm font-semibold uppercase tracking-wider text-primary">
+                      Mensagem sugerida pelo protocolo
+                    </p>
+                    <h4 className="mt-1 text-label-md font-semibold text-on-surface">
+                      {patient.suggested_message_template.title}
+                    </h4>
+                    <p className="mt-1 text-sm text-on-surface-variant">
+                      {patient.suggested_message_template.milestone_label} · previsto para {patient.suggested_message_template.milestone_date}
+                    </p>
+                    <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant">
+                      <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
+                        {CONTACT_TYPES.find((item) => item.value === patient.suggested_message_template.contact_type)?.icon ?? 'chat'}
+                      </span>
+                      Forma sugerida: {CONTACT_TYPES.find((item) => item.value === patient.suggested_message_template.contact_type)?.label ?? patient.suggested_message_template.contact_type}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(patient.suggested_message_template.rendered_content || '')
+                        setMessageCopied(true)
+                        setTimeout(() => setMessageCopied(false), 2500)
+                      }}
+                      className="rounded-lg border border-outline-variant px-3 py-1.5 text-label-sm text-on-surface transition-colors hover:bg-surface-container-low"
+                    >
+                      {messageCopied ? 'Copiado' : 'Copiar mensagem'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLogForm((current) => ({
+                        ...current,
+                        contact_type: patient.suggested_message_template.contact_type || current.contact_type,
+                        notes: patient.suggested_message_template.rendered_content || current.notes,
+                      }))}
+                      className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-label-sm text-primary transition-colors hover:bg-primary/15"
+                    >
+                      Usar no registro
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-outline-variant bg-surface px-4 py-3">
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-on-surface">
+                    {patient.suggested_message_template.rendered_content}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4">
+                <p className="text-label-sm font-semibold uppercase tracking-wider text-on-surface-variant">
+                  Próximo marco sem mensagem cadastrada
+                </p>
+                <p className="mt-1 text-sm text-on-surface">
+                  {formatProtocolDay(patient.next_protocol_step.day_offset)} · previsto para {format(parseISO(patient.next_protocol_step.date), 'dd/MM/yyyy', { locale: ptBR })}
+                </p>
+                <p className="mt-2 text-sm text-on-surface-variant">
+                  Cadastre uma mensagem na aba <strong className="text-on-surface">Protocolo de Mensagens</strong> para esse marco e o sistema passará a sugeri-la automaticamente aqui.
+                </p>
+              </div>
+            )
+          )}
 
           {/* Fora do protocolo */}
           <div className={`rounded-xl border transition-colors ${logForm.is_extra_contact ? 'border-[#f59e0b] bg-[#fffbeb]' : 'border-outline-variant bg-surface-container-low'}`}>

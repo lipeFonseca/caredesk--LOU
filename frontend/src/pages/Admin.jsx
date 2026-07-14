@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/services/api'
 import BrandingSettingsTab from '@/components/admin/BrandingSettingsTab'
+import MessageProtocolTab from '@/components/admin/MessageProtocolTab'
 import { useAuthStore, useSettingsStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
 import { formatProtocolDayShort, normalizeProtocolDays } from '@/utils/protocols'
@@ -9,6 +10,7 @@ import Avatar from '@/components/common/Avatar'
 
 const TABS = [
   { id: 'protocol', label: 'Protocolo de Contatos', icon: 'route' },
+  { id: 'message_protocol', label: 'Protocolo de Mensagens', icon: 'forum' },
   { id: 'agents',   label: 'Equipe',            icon: 'group' },
   { id: 'settings', label: 'Identidade Visual', icon: 'palette' },
 ]
@@ -51,6 +53,7 @@ export default function Admin() {
           transition={{ duration: .18 }}
         >
           {tab === 'protocol' && <ProtocolTab />}
+          {tab === 'message_protocol' && <MessageProtocolTab />}
           {tab === 'agents'   && <AgentsTab />}
           {tab === 'settings' && <BrandingSettingsTab />}
         </motion.div>

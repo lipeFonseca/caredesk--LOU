@@ -69,6 +69,19 @@ CREATE TABLE IF NOT EXISTS contact_protocols (
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Templates de mensagem vinculados aos marcos do protocolo
+CREATE TABLE IF NOT EXISTS protocol_message_templates (
+  id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  protocol_id  TEXT NOT NULL REFERENCES contact_protocols(id) ON DELETE CASCADE,
+  day_offset   INTEGER NOT NULL,
+  title        TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  contact_type TEXT NOT NULL DEFAULT 'whatsapp' CHECK (contact_type IN ('call', 'email', 'whatsapp', 'in_person')),
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(protocol_id, day_offset)
+);
+
 -- Configurações visuais e gerais da aplicação
 CREATE TABLE IF NOT EXISTS app_settings (
   key             TEXT PRIMARY KEY,
@@ -92,6 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_patients_status   ON patients(status);
 CREATE INDEX IF NOT EXISTS idx_followups_patient ON followup_logs(patient_id);
 CREATE INDEX IF NOT EXISTS idx_notif_agent       ON notifications(agent_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notif_date        ON notifications(scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_message_templates_protocol_day ON protocol_message_templates(protocol_id, day_offset);
 
 -- ============================================================
 -- Dados iniciais

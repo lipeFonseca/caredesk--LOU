@@ -101,6 +101,15 @@ export const api = {
     delete: (id)       => request(`/protocols/${id}`, { method: 'DELETE' }),
   },
 
+  messageProtocols: {
+    list:   (params = {}) => request('/message-protocols?' + new URLSearchParams(params)),
+    get:    (id)          => request(`/message-protocols/${id}`),
+    create: (body)        => request('/message-protocols', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, body)    => request(`/message-protocols/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    delete: (id)          => request(`/message-protocols/${id}`, { method: 'DELETE' }),
+    placeholders: ()      => request('/message-protocols/placeholders'),
+  },
+
   // ── Settings ────────────────────────────────────────────────
   settings: {
     getPublic:     ()     => request('/settings/public'),

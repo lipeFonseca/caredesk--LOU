@@ -77,6 +77,7 @@ Fluxo atual:
 Tipos de contato ainda suportados pelo historico:
 - `call`
 - `email`
+- `whatsapp`
 - `in_person`
 
 Observacao:
@@ -97,7 +98,9 @@ Hoje o dashboard mostra:
 
 Hoje existe:
 - tabela `contact_protocols`
+- tabela `protocol_message_templates`
 - tela administrativa para listar, criar, editar e excluir protocolos
+- aba administrativa para criar mensagens ligadas aos marcos do protocolo
 - protocolo padrao
 - protocolo customizado por paciente
 - dias negativos, dia zero e dias positivos
@@ -106,6 +109,7 @@ Atualizacao local mais recente:
 - o backend centraliza a resolucao de protocolo em uma unica regra
 - ordem oficial local: protocolo vinculado -> protocolo padrao -> `app_settings.contact_protocol_days` -> legado `patients.protocol_days` apenas como compatibilidade final
 - scheduler e rotas de pacientes compartilham a mesma logica de resolucao
+- o detalhe do paciente agora tambem resolve a mensagem do proximo marco, quando existir template para `protocol_id + day_offset`
 
 ### 2.6 Notificacoes e scheduler
 
@@ -337,6 +341,39 @@ Regra consolidada:
 - deploy de frontend puro nao deve esperar worker
 - deploy de worker puro nao deve bloquear Pages
 - o escopo detectado passou a ser a unica fonte de verdade para decidir se o Pages publica ou nao
+
+### 11.37 Protocolo de mensagens ligado aos marcos do protocolo
+
+Escopo entregue:
+- nova aba `Protocolo de Mensagens` ao lado de `Protocolo de Contatos`
+- cada mensagem fica vinculada a um protocolo real e a um marco real desse protocolo
+- o modal `Registrar Contato` agora mostra a mensagem correspondente ao proximo marco do paciente, quando ela existir
+
+Modelo escolhido:
+- tabela nova: `protocol_message_templates`
+- unicidade por `protocol_id + day_offset`
+- cada template guarda `title`, `content` e `contact_type`
+
+Motivo da modelagem:
+- a mensagem continua sendo regra do protocolo, e nao dado solto do paciente
+- isso garante consistencia entre pacientes que compartilham o mesmo protocolo
+
+Placeholders suportados:
+- `{{patient_name}}`
+- `{{patient_phone}}`
+- `{{procedure}}`
+- `{{surgery_date}}`
+- `{{assigned_agent_name}}`
+- `{{clinic_name}}`
+- `{{protocol_name}}`
+- `{{milestone_label}}`
+- `{{milestone_date}}`
+- `{{contact_date}}`
+
+Comportamento operacional:
+- se o proximo marco do paciente tiver template cadastrado, o sistema exibe a mensagem renderizada no registro de contato
+- o agente pode copiar a mensagem ou jogar o texto nas observacoes do registro
+- se o marco existir, mas ainda nao houver template, a interface avisa explicitamente que falta cadastrar essa mensagem
 
 ### 11.1 Fluxo local mais eficiente
 

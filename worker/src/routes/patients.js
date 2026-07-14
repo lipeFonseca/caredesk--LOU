@@ -6,6 +6,7 @@ import {
   getProtocolResolutionContext,
   resolvePatientProtocol,
 } from '../utils/protocols.js'
+import { resolveSuggestedMessageTemplate } from '../utils/messageTemplates.js'
 
 const patients = new Hono()
 patients.use('*', authMiddleware)
@@ -85,17 +86,38 @@ patients.get('/:id', async (c) => {
   const resolution = resolvePatientProtocol(patient, protocolContext)
   const patientOut = attachResolvedProtocol(patient, resolution)
   const today = new Date().toISOString().split('T')[0]
+  const completedCount = logs.filter((log) => !log.is_extra_contact).length
+  const clinicSetting = await c.env.DB.prepare(`
+    SELECT value
+    FROM app_settings
+    WHERE key = 'clinic_name'
+    LIMIT 1
+  `).first()
+  const suggestedMessage = await resolveSuggestedMessageTemplate(
+    c.env.DB,
+    patientOut,
+    resolution,
+    completedCount,
+    clinicSetting?.value || 'CareDesk'
+  )
 
   return c.json({
     ...patientOut,
     followup_urgency: calcProtocolUrgency(
       {
         ...patientOut,
-        total_followups: logs.filter((log) => !log.is_extra_contact).length,
+        total_followups: completedCount,
       },
       resolution.days,
       today
     ),
+    next_protocol_step: suggestedMessage.nextMilestone
+      ? {
+          day_offset: suggestedMessage.nextMilestone.day,
+          date: suggestedMessage.nextMilestone.dateStr,
+        }
+      : null,
+    suggested_message_template: suggestedMessage.template,
     followup_logs: logs,
   })
 })
