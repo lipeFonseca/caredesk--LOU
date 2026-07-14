@@ -248,6 +248,7 @@ Correcao adicional confirmada:
 - mesmo com `radius` sincronizado, alguns presets ainda deixam a curva do shader “reta demais” nas quinas; por isso o `roundness` efetivo tambem precisa respeitar um piso derivado do raio do card
 - no CareDesk, preset visual nao pode ter prioridade sobre a silhueta do card; a assinatura premium depende de o glow seguir a forma do container antes de qualquer variacao cosmetica
 - a coluna direita com `backdrop-blur` nao pode depender apenas do clipping do pai; ela precisa receber explicitamente os cantos direitos do `inner radius`, senao o blur e o fundo escuro continuam sugerindo “ponta” mesmo com o shader corrigido
+- o selo textual `Acesso institucional` foi removido da coluna esquerda do login; a composicao ficou mais limpa e a hierarquia agora deve comecar direto no `heroTitle`
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

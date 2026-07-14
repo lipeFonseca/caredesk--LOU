@@ -1240,3 +1240,19 @@ Correcao aplicada:
 
 Validacao:
 - proximo push deve concluir o job `Detect Deploy Scope` mesmo agrupando multiplos commits
+
+### 11.34 Remocao do selo "Acesso institucional" do login
+
+Solicitado em `2026-07-13`:
+- remover o texto `Acesso institucional` da coluna esquerda do card de login
+
+Correcao aplicada:
+- o texto foi removido diretamente de `frontend/src/components/login/LoginCardLayout.jsx`, fonte unica da composicao do login
+- com isso, a mudanca vale ao mesmo tempo para a tela publica e para a miniatura da aba `Identidade Visual`
+
+Resultado esperado:
+- composicao mais limpa na coluna institucional
+- a hierarquia visual passa a iniciar diretamente em `heroTitle` e `heroSubtitle`
+
+Validacao:
+- `frontend`: `npm run build` ok em `2026-07-13`

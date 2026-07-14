@@ -45,7 +45,6 @@ export default function LoginCardLayout({ branding, children, compact = false })
       <section className={leftSectionClassName} style={leftSectionStyle}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%)]" />
         <div className="relative">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-[#d6c2a2]">Acesso institucional</p>
           <h1 className={leftTitleClassName}>{branding.heroTitle}</h1>
           <p className={leftSubtitleClassName}>{branding.heroSubtitle}</p>
         </div>
