@@ -257,6 +257,7 @@ Correcao adicional confirmada:
 - modais animados com `framer-motion` nao devem usar centralizacao por `left-1/2` + `translate-x`; como o proprio Motion controla `transform`, a centralizacao precisa acontecer num wrapper `flex justify-center` para evitar deslocamento lateral
 - quando a escala ampla passa do ponto, o modal deve voltar para uma largura intermediaria e surgir centralizado no viewport, nao colado ao topo; o equilibrio visual importa tanto quanto a leitura
 - a listagem de pacientes ja entrou em trilha de paginacao server-side: o backend aceita `page` e `limit`, devolve `{ patients, total }`, o dashboard continua pedindo a base ativa sem paginacao e a tela de pacientes passa a navegar por paginas reais; junto disso, indices em `surgery_date`, `protocol_id` e `followup_logs(patient_id, contact_date DESC)` deixam essa consulta escalar melhor
+- validacao real em producao em `2026-07-14`: a API paginada respondeu corretamente, mas a base atual publicada tem apenas `2` pacientes totais; por isso a UI nao mostra varias paginas com `PAGE_SIZE=20` ainda, embora o endpoint ja troque de pagina corretamente quando forcado com `limit=1`
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

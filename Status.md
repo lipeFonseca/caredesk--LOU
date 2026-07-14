@@ -507,6 +507,32 @@ Regra operacional:
 - esse bloco deve ser publicado como frente unica: frontend + rota + schema + migration
 - deploy do worker sem a migration nao quebra funcionalidade, mas deixa a melhora de performance incompleta no remoto
 
+### 11.46 Validacao real da paginação publicada
+
+Data:
+- `2026-07-14`
+
+Ambiente validado:
+- worker publicado em `https://caredesk-worker.faugusto-thecoral.workers.dev`
+- frontend publicado em `https://caredesk-lou.pages.dev`
+
+Credencial operacional usada:
+- `admin`
+- `CareDesk2026!`
+
+Resultados:
+- `POST /api/auth/login` funcionou com a credencial documentada
+- `GET /api/patients?status=active` devolveu `total=2` e `patients.length=2`
+- `GET /api/patients?status=active&page=1&limit=5` devolveu os `2` registros
+- `GET /api/patients?status=active&page=2&limit=5` devolveu `0` registros, como esperado
+- `GET /api/patients?status=active&page=1&limit=5&search=felipe` devolveu `total=1`
+- `GET /api/patients?page=1&limit=1` e `GET /api/patients?page=2&limit=1` confirmaram troca real de pagina na API, com IDs distintos em cada resposta
+
+Conclusao:
+- a paginação server-side esta funcional no ambiente real
+- a UI publicada ainda nao exibe navegacao multipagina visivel porque a base atual tem apenas `2` pacientes totais, abaixo do `PAGE_SIZE=20`
+- nao ha evidencia de regressao funcional; falta apenas massa real de dados para validar visualmente o estado de varias paginas no frontend publicado
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:
