@@ -319,6 +319,25 @@ Regra consolidada:
 - sem imagem, a pagina ainda deve parecer premium, e nao vazia ou triste
 - o background externo agora virou parte da linguagem visual oficial do login, nao apenas um fallback neutro
 
+### 11.36 Correcao do workflow para deploy isolado de frontend
+
+Problema confirmado:
+- o workflow oficial `Deploy CareDesk` aceitava `target=frontend`, mas mesmo assim o job `Deploy Frontend` ficava `skipped`
+- o mesmo ocorreu em push normal de alteracao apenas no frontend
+
+Causa raiz:
+- o job `Deploy Frontend` ainda carregava `needs: [changes, deploy-worker]`
+- no GitHub Actions, um job preso a outro job opcional e pulado pode ser descartado antes mesmo de o `if` conseguir liberar a execucao
+
+Correcao aplicada:
+- `Deploy Frontend` agora depende apenas de `changes`
+- a decisao de publicar o frontend volta a ser guiada unicamente por `needs.changes.outputs.deploy_frontend`
+
+Regra consolidada:
+- deploy de frontend puro nao deve esperar worker
+- deploy de worker puro nao deve bloquear Pages
+- o escopo detectado passou a ser a unica fonte de verdade para decidir se o Pages publica ou nao
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:
@@ -1292,6 +1311,44 @@ Validacao feita antes de aplicar (sem tocar producao):
 - CSP validada com um servidor estatico local simulando os headers do Cloudflare Pages + worker local: paginas `/login` e `/admin` (com o shader WebGL da borda pulsante ativo) carregaram sem nenhuma violacao de CSP no console — o unico erro observado foi CORS bloqueando uma origem de teste nao whitelisted, comportamento esperado e correto
 - deploy real para uma branch de preview foi bloqueado pelo classificador de seguranca do Claude Code (deploy de producao sem aprovacao explicita do usuario) — respeitado, validacao feita 100% local
 
-Itens do plano de seguranca (secao 12.1) que ficaram fora desta rodada por decisao pendente do usuario:
-- `password_reset_tokens`/`RESEND_API_KEY` orfaos — decisao entre implementar de vez ou remover ainda nao tomada
-- migracao do token JWT de `localStorage` para cookie `HttpOnly` — nao aplicada nesta rodada porque frontend e worker vivem em dominios diferentes (`pages.dev` e `workers.dev`), o que exigiria `SameSite=None` + `Secure` e mudanca de arquitetura de sessao; risco de quebra maior que o beneficio imediato dado que o CSP ja reduz boa parte do vetor de XSS que tornaria isso critico. Registrado como recomendacao futura, nao implementado.
+Item que ficou fora desta rodada por decisao deliberada (nao por pendencia):
+- migracao do token JWT de `localStorage` para cookie `HttpOnly` — nao aplicada porque frontend e worker vivem em dominios diferentes (`pages.dev` e `workers.dev`), o que exigiria `SameSite=None` + `Secure` e mudanca de arquitetura de sessao; risco de quebra maior que o beneficio imediato dado que o CSP ja reduz boa parte do vetor de XSS que tornaria isso critico. Registrado como recomendacao futura, condicionada a migrar frontend+worker para um dominio unico primeiro.
+
+### 11.37 Remocao de `password_reset_tokens` + bloco operacional/deploy + bundle do login
+
+Aplicado em `2026-07-13`, continuando o plano de acao (secao 12) com foco em seguranca, saude do banco e fluidez, nessa ordem.
+
+**Tabela orfa removida (`12.1.5`, decisao tomada: remover):**
+- confirmado por busca em todo o codigo: `password_reset_tokens` e `RESEND_API_KEY` nunca tiveram rota funcional associada
+- migration `0007_remove-password-reset-tokens.sql` (`DROP TABLE IF EXISTS`), `schema.sql` atualizado, `RESEND_API_KEY` removido de `.dev.vars.example`
+- checado o total de linhas no D1 remoto antes de dropar (`0`) — zero risco de perda de dado
+- aplicado local e remoto, `npm test` ok nos dois
+
+**Wrangler alinhado (`12.2.1`):**
+- `worker/package.json`: `wrangler` `^3.65.0` → `^4.0.0` (resolveu `4.110.0`, mesma linha ja validada no `Deploy Frontend` do CI)
+- aproveitado para remover tambem a dependencia morta `jose` (nunca importada, JWT e feito a mao em `middleware/auth.js`)
+- `npm install` sem vulnerabilidades, `npx wrangler dev --local` testado e funcionando normalmente sob a major nova
+
+**Scripts de deploy manual pinados (`12.2.2`):**
+- `scripts/deploy-worker.ps1` nao precisou de mudanca — `npx wrangler deploy` dentro de `worker/` ja resolve a versao 4.x local pelo `package.json`/lockfile, que agora e a fonte de verdade
+- `scripts/deploy-frontend.ps1`: `npx wrangler pages deploy` → `npx wrangler@4 pages deploy`, porque `frontend/` nao tem `wrangler` como dependencia local (so instalado globalmente no CI) e ficaria sem nenhuma ancora de versao
+
+**Runbook unico de migrations (`12.2.3`) — com um incidente real no meio do caminho:**
+- criado `worker/scripts/run-migrations.js` (+ `npm run db:migrate` / `db:migrate:remote`): le `migrations/*.sql` em ordem, rastreia o que ja foi aplicado numa tabela `_migrations` no proprio D1, pula o que ja esta em dia
+- modo `--bootstrap`: marca migrations existentes como aplicadas sem rodar o SQL, para nao reaplicar `ALTER TABLE` nao-idempotente contra um banco que ja tinha o schema em dia (aplicado manualmente ao longo da sessao, antes deste script existir)
+- **primeira tentativa quebrou duas vezes por causa do path do projeto ter espaco** (`Developer CODEX`): `execFileSync` sem shell nao achava `npx` no Windows; com `shell:true` e array de args, o Node (versao atual) nao escapa os argumentos automaticamente (`DEP0190`), entao o path com espaco virava dois argumentos separados e o wrangler recusava. Resolvido trocando para `execSync` com uma string de comando montada manualmente, cada argumento entre aspas quando necessario
+- **incidente real durante o teste no remoto:** a leitura da tabela `_migrations` (via `--file` com `--json`) veio contaminada por um aviso do proprio wrangler no stdout, quebrando o `JSON.parse`; o `catch` silencioso tratava isso como "nada aplicado" e o script comecou a reaplicar `0000` e `0001` de verdade contra producao antes de travar em `0002` com erro de coluna duplicada (esperado, e serviu de alarme)
+  - **verificado que nao houve perda de dado**: `0000`/`0001` sao idempotentes por design (recreate-table/backfill condicional), a propria Cloudflare garante rollback automatico em caso de falha no meio de um `--file`, e a contagem de `patients`/`agents`/`followups`/`notifications`/`protocols`/`settings` foi conferida igual antes e depois; `/health` e login testados em producao logo em seguida, tudo normal
+  - **causa raiz corrigida**: leitura de tracking trocada de `--file` para `--command` (sem o aviso de upload assincrono que contaminava o stdout), e o `catch` de parsing deixou de assumir silenciosamente "nada aplicado" — agora aborta alto e claro se nao conseguir confirmar o estado com seguranca, em vez de arriscar reaplicar migration contra dado real
+  - reconfirmado local e remoto depois do fix: as 8 migrations aparecem como "ja aplicada, pulando" nos dois ambientes
+
+**Bundle do login (`12.4.1`):**
+- `@paper-design/shaders-react` isolado em `frontend/src/components/ui/LoginPulsingBorderShader.jsx`, carregado via `React.lazy` + `Suspense` a partir de `LoginPulsingBorder.jsx`, que perdeu o import estatico da lib
+- bundle principal caiu de `536.22 kB` para `483.07 kB` — aviso de chunk `>500 kB` desapareceu por completo; o shader vira um chunk proprio de `55.68 kB`, buscado so quando o efeito esta ativo
+- `manualChunks` (sugerido pela nota de aprendizados) avaliado e descartado por ora: o projeto so tem essa unica dependencia pesada, ja isolada pelo lazy load — adicionar mais grupos de chunk sem outro problema real seria otimizacao prematura
+- validado com `vite preview` (build de producao de verdade, nao o dev server) + Playwright: o chunk do shader aparece como request de rede separado, a borda pulsante renderiza normalmente na tela de login publicada, sem erro de console
+
+Validacao final desta rodada:
+- `worker`: `npm test` ok (6/6)
+- `frontend`: `npm run build` ok, sem aviso de chunk grande
+- producao: `/health` `200`, login funcionando, contagem de registros confirmada igual antes/depois do incidente de migration

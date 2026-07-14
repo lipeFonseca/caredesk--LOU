@@ -25,7 +25,7 @@ try {
     Pop-Location
   }
 
-  npx wrangler pages deploy dist --project-name $pagesProjectName
+  npx wrangler@4 pages deploy dist --project-name $pagesProjectName
 
   $deploymentUrl = $null
   $deployedAt = Get-Date

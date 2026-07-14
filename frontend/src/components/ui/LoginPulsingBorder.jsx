@@ -1,13 +1,9 @@
-import { useMemo } from 'react'
+import { Suspense, lazy, useMemo } from 'react'
 import { useReducedMotion } from 'framer-motion'
-import { PulsingBorder, pulsingBorderPresets } from '@paper-design/shaders-react'
 
-const PRESET_MAP = {
-  default: 'Default',
-  circle: 'Circle',
-  'northern-lights': 'Northern lights',
-  'solid-line': 'Solid line',
-}
+// Lazy: @paper-design/shaders-react (WebGL) so entra no bundle quando o efeito
+// realmente renderiza, em vez de pesar no chunk principal do app inteiro.
+const LoginPulsingBorderShader = lazy(() => import('./LoginPulsingBorderShader'))
 
 export default function LoginPulsingBorder({ config, className = '', children, radius = 36 }) {
   const prefersReducedMotion = useReducedMotion()
@@ -15,7 +11,6 @@ export default function LoginPulsingBorder({ config, className = '', children, r
   const borderInset = useMemo(() => resolveBorderInset(config), [config])
   const outerRadius = Math.max(0, Number(radius) || 0)
   const innerRadius = Math.max(0, outerRadius - borderInset - 1)
-  const shaderProps = useMemo(() => buildShaderProps(config, pulsingBorderPresets, outerRadius), [config, outerRadius])
 
   return (
     <div
@@ -26,14 +21,10 @@ export default function LoginPulsingBorder({ config, className = '', children, r
         '--login-card-inner-radius': `${innerRadius}px`,
       }}
     >
-      {isEnabled && shaderProps ? (
-        <div
-          className="pointer-events-none absolute inset-0 overflow-hidden"
-          aria-hidden="true"
-          style={{ borderRadius: `${outerRadius}px` }}
-        >
-          <PulsingBorder {...shaderProps} style={{ width: '100%', height: '100%', display: 'block' }} />
-        </div>
+      {isEnabled ? (
+        <Suspense fallback={null}>
+          <LoginPulsingBorderShader config={config} outerRadius={outerRadius} />
+        </Suspense>
       ) : null}
       <div
         className="relative z-10 border border-outline-variant/60 bg-surface"
@@ -48,37 +39,8 @@ export default function LoginPulsingBorder({ config, className = '', children, r
   )
 }
 
-function buildShaderProps(config = {}, presets = [], outerRadius = 36) {
-  const presetName = PRESET_MAP[config.preset] || PRESET_MAP.default
-  const preset = presets.find((candidate) => candidate.name === presetName) || presets[0]
-  if (!preset?.params) return null
-
-  const resolvedRoundness = resolveShaderRoundness(config, preset.params.roundness, outerRadius)
-
-  return {
-    ...preset.params,
-    colors: Array.isArray(config.colors) && config.colors.length ? config.colors : preset.params.colors,
-    colorBack: config.colorBack || '#00000000',
-    roundness: resolvedRoundness,
-    intensity: typeof config.intensity === 'number' ? config.intensity : preset.params.intensity,
-    speed: typeof config.speed === 'number' ? config.speed : preset.params.speed,
-    thickness: typeof config.thickness === 'number' ? config.thickness : preset.params.thickness,
-    bloom: typeof config.bloom === 'number' ? config.bloom : preset.params.bloom,
-  }
-}
-
 function resolveBorderInset(config = {}) {
   const thickness = typeof config.thickness === 'number' ? config.thickness : 0.1
   const normalized = Math.min(1, Math.max(0, thickness))
   return 4 + (normalized * 8)
-}
-
-function resolveShaderRoundness(config = {}, presetRoundness = 0.25, outerRadius = 36) {
-  const normalizedRadius = Math.min(1, Math.max(0, outerRadius / 96))
-  const derivedRoundness = 0.5 + (normalizedRadius * 0.45)
-  const presetValue = typeof presetRoundness === 'number' ? presetRoundness : 0.25
-
-  if (config.preset === 'circle') return 1
-
-  return Math.min(1, Math.max(presetValue, derivedRoundness))
 }
