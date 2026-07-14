@@ -101,7 +101,10 @@ CREATE TABLE IF NOT EXISTS login_rate_limit (
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_patients_agent    ON patients(assigned_agent_id);
 CREATE INDEX IF NOT EXISTS idx_patients_status   ON patients(status);
+CREATE INDEX IF NOT EXISTS idx_patients_surgery_date ON patients(surgery_date);
+CREATE INDEX IF NOT EXISTS idx_patients_protocol ON patients(protocol_id);
 CREATE INDEX IF NOT EXISTS idx_followups_patient ON followup_logs(patient_id);
+CREATE INDEX IF NOT EXISTS idx_followups_patient_date ON followup_logs(patient_id, contact_date DESC);
 CREATE INDEX IF NOT EXISTS idx_notif_agent       ON notifications(agent_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notif_date        ON notifications(scheduled_for);
 CREATE INDEX IF NOT EXISTS idx_message_templates_protocol_day ON protocol_message_templates(protocol_id, day_offset);

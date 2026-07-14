@@ -56,7 +56,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     api.patients.list({ status: 'active' })
-      .then((data) => setPatients(data ?? []))
+      .then((data) => setPatients(data.patients ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])

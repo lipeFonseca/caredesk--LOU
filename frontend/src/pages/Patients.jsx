@@ -64,6 +64,7 @@ function getInitials(name = '') {
 
 export default function Patients() {
   const [patients,         setPatients]         = useState([])
+  const [total,            setTotal]            = useState(0)
   const [agents,           setAgents]           = useState([])
   const [loading,          setLoading]          = useState(true)
   const [search,           setSearch]           = useState('')
@@ -77,28 +78,34 @@ export default function Patients() {
     api.agents.list().then(data => setAgents(data ?? [])).catch(() => {})
   }, [])
 
-  const fetchPatients = useCallback(() => {
-    setLoading(true)
-    setPage(1)
-    const params = {}
+  const buildParams = useCallback((pageNum) => {
+    const params = { page: pageNum, limit: PAGE_SIZE }
     if (status)        params.status   = status
     if (search.trim()) params.search   = search.trim()
     if (agentId)       params.agent_id = agentId
     if (dateRange)     params.from     = format(subDays(new Date(), parseInt(dateRange)), 'yyyy-MM-dd')
-
-    api.patients.list(params)
-      .then(data => setPatients(data ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    return params
   }, [search, status, agentId, dateRange])
 
-  useEffect(() => {
-    const t = setTimeout(fetchPatients, 300)
-    return () => clearTimeout(t)
-  }, [fetchPatients])
+  const fetchPage = useCallback((pageNum) => {
+    setLoading(true)
+    api.patients.list(buildParams(pageNum))
+      .then(data => {
+        setPatients(data.patients ?? [])
+        setTotal(data.total ?? 0)
+        setPage(pageNum)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [buildParams])
 
-  const totalPages = Math.max(1, Math.ceil(patients.length / PAGE_SIZE))
-  const paginated  = patients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  useEffect(() => {
+    const t = setTimeout(() => fetchPage(1), 300)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, status, agentId, dateRange])
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
@@ -110,7 +117,7 @@ export default function Patients() {
             <h2 className="text-display-lg font-display-lg text-on-surface">Pacientes</h2>
             {!loading && (
               <span className="bg-primary/10 text-primary px-3 py-1 rounded-full text-label-sm font-label-sm border border-primary/20">
-                {patients.length} Total
+                {total} Total
               </span>
             )}
           </div>
@@ -215,7 +222,7 @@ export default function Patients() {
                 </tr>
               </thead>
               <tbody className="text-body-md font-body-md text-on-surface">
-                {paginated.map(p => {
+                {patients.map(p => {
                   const badge     = urgencyBadge[p.followup_urgency] ?? urgencyBadge.none
                   const isOverdue = p.followup_urgency === 'overdue'
                   return (
@@ -306,15 +313,15 @@ export default function Patients() {
             <p className="text-label-sm font-label-sm text-outline">
               Mostrando{' '}
               <span className="font-medium text-on-surface">
-                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, patients.length)}
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}
               </span>
               {' '}de{' '}
-              <span className="font-medium text-on-surface">{patients.length}</span>
+              <span className="font-medium text-on-surface">{total}</span>
               {' '}pacientes
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => fetchPage(Math.max(1, page - 1))}
                 disabled={page === 1}
                 className="p-1.5 rounded border border-outline-variant text-outline hover:bg-surface hover:text-on-surface transition-colors disabled:opacity-50"
               >
@@ -326,7 +333,7 @@ export default function Patients() {
                   return (
                     <button
                       key={n}
-                      onClick={() => setPage(n)}
+                      onClick={() => fetchPage(n)}
                       className={`w-7 h-7 rounded text-label-sm font-label-sm flex items-center justify-center transition-colors ${
                         page === n
                           ? 'bg-primary text-on-primary'
@@ -339,7 +346,7 @@ export default function Patients() {
                 })}
               </div>
               <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                onClick={() => fetchPage(Math.min(totalPages, page + 1))}
                 disabled={page === totalPages}
                 className="p-1.5 rounded border border-outline-variant text-outline hover:bg-surface hover:text-on-surface transition-colors disabled:opacity-50"
               >

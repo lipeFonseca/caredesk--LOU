@@ -256,6 +256,7 @@ Correcao adicional confirmada:
 - a largura de modais no CareDesk nao depende mais apenas de `max-width`; os modais passaram a ter largura explicita baseada em viewport, com teto muito mais aberto, para que o ganho horizontal fique visivel de fato
 - modais animados com `framer-motion` nao devem usar centralizacao por `left-1/2` + `translate-x`; como o proprio Motion controla `transform`, a centralizacao precisa acontecer num wrapper `flex justify-center` para evitar deslocamento lateral
 - quando a escala ampla passa do ponto, o modal deve voltar para uma largura intermediaria e surgir centralizado no viewport, nao colado ao topo; o equilibrio visual importa tanto quanto a leitura
+- a listagem de pacientes ja entrou em trilha de paginacao server-side: o backend aceita `page` e `limit`, devolve `{ patients, total }`, o dashboard continua pedindo a base ativa sem paginacao e a tela de pacientes passa a navegar por paginas reais; junto disso, indices em `surgery_date`, `protocol_id` e `followup_logs(patient_id, contact_date DESC)` deixam essa consulta escalar melhor
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

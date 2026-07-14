@@ -472,6 +472,41 @@ Resultado esperado:
 - leitura ainda confortavel
 - abertura centralizada de verdade na pagina
 
+### 11.44 Paginacao server-side da listagem de pacientes
+
+Escopo validado:
+- `frontend/src/pages/Patients.jsx` deixou de paginar no cliente e passou a pedir paginas reais ao backend
+- `worker/src/routes/patients.js` aceita `page` e `limit`, aplica `LIMIT/OFFSET` quando solicitado e devolve `{ patients, total }`
+- o comportamento legado para consumidores que precisam da base ativa inteira foi preservado no dashboard, que continua consumindo `data.patients ?? []`
+
+Motivo:
+- reduzir custo de renderizacao e transferencia quando a base crescer
+- preparar a listagem principal para escalar sem depender de carregar todos os pacientes no browser
+
+Validacao:
+- `npm run build` no frontend passou
+- `npm test` no worker passou com `25/25`
+
+### 11.45 Indices preventivos para query de pacientes
+
+Arquivos envolvidos:
+- `worker/src/db/schema.sql`
+- `worker/migrations/0010_patient_query_indexes.sql`
+
+Indices adicionados:
+- `idx_patients_surgery_date`
+- `idx_patients_protocol`
+- `idx_followups_patient_date`
+
+Motivo:
+- acelerar filtros por data de cirurgia e ordenacao da listagem
+- reduzir custo do join com `contact_protocols`
+- otimizar a subquery do ultimo contato por paciente
+
+Regra operacional:
+- esse bloco deve ser publicado como frente unica: frontend + rota + schema + migration
+- deploy do worker sem a migration nao quebra funcionalidade, mas deixa a melhora de performance incompleta no remoto
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:

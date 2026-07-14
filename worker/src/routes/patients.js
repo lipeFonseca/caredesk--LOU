@@ -12,8 +12,31 @@ const patients = new Hono()
 patients.use('*', authMiddleware)
 
 // ── GET /api/patients ─────────────────────────────────────────
+// `page` e opcional: quando ausente, mantem o comportamento historico de
+// retornar todos os registros que casam com o filtro (usado hoje pelo
+// Dashboard, que precisa da base ativa inteira pra calcular KPIs). Quando
+// presente, aplica LIMIT/OFFSET e a resposta inclui `total` pra paginacao
+// no frontend.
 patients.get('/', async (c) => {
-  const { status, agent_id, from, to, search } = c.req.query()
+  const { status, agent_id, from, to, search, page, limit } = c.req.query()
+
+  let whereSql = ' WHERE 1=1'
+  const binds = []
+
+  if (status)   { whereSql += ' AND p.status = ?';            binds.push(status) }
+  if (agent_id) { whereSql += ' AND p.assigned_agent_id = ?'; binds.push(agent_id) }
+  if (from)     { whereSql += ' AND p.surgery_date >= ?';     binds.push(from) }
+  if (to)       { whereSql += ' AND p.surgery_date <= ?';     binds.push(to) }
+  if (search)   {
+    whereSql += ' AND (p.name LIKE ? OR p.phone LIKE ?)'
+    const like = `%${search}%`
+    binds.push(like, like)
+  }
+
+  const countRow = await c.env.DB.prepare(`
+    SELECT COUNT(*) AS total FROM patients p ${whereSql}
+  `).bind(...binds).first()
+  const total = countRow?.total ?? 0
 
   let sql = `
     SELECT
@@ -27,22 +50,19 @@ patients.get('/', async (c) => {
     FROM patients p
     LEFT JOIN agents a           ON p.assigned_agent_id = a.id
     LEFT JOIN contact_protocols cp ON p.protocol_id = cp.id
-    WHERE 1=1
+    ${whereSql}
+    ORDER BY p.surgery_date DESC
   `
-  const binds = []
+  const queryBinds = [...binds]
 
-  if (status)   { sql += ' AND p.status = ?';            binds.push(status) }
-  if (agent_id) { sql += ' AND p.assigned_agent_id = ?'; binds.push(agent_id) }
-  if (from)     { sql += ' AND p.surgery_date >= ?';     binds.push(from) }
-  if (to)       { sql += ' AND p.surgery_date <= ?';     binds.push(to) }
-  if (search)   {
-    sql += ' AND (p.name LIKE ? OR p.phone LIKE ?)'
-    const like = `%${search}%`
-    binds.push(like, like)
+  const pageNum = parseInt(page, 10)
+  if (Number.isInteger(pageNum) && pageNum > 0) {
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20))
+    sql += ' LIMIT ? OFFSET ?'
+    queryBinds.push(limitNum, (pageNum - 1) * limitNum)
   }
-  sql += ' ORDER BY p.surgery_date DESC'
 
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all()
+  const { results } = await c.env.DB.prepare(sql).bind(...queryBinds).all()
   const protocolContext = await getProtocolResolutionContext(c.env.DB)
 
   const today = new Date().toISOString().split('T')[0]
@@ -56,7 +76,7 @@ patients.get('/', async (c) => {
     }
   })
 
-  return c.json(enriched)
+  return c.json({ patients: enriched, total })
 })
 
 // ── GET /api/patients/:id ─────────────────────────────────────
