@@ -421,29 +421,7 @@ function Spinner() {
 }
 
 function getDefaultFormState() {
-  return {
-    clinic_name: '',
-    clinic_tagline: '',
-    hero_title: '',
-    hero_subtitle: '',
-    primary_color: '#5f8fba',
-    logo_url: '',
-    background_image_url: '',
-    login_image_url: '',
-    login_background_image_url: '',
-    favicon_url: '',
-    login_border_effect_enabled: false,
-    login_border_preset: 'default',
-    login_border_color_1: '#0dc1fd',
-    login_border_color_2: '#d915ef',
-    login_border_color_3: '#ff3f2ecc',
-    login_border_color_back: '#00000000',
-    login_border_intensity: 0.2,
-    login_border_speed: 1,
-    login_border_thickness: 0.1,
-    login_border_bloom: 0.25,
-    timezone: 'America/Fortaleza',
-  }
+  return normalizeBrandingSettings({})
 }
 
 function buildSettingsPayload(form) {

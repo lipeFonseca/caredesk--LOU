@@ -1,15 +1,15 @@
-const DEFAULT_TAGLINE = 'Acompanhamento pos-cirurgico com presenca e previsibilidade.'
-const DEFAULT_HERO_TITLE = 'Cuidado premium em cada etapa da jornada do paciente.'
-const DEFAULT_HERO_SUBTITLE = 'Organize contatos, acompanhe protocolos e conduza o retorno com uma interface mais humana, elegante e clara.'
-const DEFAULT_PRIMARY_COLOR = '#5f8fba'
-const DEFAULT_TIMEZONE = 'America/Fortaleza'
-const DEFAULT_LOGIN_BORDER_COLORS = ['#0dc1fd', '#d915ef', '#ff3f2ecc']
-const DEFAULT_LOGIN_BORDER_COLOR_BACK = '#00000000'
-const DEFAULT_LOGIN_BORDER_PRESET = 'default'
-const DEFAULT_LOGIN_BORDER_INTENSITY = 0.2
-const DEFAULT_LOGIN_BORDER_SPEED = 1
-const DEFAULT_LOGIN_BORDER_THICKNESS = 0.1
-const DEFAULT_LOGIN_BORDER_BLOOM = 0.25
+export const DEFAULT_TAGLINE = 'Acompanhamento pos-cirurgico com presenca e previsibilidade.'
+export const DEFAULT_HERO_TITLE = 'Cuidado premium em cada etapa da jornada do paciente.'
+export const DEFAULT_HERO_SUBTITLE = 'Organize contatos, acompanhe protocolos e conduza o retorno com uma interface mais humana, elegante e clara.'
+export const DEFAULT_PRIMARY_COLOR = '#5f8fba'
+export const DEFAULT_TIMEZONE = 'America/Fortaleza'
+export const DEFAULT_LOGIN_BORDER_COLORS = ['#0dc1fd', '#d915ef', '#ff3f2ecc']
+export const DEFAULT_LOGIN_BORDER_COLOR_BACK = '#00000000'
+export const DEFAULT_LOGIN_BORDER_PRESET = 'default'
+export const DEFAULT_LOGIN_BORDER_INTENSITY = 0.2
+export const DEFAULT_LOGIN_BORDER_SPEED = 1
+export const DEFAULT_LOGIN_BORDER_THICKNESS = 0.1
+export const DEFAULT_LOGIN_BORDER_BLOOM = 0.25
 
 export function normalizeBrandingSettings(settings = {}) {
   return {

@@ -3,8 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/services/api'
 import BrandingSettingsTab from '@/components/admin/BrandingSettingsTab'
 import MessageProtocolTab from '@/components/admin/MessageProtocolTab'
-import { useAuthStore, useSettingsStore } from '@/store'
-import { VISUAL_THEMES } from '@/theme/visualThemes'
+import { useAuthStore } from '@/store'
 import { formatProtocolDayShort, normalizeProtocolDays } from '@/utils/protocols'
 import Avatar from '@/components/common/Avatar'
 
@@ -718,136 +717,6 @@ function ResetPasswordModal({ agent, onClose }) {
         </form>
       )}
     </Modal>
-  )
-}
-
-// ── Tab: Configurações ────────────────────────────────────────
-function SettingsTab() {
-  const { setSettings } = useSettingsStore()
-  const [form, setFormState] = useState({ clinic_name: '', primary_color: '#6366f1', logo_url: '', timezone: 'America/Fortaleza' })
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving]   = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [error, setError]     = useState('')
-
-  useEffect(() => {
-    api.settings.get()
-      .then(data => { if (data) setFormState(f => ({ ...f, ...data })) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
-
-  function set(field) { return e => { setFormState(f => ({ ...f, [field]: e.target.value })); setSuccess(false); setError('') } }
-  function selectTheme(theme) {
-    setFormState(f => ({ ...f, primary_color: theme.primary }))
-    setSuccess(false)
-    setError('')
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await api.settings.update(form)
-      setSettings(form)
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) return <div className="h-48 bg-surface-container-low rounded-xl animate-pulse" />
-
-  const activeTheme = VISUAL_THEMES.find(theme => theme.primary.toLowerCase() === String(form.primary_color).toLowerCase())
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6 space-y-5">
-        <h2 className="text-headline-sm font-headline-sm text-on-surface">Configurações gerais</h2>
-        <div><label className="label">Nome da clínica</label><input className="input" value={form.clinic_name} onChange={set('clinic_name')} required /></div>
-        <div>
-          <label className="label">Tema visual</label>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {VISUAL_THEMES.map(theme => {
-              const isSelected = theme.primary.toLowerCase() === String(form.primary_color).toLowerCase()
-              return (
-                <button
-                  key={theme.id}
-                  type="button"
-                  onClick={() => selectTheme(theme)}
-                  className={`text-left rounded-xl border p-4 transition-all ${
-                    isSelected
-                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                      : 'border-outline-variant bg-surface hover:border-primary/40 hover:bg-surface-container-low'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-label-md font-label-md text-on-surface">{theme.name}</p>
-                      <p className="text-body-sm text-on-surface-variant mt-1">{theme.description}</p>
-                    </div>
-                    {isSelected && (
-                      <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: '20px' }}>
-                        check_circle
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-4">
-                    {theme.swatches.map(color => (
-                      <span
-                        key={color}
-                        className="w-9 h-9 rounded-full border border-black/5 shadow-sm"
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-          <div className="mt-3 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3">
-            <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Tema selecionado</p>
-            <div className="flex items-center gap-3 mt-2">
-              <span
-                className="w-10 h-10 rounded-full border border-black/5 shadow-sm shrink-0"
-                style={{ backgroundColor: form.primary_color }}
-              />
-              <div>
-                <p className="text-body-md text-on-surface font-medium">
-                  {activeTheme?.name ?? 'Tema personalizado legado'}
-                </p>
-                <p className="text-label-sm text-on-surface-variant">
-                  Cor principal aplicada na interface: {form.primary_color}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div><label className="label">URL do logo</label><input className="input" placeholder="https://…" value={form.logo_url} onChange={set('logo_url')} /></div>
-        <div>
-          <label className="label">Fuso horário</label>
-          <select className="input" value={form.timezone} onChange={set('timezone')}>
-            <option value="America/Fortaleza">America/Fortaleza (BRT -3)</option>
-            <option value="America/Sao_Paulo">America/Sao_Paulo (BRT -3 / BRST -2)</option>
-            <option value="America/Manaus">America/Manaus (AMT -4)</option>
-            <option value="America/Belem">America/Belem (BRT -3)</option>
-          </select>
-        </div>
-        {error   && <p className="text-label-sm text-error bg-error-container/30 px-3 py-2 rounded-lg">{error}</p>}
-        {success && (
-          <p className="text-label-sm text-secondary bg-secondary/10 px-3 py-2 rounded-lg flex items-center gap-1.5">
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>check_circle</span>
-            Configurações salvas!
-          </p>
-        )}
-        <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? <Spinner /> : 'Salvar configurações'}
-        </button>
-      </div>
-    </form>
   )
 }
 

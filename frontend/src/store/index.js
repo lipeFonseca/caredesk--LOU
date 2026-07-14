@@ -1,6 +1,20 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { normalizeBrandingSettings } from '@/theme/branding'
+import {
+  normalizeBrandingSettings,
+  DEFAULT_TAGLINE,
+  DEFAULT_HERO_TITLE,
+  DEFAULT_HERO_SUBTITLE,
+  DEFAULT_PRIMARY_COLOR,
+  DEFAULT_TIMEZONE,
+  DEFAULT_LOGIN_BORDER_COLORS,
+  DEFAULT_LOGIN_BORDER_COLOR_BACK,
+  DEFAULT_LOGIN_BORDER_PRESET,
+  DEFAULT_LOGIN_BORDER_INTENSITY,
+  DEFAULT_LOGIN_BORDER_SPEED,
+  DEFAULT_LOGIN_BORDER_THICKNESS,
+  DEFAULT_LOGIN_BORDER_BLOOM,
+} from '@/theme/branding'
 
 // ── Auth Store ────────────────────────────────────────────────
 export const useAuthStore = create(
@@ -65,26 +79,26 @@ export const useSettingsStore = create((set, get) => ({
   isLoaded: false,
   settings: {
     clinic_name:           'CareDesk',
-    clinic_tagline:        'Acompanhamento pos-cirurgico com presenca e previsibilidade.',
-    hero_title:            'Cuidado premium em cada etapa da jornada do paciente.',
-    hero_subtitle:         'Organize contatos, acompanhe protocolos e conduza o retorno com uma interface mais humana, elegante e clara.',
-    primary_color:         '#5f8fba',
+    clinic_tagline:        DEFAULT_TAGLINE,
+    hero_title:            DEFAULT_HERO_TITLE,
+    hero_subtitle:         DEFAULT_HERO_SUBTITLE,
+    primary_color:         DEFAULT_PRIMARY_COLOR,
     logo_url:              '',
     background_image_url:  '',
     login_image_url:       '',
     login_background_image_url: '',
     favicon_url:           '',
     login_border_effect_enabled: false,
-    login_border_preset: 'default',
-    login_border_color_1: '#0dc1fd',
-    login_border_color_2: '#d915ef',
-    login_border_color_3: '#ff3f2ecc',
-    login_border_color_back: '#00000000',
-    login_border_intensity: 0.2,
-    login_border_speed: 1,
-    login_border_thickness: 0.1,
-    login_border_bloom: 0.25,
-    timezone:              'America/Fortaleza',
+    login_border_preset: DEFAULT_LOGIN_BORDER_PRESET,
+    login_border_color_1: DEFAULT_LOGIN_BORDER_COLORS[0],
+    login_border_color_2: DEFAULT_LOGIN_BORDER_COLORS[1],
+    login_border_color_3: DEFAULT_LOGIN_BORDER_COLORS[2],
+    login_border_color_back: DEFAULT_LOGIN_BORDER_COLOR_BACK,
+    login_border_intensity: DEFAULT_LOGIN_BORDER_INTENSITY,
+    login_border_speed: DEFAULT_LOGIN_BORDER_SPEED,
+    login_border_thickness: DEFAULT_LOGIN_BORDER_THICKNESS,
+    login_border_bloom: DEFAULT_LOGIN_BORDER_BLOOM,
+    timezone:              DEFAULT_TIMEZONE,
     contact_protocol_days: DEFAULT_PROTOCOL,
   },
   setSettings: (incoming) => {
