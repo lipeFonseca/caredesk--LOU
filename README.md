@@ -554,6 +554,7 @@ Regras praticas:
 - `GitHub Actions` e a trilha oficial de historico da evolucao
 - `Cloudflare Pages` e `Workers` continuam recebendo a versao final publicada
 - scripts locais existem para operacao manual, nao para substituir o historico do GitHub
+- o job de frontend do workflow oficial nao pode depender de `deploy-worker` em `needs`, porque um worker fora do escopo pode deixar o frontend `skipped` mesmo quando o deploy do Pages foi solicitado
 
 ## Ajuste do workflow de deploy
 
@@ -561,6 +562,7 @@ O workflow oficial agora foi alinhado para acompanhamento melhor da evolucao:
 - nome do workflow: `Deploy CareDesk`
 - `run-name` passa a refletir melhor a origem da publicacao
 - `concurrency` continua serializando por branch, mas sem cancelar deploy anterior em andamento
+- `Deploy Frontend` agora depende apenas da deteccao de escopo (`changes`), evitando que publicacoes de frontend puro fiquem presas a um job opcional do worker
 - com `cancel-in-progress: false`, novos runs nao apagam a leitura da evolucao recente no `Actions`
 - `workflow_dispatch` agora aceita `target` (`all`, `worker`, `frontend`) e `reason`
 - em `push` para `main`, o workflow detecta o escopo alterado e publica apenas o que realmente mudou

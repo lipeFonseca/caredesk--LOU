@@ -145,12 +145,8 @@ jobs:
   deploy-frontend:
     name: Deploy Frontend
     runs-on: ubuntu-latest
-    needs:
-      - changes
-      - deploy-worker
-    if: >-
-      needs.changes.outputs.deploy_frontend == 'true'
-      && (needs['deploy-worker'].result == 'success' || needs['deploy-worker'].result == 'skipped')
+    needs: changes
+    if: needs.changes.outputs.deploy_frontend == 'true'
 
     defaults:
       run:
