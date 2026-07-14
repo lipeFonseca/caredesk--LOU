@@ -1,4 +1,5 @@
 import { findThemeByPrimaryColor, applyThemePalette as applyLight } from '@/theme/visualThemes'
+import { normalizeHex, mix, hexToRgbTriplet } from '@/theme/colorUtils'
 
 const BLACK = '#0c0c10'
 
@@ -103,33 +104,3 @@ function buildDarkPalette(theme) {
   }
 }
 
-function normalizeHex(hex) {
-  if (typeof hex !== 'string') return null
-  const v = hex.trim()
-  return /^#([0-9a-f]{6})$/i.test(v) ? v : null
-}
-
-function mix(baseHex, targetHex, amount) {
-  const [r1, g1, b1] = hexToRgb(baseHex)
-  const [r2, g2, b2] = hexToRgb(targetHex)
-  return rgbToHex(
-    Math.round(r1 + (r2 - r1) * amount),
-    Math.round(g1 + (g2 - g1) * amount),
-    Math.round(b1 + (b2 - b1) * amount)
-  )
-}
-
-function hexToRgb(hex) {
-  const n = normalizeHex(hex)
-  if (!n) return [0, 0, 0]
-  return [parseInt(n.slice(1,3),16), parseInt(n.slice(3,5),16), parseInt(n.slice(5,7),16)]
-}
-
-function rgbToHex(r, g, b) {
-  return `#${[r,g,b].map(v => v.toString(16).padStart(2,'0')).join('')}`
-}
-
-function hexToRgbTriplet(hex) {
-  const [r, g, b] = hexToRgb(hex)
-  return `${r} ${g} ${b}`
-}
