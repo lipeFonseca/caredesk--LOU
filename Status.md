@@ -431,6 +431,27 @@ Efeito esperado:
 - o crescimento horizontal deve finalmente ficar visivel em telas desktop comuns
 - o modal `Registrar Contato` deixa de parecer estreito mesmo quando carrega blocos longos de protocolo e mensagem
 
+### 11.42 Correcao de alinhamento dos modais largos
+
+Problema encontrado:
+- depois da ampliacao horizontal, o modal `Registrar Contato` passou a abrir deslocado para a direita
+- a causa foi um conflito entre o `-translate-x-1/2` do Tailwind e o `transform` aplicado pelo `framer-motion` nas animacoes de `scale` e `y`
+
+Correcao aplicada:
+- a centralizacao saiu do proprio `motion.div`
+- cada modal largo passou a ficar dentro de um wrapper fixo com `flex items-start justify-center`
+- o card animado agora recebe apenas largura e estilo visual, sem depender de `translate` para alinhamento
+
+Arquivos ajustados:
+- `frontend/src/pages/PatientDetail.jsx`
+- `frontend/src/pages/Admin.jsx`
+- `frontend/src/components/admin/MessageProtocolTab.jsx`
+
+Resultado esperado:
+- modal largo centralizado corretamente
+- mesma largura ampla mantida
+- animacao continua suave sem quebrar o posicionamento
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:
@@ -1467,9 +1488,17 @@ Aplicado em `2026-07-14`, continuando o plano de acao (secao 12) apos o `11.37`.
 - recontagem feita de novo imediatamente antes de aplicar no remoto (ainda `0`/`2`) — migration `0009_drop-legacy-patient-protocol-days.sql` aplicada local e remoto via `run-migrations.js`
 - removidos do codigo: o branch `LEGACY` inteiro em `resolvePatientProtocol()`, a constante `PROTOCOL_DAY_SOURCES.LEGACY`, a coluna em `schema.sql` e o teste que cobria esse branch (substituido por um teste cobrindo o fallback pra `EMPTY`)
 
+**Incidente no deploy: `vitest@4.1.10` quebrou o `npm ci` do CI:**
+- `npm install -D vitest` instalou `4.1.10` (major mais recente); localmente `npm ci`/`npm install` pareciam consistentes no Windows, mas o job `Deploy Frontend` falhou com `npm error Missing: esbuild@0.28.1 from lock file` e dezenas de `@esbuild/<plataforma>@0.28.1` ausentes
+- causa raiz: `vitest@4.1.10` depende internamente de um `vite@8.1.4` proprio (isolado do `vite@5.4.21` do projeto), que exige `esbuild ^0.27.0 || ^0.28.0`; isso colidia com o `esbuild@0.21.5` do `vite@5` do projeto e gerava um `package-lock.json` que o `npm ci` estrito do Linux/CI nao conseguia reproduzir (`npm ls esbuild` no Windows so acusava isso como `invalid`, sem travar o `npm ci` local)
+- corrigido fixando `vitest` em `^3.2.4` (depende de `vite ^5.0.0`, compativel com o `vite@5.4.21` do projeto, resolvendo um unico `esbuild@0.21.5`); ao rodar `npm audit` nessa versao apareceu uma vulnerabilidade **critica** propria do `vitest` 3.2.4/3.2.5 (`GHSA-5xrq-8626-4rwp`, leitura arbitraria de arquivo quando o UI server do Vitest esta ativo — nao usamos o UI server, mas corrigido de qualquer forma), resolvida subindo para `vitest@3.2.7`
+- validado com `rm -rf node_modules && npm ci` (replicando exatamente o passo do CI) antes de subir o commit de correcao; `Deploy CareDesk` voltou a passar (worker + frontend) na run seguinte
+- vulnerabilidades remanescentes (`npm audit`): apenas do dev server do `vite@5.4.21` (path traversal em `.map` de deps otimizadas, disclosure de hash NTLMv2 via UNC no Windows, bypass de `server.fs.deny`) — expostas somente rodando `vite dev`/`vite preview` localmente, nao afetam a build estatica publicada no Cloudflare Pages; corrigir exigiria pular pra `vite@6/7/8` (breaking, fora de escopo aqui)
+
 Validacao final desta rodada:
 - `worker`: `npm test` ok (`25/25`)
-- `frontend`: `npm test` ok (`32/32`), `npm run build` ok
-- producao: contagem de `patients` confirmada igual (`2`) antes/depois da migration, `/health` `200` logo apos aplicar
+- `frontend`: `npm test` ok (`32/32`), `npm run build` ok, `rm -rf node_modules && npm ci` limpo (replicando o CI)
+- CI: `Deploy CareDesk` (`Deploy Worker` + `Deploy Frontend`) verde apos o fix do lockfile
+- producao: contagem de `patients` confirmada igual (`2`) antes/depois da migration, `/health` `200` do worker e `200` do frontend (`caredesk-lou.pages.dev`) apos o deploy
 
 **Efeito colateral pego no proprio deploy do GitHub Actions:** o job `Deploy Worker` falhou logo apos o push — `wrangler` `4.110.0` exige Node.js `22+`, e o workflow ainda usava `node-version: 20` nos dois jobs de deploy. Corrigido para `22` em `deploy-worker` e `deploy-frontend` no mesmo `.github/workflows/deploy.yml`. Consequencia direta de resolver `^4.0.0` para a ultima 4.x disponivel; nao afeta ambiente local (ja em Node 24 nas maquinas usadas nesta sessao).
