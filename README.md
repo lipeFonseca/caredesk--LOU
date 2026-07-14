@@ -254,6 +254,7 @@ Correcao adicional confirmada:
 - o fundo da pagina de login nao deve depender de classes soltas entre preview e pagina publica; a composicao externa precisa sair de um helper compartilhado para evitar regressao visual entre admin e tela real
 - quando o modal de `Registrar Contato` cresce com blocos de protocolo e mensagem sugerida, ele nao deve herdar a largura estreita dos modais simples; esse fluxo precisa de largura dedicada para leitura operacional confortavel
 - a largura de modais no CareDesk nao depende mais apenas de `max-width`; os modais passaram a ter largura explicita baseada em viewport, com teto muito mais aberto, para que o ganho horizontal fique visivel de fato
+- modais animados com `framer-motion` nao devem usar centralizacao por `left-1/2` + `translate-x`; como o proprio Motion controla `transform`, a centralizacao precisa acontecer num wrapper `flex justify-center` para evitar deslocamento lateral
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

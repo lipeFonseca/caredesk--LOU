@@ -731,21 +731,23 @@ function Modal({ open, onClose, title, children, wide }) {
             className="fixed inset-0 z-40 bg-black/40"
             onClick={onClose}
           />
-          <motion.div
-            initial={{ opacity: 0, scale: .96, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: .96, y: 16 }}
-            transition={{ duration: .2, ease: [.16, 1, .3, 1] }}
-            className={`fixed left-1/2 top-[8vh] z-50 w-[calc(100vw-1rem)] -translate-x-1/2 bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant ${wide ? 'max-w-[108rem]' : 'max-w-[81rem]'}`}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">
-              <h3 className="text-headline-sm font-headline-sm text-on-surface">{title}</h3>
-              <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container-low transition-colors">
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
-              </button>
-            </div>
-            <div className="p-5 max-h-[70vh] overflow-y-auto">{children}</div>
-          </motion.div>
+          <div className="fixed inset-0 z-50 flex items-start justify-center px-2 pt-[8vh]">
+            <motion.div
+              initial={{ opacity: 0, scale: .96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: .96, y: 16 }}
+              transition={{ duration: .2, ease: [.16, 1, .3, 1] }}
+              className={`w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant ${wide ? 'max-w-[108rem]' : 'max-w-[81rem]'}`}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant">
+                <h3 className="text-headline-sm font-headline-sm text-on-surface">{title}</h3>
+                <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container-low transition-colors">
+                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
+                </button>
+              </div>
+              <div className="p-5 max-h-[70vh] overflow-y-auto">{children}</div>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>
