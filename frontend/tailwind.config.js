@@ -63,12 +63,6 @@ export default {
         'outline-variant': 'rgb(var(--color-outline-variant) / <alpha-value>)',
         'inverse-surface': 'rgb(var(--color-inverse-surface) / <alpha-value>)',
         'inverse-on-surface': 'rgb(var(--color-inverse-on-surface) / <alpha-value>)',
-        urgency: {
-          ok: '#5f7f65',
-          soon: '#b78645',
-          due: '#c96e46',
-          overdue: '#c1493d',
-        },
       },
       fontFamily: {
         sans: ['Manrope', 'system-ui', 'sans-serif'],
