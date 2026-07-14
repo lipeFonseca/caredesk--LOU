@@ -234,6 +234,7 @@ Refino visual consolidado em 12 jul 2026:
 - o efeito glass deve ficar restrito apenas a coluna direita de acesso
 - a area institucional da esquerda nao deve virar glass, para nao enfraquecer a imagem e o bloco editorial
 - a previa administrativa precisa espelhar exatamente essa divisao: esquerda editorial solida e direita translúcida
+- a atmosfera externa da pagina de login agora segue a direcao `Luxo Clinico`: base azul-petroleo profunda, halos frios suaves e fundo escuro menos chapado
 
 Correcao adicional confirmada:
 - nao basta o preset existir; o `LoginPulsingBorder` precisa envolver o card principal inteiro do login
@@ -249,6 +250,7 @@ Correcao adicional confirmada:
 - no CareDesk, preset visual nao pode ter prioridade sobre a silhueta do card; a assinatura premium depende de o glow seguir a forma do container antes de qualquer variacao cosmetica
 - a coluna direita com `backdrop-blur` nao pode depender apenas do clipping do pai; ela precisa receber explicitamente os cantos direitos do `inner radius`, senao o blur e o fundo escuro continuam sugerindo “ponta” mesmo com o shader corrigido
 - o selo textual `Acesso institucional` foi removido da coluna esquerda do login; a composicao ficou mais limpa e a hierarquia agora deve comecar direto no `heroTitle`
+- o fundo da pagina de login nao deve depender de classes soltas entre preview e pagina publica; a composicao externa precisa sair de um helper compartilhado para evitar regressao visual entre admin e tela real
 
 Fallbacks obrigatorios:
 - se a lib/shader falhar, o card deve manter uma borda estatica normal

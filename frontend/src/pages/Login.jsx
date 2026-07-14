@@ -7,6 +7,7 @@ import { api } from '@/services/api'
 import { getBranding } from '@/theme/branding'
 import LoginCardLayout from '@/components/login/LoginCardLayout'
 import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
+import { getLoginPageBackgroundStyle } from '@/components/login/loginPageBackground'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -18,13 +19,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const pageBackgroundStyle = branding.loginBackgroundImageUrl
-    ? {
-        backgroundImage: `linear-gradient(180deg, rgba(15, 23, 20, 0.55), rgba(15, 23, 20, 0.75)), url("${branding.loginBackgroundImageUrl}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      }
-    : undefined
+  const pageBackgroundStyle = getLoginPageBackgroundStyle(branding.loginBackgroundImageUrl)
 
   function set(field) {
     return (event) => {
@@ -54,8 +49,11 @@ export default function Login() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-8" style={pageBackgroundStyle}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(184,136,74,0.14),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(40,75,64,0.18),transparent_32%)]" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#091117] px-4 py-8" style={pageBackgroundStyle}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(255,255,255,0.04),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_24%,transparent_72%,rgba(255,255,255,0.03))]" />
+      <div className="absolute inset-x-[14%] bottom-[-12%] top-[58%] rounded-full bg-[radial-gradient(circle,rgba(46,121,173,0.16),rgba(46,121,173,0.06)_38%,transparent_72%)] blur-3xl" />
+      <div className="absolute left-[-12%] top-[10%] h-[18rem] w-[18rem] rounded-full bg-[radial-gradient(circle,rgba(109,154,194,0.18),transparent_70%)] blur-3xl" />
+      <div className="absolute right-[-10%] top-[18%] h-[16rem] w-[16rem] rounded-full bg-[radial-gradient(circle,rgba(124,92,162,0.12),transparent_72%)] blur-3xl" />
 
       <LoginPulsingBorder config={branding.loginBorder} radius={36} className="w-full max-w-5xl shadow-modal">
         <div className="overflow-hidden bg-surface-container-low" style={{ borderRadius: 'inherit' }}>

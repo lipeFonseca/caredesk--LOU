@@ -303,6 +303,22 @@ Ou seja:
 
 ## 11. Aprendizados Operacionais Recentes
 
+### 11.35 Direcao visual `Luxo Clinico` para o fundo do login
+
+Decisao desta rodada:
+- o fundo externo da tela de login deixou de depender de um preto quase chapado
+- a direcao escolhida foi `Luxo Clinico`, com base azul-petroleo profunda, halos frios suaves e atmosfera mais editorial
+
+Implementacao aplicada:
+- o login publico passou a usar um helper compartilhado para montar o background da pagina
+- a miniatura da aba `Identidade Visual` passou a reutilizar essa mesma atmosfera externa
+- isso reduz divergencia entre preview administrativa e tela real publicada
+
+Regra consolidada:
+- imagem de fundo configurada continua sendo respeitada quando existir
+- sem imagem, a pagina ainda deve parecer premium, e nao vazia ou triste
+- o background externo agora virou parte da linguagem visual oficial do login, nao apenas um fallback neutro
+
 ### 11.1 Fluxo local mais eficiente
 
 Para mudancas predominantemente visuais ou de produto:

@@ -5,6 +5,7 @@ import { useSettingsStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
 import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor } from '@/theme/branding'
 import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
+import { getLoginPageBackgroundStyle } from '@/components/login/loginPageBackground'
 
 export default function BrandingSettingsTab() {
   const { setSettings } = useSettingsStore()
@@ -157,13 +158,7 @@ export default function BrandingSettingsTab() {
 
   const activeTheme = VISUAL_THEMES.find((theme) => theme.primary.toLowerCase() === String(form.primary_color).toLowerCase())
   const branding = getBranding(form)
-  const loginPageBackgroundStyle = branding.loginBackgroundImageUrl
-    ? {
-        backgroundImage: `url("${branding.loginBackgroundImageUrl}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      }
-    : undefined
+  const loginPageBackgroundStyle = getLoginPageBackgroundStyle(branding.loginBackgroundImageUrl)
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -335,7 +330,9 @@ export default function BrandingSettingsTab() {
 
           <div>
             <p className="mb-3 text-sm font-semibold text-on-surface">Preview da tela de login</p>
-            <div className="rounded-[24px] bg-surface-container/50 p-4" style={loginPageBackgroundStyle}>
+            <div className="relative overflow-hidden rounded-[24px] bg-[#091117] p-4" style={loginPageBackgroundStyle}>
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_46%,rgba(255,255,255,0.04),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_24%,transparent_76%,rgba(255,255,255,0.03))]" />
+              <div className="pointer-events-none absolute inset-x-[12%] bottom-[-16%] top-[60%] rounded-full bg-[radial-gradient(circle,rgba(46,121,173,0.14),rgba(46,121,173,0.05)_38%,transparent_72%)] blur-3xl" />
               <LoginPulsingBorder config={branding.loginBorder} radius={24} className="overflow-hidden text-[#f8f1e6]">
                 <div className="overflow-hidden bg-[#1d342d]" style={{ borderRadius: 'inherit' }}>
                   <LoginCardLayout branding={branding} compact>
