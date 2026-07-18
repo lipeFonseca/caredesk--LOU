@@ -7,6 +7,7 @@ import {
   resolvePatientProtocol,
 } from '../utils/protocols.js'
 import { resolveSuggestedMessageTemplate } from '../utils/messageTemplates.js'
+import { isValidDocumentStatus } from '../utils/documentTemplates.js'
 
 const patients = new Hono()
 patients.use('*', authMiddleware)
@@ -239,6 +240,92 @@ patients.delete('/:id', adminOnly, async (c) => {
 
   return c.json({ success: true })
 })
+
+// ── GET /api/patients/:id/documents ───────────────────────────
+// Catálogo inteiro com LEFT JOIN na atribuição desse paciente, pra a UI
+// renderizar o checklist completo (marcado/desmarcado + status) numa
+// unica chamada.
+patients.get('/:id/documents', async (c) => {
+  const patientId = c.req.param('id')
+  const patient = await c.env.DB.prepare('SELECT id FROM patients WHERE id = ?').bind(patientId).first()
+  if (!patient) return c.json({ error: 'Paciente não encontrado' }, 404)
+
+  const { results } = await c.env.DB.prepare(`
+    SELECT dt.id AS document_template_id, dt.name, dt.category, dt.description, pd.status
+    FROM document_templates dt
+    LEFT JOIN patient_documents pd
+      ON pd.document_template_id = dt.id AND pd.patient_id = ?
+    ORDER BY dt.category ASC, dt.created_at ASC
+  `).bind(patientId).all()
+
+  return c.json(results.map((row) => ({
+    document_template_id: row.document_template_id,
+    name: row.name,
+    category: row.category,
+    description: row.description,
+    assigned: row.status !== null,
+    status: row.status,
+  })))
+})
+
+// ── PUT /api/patients/:id/documents/:templateId ───────────────
+// Atribui (marca a caixa). Upsert idempotente — marcar de novo so atualiza.
+patients.put('/:id/documents/:templateId', async (c) => {
+  const patientId = c.req.param('id')
+  const templateId = c.req.param('templateId')
+
+  const patient = await c.env.DB.prepare('SELECT id FROM patients WHERE id = ?').bind(patientId).first()
+  if (!patient) return c.json({ error: 'Paciente não encontrado' }, 404)
+
+  const template = await c.env.DB.prepare('SELECT id FROM document_templates WHERE id = ?').bind(templateId).first()
+  if (!template) return c.json({ error: 'Documento não encontrado' }, 404)
+
+  const body = await c.req.json().catch(() => ({}))
+  const status = isValidDocumentStatus(body.status) ? body.status : 'pending'
+
+  await c.env.DB.prepare(`
+    INSERT INTO patient_documents (id, patient_id, document_template_id, status)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(patient_id, document_template_id) DO UPDATE SET status = excluded.status, updated_at = datetime('now')
+  `).bind(crypto.randomUUID(), patientId, templateId, status).run()
+
+  return c.json({ document_template_id: templateId, assigned: true, status })
+})
+
+// ── PATCH /api/patients/:id/documents/:templateId ─────────────
+// So alterna o status (pendente/feito) de um documento ja atribuido.
+patients.patch('/:id/documents/:templateId', async (c) => {
+  const patientId = c.req.param('id')
+  const templateId = c.req.param('templateId')
+  const body = await c.req.json()
+
+  if (!isValidDocumentStatus(body.status)) {
+    return c.json({ error: 'Status inválido. Use "pending" ou "done"' }, 400)
+  }
+
+  const result = await c.env.DB.prepare(`
+    UPDATE patient_documents SET status = ?, updated_at = datetime('now')
+    WHERE patient_id = ? AND document_template_id = ?
+  `).bind(body.status, patientId, templateId).run()
+
+  if (!result.meta.changes) return c.json({ error: 'Documento não atribuído a este paciente' }, 404)
+
+  return c.json({ document_template_id: templateId, assigned: true, status: body.status })
+})
+
+// ── DELETE /api/patients/:id/documents/:templateId ────────────
+// Desatribui (desmarca a caixa).
+patients.delete('/:id/documents/:templateId', async (c) => {
+  const patientId = c.req.param('id')
+  const templateId = c.req.param('templateId')
+
+  await c.env.DB.prepare(
+    'DELETE FROM patient_documents WHERE patient_id = ? AND document_template_id = ?'
+  ).bind(patientId, templateId).run()
+
+  return c.json({ success: true })
+})
+
 export default patients
 
 async function resolveWritableProtocolId(db, requestedProtocolId) {

@@ -62,6 +62,20 @@ export const api = {
     create: (body)        => request('/patients',     { method: 'POST',   body: JSON.stringify(body) }),
     update: (id, body)    => request(`/patients/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     delete: (id)          => request(`/patients/${id}`, { method: 'DELETE' }),
+
+    listDocuments:        (id)                     => request(`/patients/${id}/documents`),
+    assignDocument:       (id, templateId, body={}) => request(`/patients/${id}/documents/${templateId}`, { method: 'PUT',    body: JSON.stringify(body) }),
+    updateDocumentStatus: (id, templateId, status)  => request(`/patients/${id}/documents/${templateId}`, { method: 'PATCH',  body: JSON.stringify({ status }) }),
+    unassignDocument:     (id, templateId)          => request(`/patients/${id}/documents/${templateId}`, { method: 'DELETE' }),
+  },
+
+  // ── Protocolo de Documentos ─────────────────────────────────
+  documentTemplates: {
+    list:   (params = {}) => request('/document-templates?' + new URLSearchParams(params)),
+    get:    (id)          => request(`/document-templates/${id}`),
+    create: (body)        => request('/document-templates',      { method: 'POST',   body: JSON.stringify(body) }),
+    update: (id, body)    => request(`/document-templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    delete: (id)          => request(`/document-templates/${id}`, { method: 'DELETE' }),
   },
 
   // ── Follow-ups ──────────────────────────────────────────────

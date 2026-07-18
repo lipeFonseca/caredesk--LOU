@@ -12,6 +12,7 @@ import settingsRoutes  from './routes/settings.js'
 import setupRoutes     from './routes/setup.js'
 import protocolRoutes  from './routes/protocols.js'
 import messageProtocolRoutes from './routes/message-protocols.js'
+import documentTemplateRoutes from './routes/document-templates.js'
 import { runScheduler } from './services/scheduler.js'
 
 const app = new Hono()
@@ -51,6 +52,7 @@ app.route('/api/settings',      settingsRoutes)
 app.route('/api/setup',         setupRoutes)
 app.route('/api/protocols',     protocolRoutes)
 app.route('/api/message-protocols', messageProtocolRoutes)
+app.route('/api/document-templates', documentTemplateRoutes)
 
 // ── 404 ──────────────────────────────────────────────────────
 app.notFound((c) => c.json({ error: 'Rota não encontrada' }, 404))

@@ -23,6 +23,7 @@ import {
   URGENCY_BADGE,
   getInitials,
 } from '@/utils/contactDisplay'
+import PatientDocumentsSection from '@/components/patient/PatientDocumentsSection'
 
 function buildInitialLogForm(patient = null) {
   return {
@@ -349,6 +350,9 @@ export default function PatientDetail() {
               )}
             </div>
           </div>
+
+          {/* Documentos */}
+          <PatientDocumentsSection patientId={id} />
 
           {/* Linha do Tempo do Protocolo */}
           {timeline.length > 0 && (
