@@ -18,6 +18,8 @@ export default function NewPatient() {
   })
   const [agents, setAgents]       = useState([])
   const [protocols, setProtocols] = useState([])
+  const [documents, setDocuments] = useState([])
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState([])
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState('')
 
@@ -28,7 +30,14 @@ export default function NewPatient() {
       const def = (data ?? []).find(p => p.is_default)
       if (def) setForm(f => ({ ...f, protocol_id: def.id }))
     }).catch(() => {})
+    api.documentTemplates.list().then(data => setDocuments(data ?? [])).catch(() => {})
   }, [])
+
+  function toggleDocument(id) {
+    setSelectedDocumentIds(current => (
+      current.includes(id) ? current.filter(x => x !== id) : [...current, id]
+    ))
+  }
 
   function set(field) {
     return (e) => { setForm(f => ({ ...f, [field]: e.target.value })); setError('') }
@@ -43,6 +52,11 @@ export default function NewPatient() {
     setLoading(true)
     try {
       const created = await api.patients.create(form)
+      if (selectedDocumentIds.length) {
+        await Promise.all(
+          selectedDocumentIds.map(id => api.patients.assignDocument(created.id, id))
+        ).catch(() => {})
+      }
       navigate(`/patients/${created.id}`, { replace: true })
     } catch (err) {
       setError(err.message || 'Erro ao cadastrar paciente')
@@ -204,6 +218,61 @@ export default function NewPatient() {
                         </div>
                       )}
                     </button>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          <hr className="border-outline-variant" />
+
+          {/* Documentos */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">
+                Documentos
+              </h2>
+              <Link to="/admin" className="text-label-sm font-label-sm text-primary hover:underline flex items-center gap-1">
+                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>settings</span>
+                Gerenciar documentos
+              </Link>
+            </div>
+            {documents.length === 0 ? (
+              <p className="text-body-md text-outline italic">Nenhum documento configurado. <Link to="/admin" className="text-primary hover:underline">Criar documento</Link></p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { value: 'send', label: 'Enviar' },
+                  { value: 'request', label: 'Solicitar' },
+                ].map(({ value, label }) => {
+                  const items = documents.filter(d => d.category === value)
+                  if (!items.length) return null
+                  return (
+                    <div key={value}>
+                      <p className="text-label-sm font-label-sm text-on-surface-variant mb-2">{label}</p>
+                      <div className="space-y-1.5">
+                        {items.map(doc => (
+                          <label
+                            key={doc.id}
+                            className="flex items-start gap-2.5 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-low cursor-pointer hover:bg-surface-container-high transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedDocumentIds.includes(doc.id)}
+                              onChange={() => toggleDocument(doc.id)}
+                              disabled={loading}
+                              className="w-4 h-4 mt-0.5 rounded border-outline-variant text-primary focus:ring-primary shrink-0"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-body-md text-on-surface truncate">{doc.name}</span>
+                              {doc.description && (
+                                <span className="block text-[11px] text-on-surface-variant truncate">{doc.description}</span>
+                              )}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   )
                 })}
               </div>
