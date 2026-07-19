@@ -102,7 +102,6 @@ settings.patch('/', adminOnly, async (c) => {
     'login_border_thickness',
     'login_border_bloom',
     'timezone',
-    'contact_protocol_days',
   ]
 
   for (const [key, value] of Object.entries(body)) {
@@ -117,23 +116,6 @@ settings.post('/logo', adminOnly, async (c) => uploadBrandAsset(c, 'logo'))
 settings.delete('/logo', adminOnly, async (c) => removeBrandAsset(c, 'logo'))
 settings.post('/assets/:type', adminOnly, async (c) => uploadBrandAsset(c, c.req.param('type')))
 settings.delete('/assets/:type', adminOnly, async (c) => removeBrandAsset(c, c.req.param('type')))
-
-settings.patch('/protocol', adminOnly, async (c) => {
-  const { days } = await c.req.json()
-  if (!Array.isArray(days)) return c.json({ error: 'days deve ser um array' }, 400)
-
-  const sorted = [...new Set(days.map(Number))]
-    .filter((value) => !Number.isNaN(value))
-    .sort((a, b) => a - b)
-
-  await c.env.DB.prepare(`
-    INSERT INTO app_settings (key, value, updated_at)
-    VALUES ('contact_protocol_days', ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `).bind(JSON.stringify(sorted)).run()
-
-  return c.json({ success: true, days: sorted })
-})
 
 export { settings as settingsRoutes }
 export default notifications

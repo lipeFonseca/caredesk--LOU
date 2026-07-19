@@ -1,6 +1,5 @@
 import {
   getNextPendingMilestone,
-  getProtocolResolutionContext,
   resolvePatientProtocol,
 } from '../utils/protocols.js'
 
@@ -9,7 +8,6 @@ export async function runScheduler(env) {
   console.log('[Scheduler] Iniciando verificação de follow-ups —', new Date().toISOString())
 
   const today = new Date().toISOString().split('T')[0]
-  const protocolContext = await getProtocolResolutionContext(env.DB)
   // Buscar todos os pacientes ativos com dados do agente
   const { results: patients } = await env.DB.prepare(`
     SELECT
@@ -28,7 +26,7 @@ export async function runScheduler(env) {
   let notified = 0
 
   for (const patient of patients) {
-    const result = await processPatient(patient, today, env, protocolContext)
+    const result = await processPatient(patient, today, env)
     if (result) notified++
   }
 
@@ -36,8 +34,8 @@ export async function runScheduler(env) {
   return { total: patients.length, notified }
 }
 
-async function processPatient(patient, today, env, protocolContext) {
-  const resolution = resolvePatientProtocol(patient, protocolContext)
+async function processPatient(patient, today, env) {
+  const resolution = resolvePatientProtocol(patient)
   const nextMilestone = getNextPendingMilestone(patient.surgery_date, resolution.days, patient.followup_count)
   if (!nextMilestone) return false
   if (today < nextMilestone.dateStr) return false

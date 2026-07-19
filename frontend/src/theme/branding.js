@@ -34,7 +34,6 @@ export function normalizeBrandingSettings(settings = {}) {
     login_border_thickness: coerceNumber(settings.login_border_thickness, DEFAULT_LOGIN_BORDER_THICKNESS, 0, 1),
     login_border_bloom: coerceNumber(settings.login_border_bloom, DEFAULT_LOGIN_BORDER_BLOOM, 0, 1),
     timezone: coerceString(settings.timezone) || DEFAULT_TIMEZONE,
-    contact_protocol_days: coerceString(settings.contact_protocol_days),
   }
 }
 

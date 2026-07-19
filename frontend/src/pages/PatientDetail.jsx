@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/services/api'
-import { useAuthStore, useSettingsStore } from '@/store'
+import { useAuthStore } from '@/store'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -41,7 +41,6 @@ export default function PatientDetail() {
   const { id }          = useParams()
   const navigate        = useNavigate()
   const { isAdmin }     = useAuthStore()
-  const getProtocolDays = useSettingsStore(s => s.getProtocolDays)
 
   const [patient,    setPatient]    = useState(null)
   const [loading,    setLoading]    = useState(true)
@@ -195,7 +194,7 @@ export default function PatientDetail() {
   if (!patient) return null
 
   // Use patient's own protocol days, fallback to global
-  const patientProtocolDays = normalizeProtocolDays(patient.protocol_days_parsed ?? getProtocolDays())
+  const patientProtocolDays = normalizeProtocolDays(patient.protocol_days_parsed)
   const nextFollowup = getNextFollowup(patient, patientProtocolDays)
   const timeline     = buildProtocolTimeline(patient, patientProtocolDays)
   const initials     = getInitials(patient.name)

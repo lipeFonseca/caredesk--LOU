@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/services/api'
-import { useAuthStore, useSettingsStore } from '@/store'
+import { useAuthStore } from '@/store'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -102,8 +102,7 @@ export default function PatientPanel({ patientId, onClose }) {
 }
 
 function PanelContent({ patient, onClose, isAdmin }) {
-  const getProtocolDays = useSettingsStore(s => s.getProtocolDays)
-  const protocolDays    = normalizeProtocolDays(patient.protocol_days_parsed ?? getProtocolDays())
+  const protocolDays    = normalizeProtocolDays(patient.protocol_days_parsed)
   const urg             = URGENCY_BADGE[patient.followup_urgency] ?? URGENCY_BADGE.none
   const nextFollowup    = getNextFollowup(patient, protocolDays)
   const timeline        = buildProtocolTimeline(patient, protocolDays)

@@ -3,7 +3,6 @@ import { authMiddleware, adminOnly } from '../middleware/auth.js'
 import {
   attachResolvedProtocol,
   calcProtocolUrgency,
-  getProtocolResolutionContext,
   resolvePatientProtocol,
 } from '../utils/protocols.js'
 import { resolveSuggestedMessageTemplate } from '../utils/messageTemplates.js'
@@ -64,11 +63,10 @@ patients.get('/', async (c) => {
   }
 
   const { results } = await c.env.DB.prepare(sql).bind(...queryBinds).all()
-  const protocolContext = await getProtocolResolutionContext(c.env.DB)
 
   const today = new Date().toISOString().split('T')[0]
   const enriched = results.map(p => {
-    const resolution = resolvePatientProtocol(p, protocolContext)
+    const resolution = resolvePatientProtocol(p)
     const { _proto_days, ...rest } = p
     const withProtocol = attachResolvedProtocol(rest, resolution)
     return {
@@ -103,8 +101,7 @@ patients.get('/:id', async (c) => {
     ORDER BY fl.contact_date DESC
   `).bind(patient.id).all()
 
-  const protocolContext = await getProtocolResolutionContext(c.env.DB)
-  const resolution = resolvePatientProtocol(patient, protocolContext)
+  const resolution = resolvePatientProtocol(patient)
   const patientOut = attachResolvedProtocol(patient, resolution)
   const today = new Date().toISOString().split('T')[0]
   const completedCount = logs.filter((log) => !log.is_extra_contact).length

@@ -165,8 +165,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES
   ('login_border_speed',          '1.00'),
   ('login_border_thickness',      '0.10'),
   ('login_border_bloom',          '0.25'),
-  ('timezone',              'America/Fortaleza'),
-  ('contact_protocol_days', '[-2,0,2,5,15,30,60,90,120,180]');
+  ('timezone',              'America/Fortaleza');
 
 -- Admin padrão (senha: Admin@2025 — TROCAR NO PRIMEIRO ACESSO)
 -- hash bcrypt gerado fora do SQLite via Worker no setup

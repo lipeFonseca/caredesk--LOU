@@ -72,8 +72,6 @@ export const useThemeStore = create(
   )
 )
 
-const DEFAULT_PROTOCOL = '[-2,0,2,5,15,30,60,90,120,180]'
-
 // ── App Settings Store ────────────────────────────────────────
 export const useSettingsStore = create((set, get) => ({
   isLoaded: false,
@@ -99,7 +97,6 @@ export const useSettingsStore = create((set, get) => ({
     login_border_thickness: DEFAULT_LOGIN_BORDER_THICKNESS,
     login_border_bloom: DEFAULT_LOGIN_BORDER_BLOOM,
     timezone:              DEFAULT_TIMEZONE,
-    contact_protocol_days: DEFAULT_PROTOCOL,
   },
   setSettings: (incoming) => {
     const mergedSettings = {
@@ -109,12 +106,4 @@ export const useSettingsStore = create((set, get) => ({
     set({ settings: mergedSettings, isLoaded: true })
   },
   markLoaded: () => set({ isLoaded: true }),
-  getProtocolDays: () => {
-    try {
-      const raw = get().settings.contact_protocol_days || DEFAULT_PROTOCOL
-      return JSON.parse(raw)
-    } catch {
-      return [-2, 0, 2, 5, 15, 30, 60, 90, 120, 180]
-    }
-  },
 }))
