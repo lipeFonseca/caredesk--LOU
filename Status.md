@@ -1663,7 +1663,11 @@ Deploy (`2026-07-21`, apos o usuario autorizar com a bateria de testes verde):
 - bateria de testes do frontend antes de liberar: `npm test` (`32/32`), `npm run build` ok; worker `npm test` (`29/29`) sem regressao
 - migration `0013` aplicada no D1 **remoto** via `db:migrate:remote` e **reconfirmada via `sqlite_master`**: os 2 indices existem e `patients.created_by` foi criada — aplicacao completa, sem a falha parcial da `0010`
 - migration remota aplicada **antes** do push, para o worker novo (que ja insere/consulta `created_by`) nao subir contra um schema remoto sem a coluna
-- commit staged so com os arquivos da Frente A + docs (`calculadora.py` e `.claude/` deixados de fora, untracked alheios); push para `origin/main` disparou o deploy do GitHub Actions (worker + frontend)
+- commit staged so com os arquivos da Frente A + docs (`calculadora.py` e `.claude/` deixados de fora, untracked alheios); commit `b9f8387`, push para `origin/main`
+- deploy `Deploy CareDesk` (GitHub Actions) concluido com `conclusion: success`; producao verificada: worker `/health` `200`, frontend (`caredesk-lou.pages.dev`) `200`, e `GET /api/activity` sem token devolveu `401` (rota nova deployada e protegida, nao `404`)
+- nota de armadilha: a primeira tentativa de commit usou `git commit -m @'...'@` (here-string do PowerShell) dentro do Bash tool, que interpretou `@` como literal e prefixou a mensagem; corrigido com `--amend -F <arquivo>` antes do push. Licao: no Bash tool, mensagem multilinha vai por heredoc/`-F`, nunca com a sintaxe `@'...'@`
+
+**Frente A CONCLUIDA.** Proxima frente do roadmap: **Frente B** (`13.4`) — aba Logs / monitoramento de erro.
 
 ## 13. Roadmap de Escalabilidade (definido em `2026-07-20`)
 
