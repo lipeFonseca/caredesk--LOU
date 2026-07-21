@@ -11,6 +11,7 @@ import Avatar from '@/components/common/Avatar'
 const NAV_ITEMS = [
   { to: '/', icon: 'dashboard', label: 'Visao Geral', end: true },
   { to: '/patients', icon: 'group', label: 'Pacientes', end: false },
+  { to: '/historico', icon: 'history', label: 'Historico', end: false },
 ]
 
 function greeting(name) {

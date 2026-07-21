@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS patients (
   protocol_id     TEXT REFERENCES contact_protocols(id) ON DELETE SET NULL,
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'discharged')),
   notes           TEXT,
+  created_by      TEXT REFERENCES agents(id) ON DELETE SET NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -126,6 +127,8 @@ CREATE INDEX IF NOT EXISTS idx_patients_surgery_date ON patients(surgery_date);
 CREATE INDEX IF NOT EXISTS idx_patients_protocol ON patients(protocol_id);
 CREATE INDEX IF NOT EXISTS idx_followups_patient ON followup_logs(patient_id);
 CREATE INDEX IF NOT EXISTS idx_followups_patient_date ON followup_logs(patient_id, contact_date DESC);
+CREATE INDEX IF NOT EXISTS idx_followups_created ON followup_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_patients_created  ON patients(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notif_agent       ON notifications(agent_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notif_date        ON notifications(scheduled_for);
 CREATE INDEX IF NOT EXISTS idx_message_templates_protocol_day ON protocol_message_templates(protocol_id, day_offset);

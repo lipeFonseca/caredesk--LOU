@@ -152,10 +152,11 @@ patients.post('/', async (c) => {
 
     const resolvedProtocolId = await resolveWritableProtocolId(c.env.DB, protocol_id)
     const id = crypto.randomUUID()
+    const createdBy = c.get('agent')?.sub || null
 
     await c.env.DB.prepare(`
-      INSERT INTO patients (id, name, phone, procedure, surgery_date, assigned_agent_id, protocol_id, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO patients (id, name, phone, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, name,
       phone             || null,
@@ -163,7 +164,8 @@ patients.post('/', async (c) => {
       surgery_date,
       assigned_agent_id || null,
       resolvedProtocolId,
-      notes             || null
+      notes             || null,
+      createdBy
     ).run()
 
     return c.json({
@@ -174,6 +176,7 @@ patients.post('/', async (c) => {
       assigned_agent_id: assigned_agent_id || null,
       protocol_id:       resolvedProtocolId,
       notes:             notes             || null,
+      created_by:        createdBy,
       status:            'active',
       created_at:        new Date().toISOString(),
       updated_at:        new Date().toISOString(),

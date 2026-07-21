@@ -78,6 +78,11 @@ export const api = {
     delete: (id)          => request(`/document-templates/${id}`, { method: 'DELETE' }),
   },
 
+  // ── Histórico / atividade ───────────────────────────────────
+  activity: {
+    list: (params = {}) => request('/activity?' + new URLSearchParams(params)),
+  },
+
   // ── Follow-ups ──────────────────────────────────────────────
   followups: {
     list:   (patient_id) => request(`/followups?patient_id=${patient_id}`),

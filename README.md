@@ -454,11 +454,11 @@ Sempre validar antes de considerar o ambiente pronto:
 
 ## Regra oficial de protocolos
 
-O backend resolve protocolo nesta ordem:
-1. protocolo vinculado ao paciente (`contact_protocols.days`)
-2. protocolo default
-3. `app_settings.contact_protocol_days`
-4. `patients.protocol_days` apenas como compatibilidade final
+Desde `2026-07-20`, o backend so resolve protocolo em duas origens, sem nenhum fallback automatico:
+1. `LINKED` — paciente tem `protocol_id` valido, apontando pra um `contact_protocols` existente (`contact_protocols.days`)
+2. `EMPTY` — sem protocolo vinculado; nenhum marco/urgencia e calculado
+
+O protocolo marcado `is_default` continua existindo, mas hoje so serve pra **pre-selecionar** a escolha no formulario de cadastro de paciente — se o paciente for criado sem protocolo explicito, o backend grava o `id` do protocolo `is_default` diretamente nele (atribuicao unica na criacao). Não existe mais leitura de fallback global (`app_settings.contact_protocol_days`) nem da antiga coluna `patients.protocol_days` — ambos foram removidos.
 
 Campos principais retornados pelo backend:
 - `protocol_days_parsed`

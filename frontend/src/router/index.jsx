@@ -6,6 +6,7 @@ import Dashboard    from '@/pages/Dashboard'
 import Patients     from '@/pages/Patients'
 import PatientDetail from '@/pages/PatientDetail'
 import NewPatient   from '@/pages/NewPatient'
+import Historico    from '@/pages/Historico'
 import Admin        from '@/pages/Admin'
 
 function PrivateRoute({ children, adminOnly = false }) {
@@ -28,6 +29,7 @@ export default function Router() {
           <Route path="patients" element={<Patients />} />
           <Route path="patients/new" element={<NewPatient />} />
           <Route path="patients/:id" element={<PatientDetail />} />
+          <Route path="historico" element={<Historico />} />
           <Route path="admin" element={
             <PrivateRoute adminOnly><Admin /></PrivateRoute>
           } />

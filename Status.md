@@ -1,6 +1,6 @@
 # Status do Projeto CareDesk
 
-Atualizado em: 2026-07-12
+Atualizado em: 2026-07-20
 
 Este arquivo registra como o CareDesk funciona hoje de verdade no codigo local.
 
@@ -21,9 +21,9 @@ Ambiente conhecido:
 - Banco D1 remoto ativo
 
 Estado do Git:
-- `main` local alinhada ao ultimo commit versionado do remoto
-- workspace local com muitas alteracoes ainda nao commitadas
-- o codigo local continua sendo a fonte mais fiel do estado atual
+- `main` local alinhada ao ultimo commit versionado do remoto (`git status`: working tree limpa, `0` commits de diferenca em qualquer direcao com `origin/main`)
+- ultimo commit: `e266d84` (`fix(protocols): remove default/global protocol-days fallback`)
+- workspace e GitHub estao sincronizados; o alerta antigo de "GitHub atrasado" (secoes 4 e 7 abaixo) nao se aplica mais
 
 ## 2. O que o Sistema Faz Hoje
 
@@ -105,11 +105,21 @@ Hoje existe:
 - protocolo customizado por paciente
 - dias negativos, dia zero e dias positivos
 
-Atualizacao local mais recente:
-- o backend centraliza a resolucao de protocolo em uma unica regra
-- ordem oficial local: protocolo vinculado -> protocolo padrao -> `app_settings.contact_protocol_days` -> legado `patients.protocol_days` apenas como compatibilidade final
-- scheduler e rotas de pacientes compartilham a mesma logica de resolucao
-- o detalhe do paciente agora tambem resolve a mensagem do proximo marco, quando existir template para `protocol_id + day_offset`
+Atualizacao mais recente (`2026-07-20`, ver `11.48`):
+- a resolucao de protocolo foi simplificada para **duas** origens possiveis, sem nenhum fallback automatico invisivel: `LINKED` (paciente tem `protocol_id` de verdade, apontando pra um `contact_protocols` existente) ou `EMPTY` (sem protocolo vinculado, nenhuma linha do tempo/urgencia calculada)
+- os niveis antigos `DEFAULT` (protocolo marcado `is_default`) e `GLOBAL` (`app_settings.contact_protocol_days`) foram **removidos** de `resolvePatientProtocol()` — motivo: um residuo de `GLOBAL` estava inventando marcos de linha do tempo pra pacientes sem nenhum protocolo configurado (ver `11.48`)
+- `is_default` continua existindo em `contact_protocols` e na UI, mas hoje so serve pra **pre-selecionar** o protocolo no formulario de cadastro de paciente (`worker/src/routes/patients.js`, resolucao de `protocol_id` no `POST /patients`) — se o paciente for criado sem escolher protocolo explicitamente, o backend grava o `id` do protocolo `is_default` diretamente no cadastro dele; a partir dai esse paciente resolve por `LINKED` normalmente, nao por um fallback em tempo de leitura
+- scheduler e rotas de pacientes compartilham a mesma logica de resolucao (`resolvePatientProtocol(patient)`, assinatura de um argumento so)
+- o detalhe do paciente ainda resolve a mensagem do proximo marco, quando existir template para `protocol_id + day_offset`
+
+### 2.5.1 Protocolo de Documentos
+
+Nova aba administrativa "Protocolo de Documentos" (ao lado de Protocolo de Contatos e Protocolo de Mensagens), entregue nesta rodada:
+- catalogo configuravel pelo admin: `document_templates` (`name`, `category` em `send`/`request`, `description`), subabas Enviar/Solicitar na UI
+- checklist por paciente: `patient_documents` (join `patient_id` + `document_template_id`, `status` `pending`/`done`), unico por par (idempotente)
+- e so metadado/checklist — **sem upload de arquivo real**, nenhum uso de `R2` nessa feature
+- atribuicao de documento acontece em dois lugares: no formulario "Novo Paciente" (selecao por checkbox agrupada por categoria, atribuida logo apos o `POST /patients` bem-sucedido) e na secao "Documentos" da pagina do paciente ja existente (`PatientDocumentsSection.jsx`), onde tambem da pra alternar o status pendente/concluido
+- exclusao de um documento do catalogo em uso por algum paciente e bloqueada com `409` (mesmo padrao ja usado por `contact_protocols`)
 
 ### 2.6 Notificacoes e scheduler
 
@@ -144,20 +154,24 @@ O que ja existe:
 
 ### 3.1 Estado do schema local
 
-O schema local em `worker/src/db/schema.sql` hoje define:
+O schema local em `worker/src/db/schema.sql` hoje define (`10` tabelas, `13` migrations aplicadas local e remoto — `0000` a `0012`):
 - `agents`
 - `patients`
 - `followup_logs`
 - `notifications`
 - `contact_protocols`
+- `protocol_message_templates`
+- `document_templates`
+- `patient_documents`
 - `app_settings`
 - `login_rate_limit`
-- `password_reset_tokens`
 
 Pontos relevantes:
 - `agents` agora possui `avatar_url` e `avatar_storage_key`
-- `patients` nao possui coluna `email`
+- `patients` nao possui coluna `email` nem mais a coluna legada `protocol_days` (removida na `0009`)
+- `password_reset_tokens` foi removida (`0007`) — feature orfa sem rota funcional, nunca implementada
 - `notifications` nao possui mais flags operacionais de mensagem no schema local novo
+- `app_settings` nao possui mais a chave `contact_protocol_days` (removida na `0012`, era o residuo causando o bug da linha do tempo — ver `11.48`)
 - o schema foi alinhado para a fase sem modulo de mensagens
 
 ### 3.2 Estado remoto conhecido
@@ -183,25 +197,17 @@ Aprendizados importantes:
 
 ### 4.1 GitHub / origin
 
-O repositório remoto ainda nao representa todo o estado local atual.
+Atualizado em `2026-07-20`: o repositório remoto **esta em dia** com o workspace local. `git status` mostra working tree limpa, `main` local e `origin/main` sem nenhum commit de diferenca em qualquer direcao. O alerta historico "GitHub atrasado" que ocupava esta secao ate `2026-07-12` nao se aplica mais desde a rodada de consolidacao de versionamento (`11.23` em diante).
 
 ### 4.2 Workspace local
 
-Mudancas locais relevantes visiveis:
-- consolidacao do fluxo de protocolos
-- simplificacao do sistema para operacao sem modulo de mensagens
-- nova pasta `worker/migrations`
-- base de `avatars/agents` sobre `R2` compartilhado
-- ajustes visuais ainda nao consolidados
-- documentacao local mais atual que o GitHub
-- limpeza de arquivos orfaos e artefatos temporarios locais
-- correcao do flash inicial de branding antigo no carregamento autenticado do frontend
-- abertura de rota publica sanitizada de branding para a tela de login
-- rework da miniatura de preview do login para espelhar imagem institucional + card real de acesso
+Estado atual: nada pendente de commit. As entregas mais recentes ja estao versionadas e publicadas (ver `11.44` a `11.49`):
+- paginacao server-side + indices de performance na listagem de pacientes
+- Protocolo de Documentos (catalogo + checklist por paciente, incluindo selecao no cadastro)
+- remocao total dos fallbacks automaticos de protocolo (`DEFAULT`/`GLOBAL`), deixando so `LINKED`/`EMPTY`
 
 Conclusao:
-- o codigo local e a fonte mais fiel do estado atual
-- o GitHub ainda esta atrasado
+- codigo local e GitHub estao sincronizados; nenhum dos dois e "mais atual" que o outro no momento
 
 ## 5. Deploy e Operacao
 
@@ -215,53 +221,44 @@ Scripts atuais:
 ### 5.2 Ambiente publicado
 
 Estado conhecido:
-- frontend publicado no Pages
-- worker publicado no Workers
-- validacao funcional publicada executada em `2026-07-11`
-- dashboard, pacientes, detalhe do paciente e admin abriram corretamente no dominio publicado
-- worker publicado respondeu `200` em `/health`
+- frontend publicado no Pages, worker publicado no Workers
+- todas as `13` migrations (`0000` a `0012`) aplicadas tanto local quanto remoto, inclusive as duas mais recentes (`0011_document-protocol.sql`, `0012_remove-global-protocol-fallback.sql`), com verificacao direta via `sqlite_master` alem do exit code do `wrangler`/`_migrations`
 - rotas antigas `/api/whatsapp` e `/api/telegram` responderam `404`
-- frente de `avatars/agents` e imagem exclusiva da pagina de login publicada em `2026-07-11`
-- workflow `.github/workflows/deploy.yml` reforcado para validar secrets da Cloudflare e instalar `wrangler` no job de frontend
+- workflow `.github/workflows/deploy.yml` reforcado para validar secrets da Cloudflare e instalar `wrangler` no job de frontend, com deteccao de escopo (deploy so do que mudou)
 
-Porem:
-- como ha muitas mudancas locais nao commitadas, o ambiente publicado pode nao refletir exatamente cada detalhe fino do workspace atual
+Estado atual:
+- workspace local e GitHub sincronizados (secao 4) — o ambiente publicado reflete o commit `e266d84`, sem defasagem conhecida
 
 ## 6. O que Ja Esta Pronto
 
 - base frontend/backend definida
-- autenticacao JWT funcionando no codigo local
-- rate limit de login implementado
-- painel de pacientes funcional
-- detalhe do paciente funcional
-- protocolos com interface propria
+- autenticacao JWT funcionando, com hardening de seguranca aplicado (IDOR, timing-safe, rate limit IP+email, `secureHeaders`/CSP) — ver `11.36`
+- rate limit de login implementado (IP e email)
+- painel de pacientes funcional, com paginacao server-side e indices de performance (`11.44`/`11.45`)
+- detalhe do paciente funcional, incluindo checklist de documentos por paciente
+- protocolos de contato e de mensagens com interface propria; resolucao simplificada para `LINKED`/`EMPTY`, sem fallback automatico (`11.48`)
+- Protocolo de Documentos: catalogo administravel (Enviar/Solicitar) + atribuicao no cadastro e na pagina do paciente (`11.48`)
 - dashboard funcional
-- deploy manual funcional
+- deploy automatizado via GitHub Actions com deteccao de escopo, alem do deploy manual
 - base inicial de backup ja criada
+- workspace e GitHub sincronizados (sem defasagem de versionamento pendente)
 
 ## 7. O que Esta em Transicao
 
-- consolidacao final dos protocolos como fonte unica de verdade
-- remocao de compatibilidades antigas que ainda nao sao mais necessarias
-- sincronizacao entre estado local e repositório GitHub
-- consolidacao final de versionamento para alinhar workspace, GitHub e ambiente publicado
+- quebra de `PatientDetail.jsx`/`Admin.jsx` em componentes menores (ainda grandes, `1036`/`762` linhas — ver `12.4.2`, nao feito ainda)
+- roadmap de produto ainda planejado, nao urgente: `avatars/patients`, `attachments/patients` (`12.6.1`/`12.6.2`)
 
 ## 8. Pontos de Atencao
 
 ### Alta prioridade
 
-- consolidar protocolos como fonte unica de verdade
-- revisar se `patients.protocol_days` ja pode entrar na fila de remocao definitiva
-- atualizar o GitHub para refletir o estado local real
-- aplicar a migration `0005_login-background.sql` no D1 remoto antes do proximo deploy oficial (ver secao 11.27)
+Nenhum item de alta prioridade em aberto no momento — a consolidacao de protocolos, a remocao de compatibilidades legadas, o hardening de seguranca (`12.1`) e a sincronizacao com o GitHub ja foram concluidos (ver `11.36`, `11.37`, `11.42`, `11.48`). Revisar a secao 12 antes de abrir uma nova frente grande, caso alguma decisao arquitetural precise ser revisitada.
 
 ### Media prioridade
 
-- quebrar `PatientDetail.jsx`, que continua muito grande
-- revisar `Admin.jsx`, que tambem esta grande e acumula responsabilidades
+- quebrar `PatientDetail.jsx` (`1036` linhas) e `Admin.jsx` (`762` linhas) em componentes menores — pendente, ver `12.4.2`
+- avaliar `avatars/patients` e `attachments/patients` como proximas features de roadmap, se fizer sentido priorizar (`12.6.1`/`12.6.2`)
 - reduzir o tempo de estado `Carregando ambiente...` na rota `/patients`, se quisermos um boot ainda mais direto
-- revisar se ainda existe alguma diferenca fina entre branding remoto e dados locais de `app_settings`
-- acompanhar o impacto de bundle apos importar o shader do login de forma estatica; o build passou, mas o bundle principal ficou acima de `500 kB`
 
 ## 9. Aprendizados Mais Recentes
 
@@ -292,13 +289,13 @@ Ordem recomendada:
 
 ## 10. Resumo Executivo
 
-Estado real atual:
-- produto orientado a acompanhamento interno
-- modulo de mensagens pausado
-- protocolos em consolidacao
-- banco remoto saneado estruturalmente
+Estado real atual (`2026-07-20`):
+- produto orientado a acompanhamento interno, agora com paginacao/indices de performance e Protocolo de Documentos
+- modulo de mensagens de WhatsApp/Telegram continua pausado; Protocolo de Mensagens (templates ligados ao protocolo de contato) segue ativo
+- protocolos de contato consolidados: so `LINKED`/`EMPTY`, sem nenhum fallback automatico
+- banco remoto saneado estruturalmente, `13` migrations aplicadas e verificadas
 - ambiente publicado validado nas rotas principais
-- GitHub atrasado em relacao ao workspace local
+- GitHub e workspace local sincronizados, sem defasagem
 
 Ou seja:
 - o projeto esta utilizavel
@@ -1607,3 +1604,192 @@ Validacao final desta rodada:
 - producao: contagem de `patients` confirmada igual (`2`) antes/depois da migration, `/health` `200` do worker e `200` do frontend (`caredesk-lou.pages.dev`) apos o deploy
 
 **Efeito colateral pego no proprio deploy do GitHub Actions:** o job `Deploy Worker` falhou logo apos o push — `wrangler` `4.110.0` exige Node.js `22+`, e o workflow ainda usava `node-version: 20` nos dois jobs de deploy. Corrigido para `22` em `deploy-worker` e `deploy-frontend` no mesmo `.github/workflows/deploy.yml`. Consequencia direta de resolver `^4.0.0` para a ultima 4.x disponivel; nao afeta ambiente local (ja em Node 24 nas maquinas usadas nesta sessao).
+
+### 11.48 Protocolo de Documentos + remocao total do fallback automatico de protocolo
+
+Aplicado entre `2026-07-14` e `2026-07-20`, continuando o plano de acao (secao 12) e respondendo a um bug reportado pelo usuario em producao.
+
+**Protocolo de Documentos (feature nova, planejada antes de implementar):**
+- pedido original: aba "Protocolo de Documentos" ao lado dos outros protocolos, catalogo com subabas Enviar/Solicitar, e possibilidade de marcar no cadastro do paciente quais documentos cobrar dele
+- decisoes confirmadas com o usuario antes de codar: sem upload de arquivo real (so metadado/checklist), com rastreio de status (`pending`/`done`), atribuicao editavel tanto no cadastro quanto depois na pagina do paciente (a decisao inicial foi "so na pagina do paciente"; revertida apos o usuario ver a tela `Novo Paciente` publicada e pedir a selecao tambem ali)
+- schema novo: `document_templates` (catalogo) + `patient_documents` (checklist por paciente, `UNIQUE(patient_id, document_template_id)`, `ON DELETE RESTRICT` no template pra nao sumir historico se o catalogo mudar) — migration `0011_document-protocol.sql`
+- backend: CRUD do catalogo em `worker/src/routes/document-templates.js` (espelha `protocols.js`, incluindo bloqueio `409` de exclusao em uso), rotas aninhadas `GET/PUT/PATCH/DELETE /api/patients/:id/documents[/:templateId]` em `patients.js` (nao `adminOnly` — qualquer agente autenticado marca o checklist)
+- frontend: `DocumentProtocolTab.jsx` (aba admin), `PatientDocumentsSection.jsx` (card na pagina do paciente), selecao por checkbox em `NewPatient.jsx` (atribuida via `Promise.all` logo apos o `POST /patients` bem-sucedido, reusando o mesmo endpoint `PUT` da secao de documentos — nenhuma rota nova precisou ser criada pra isso)
+- validado: `worker/test/document-templates.test.js` (6 testes), `npm test` nos dois pacotes, `npm run build`, persistencia confirmada via query direta no D1 apos assign/status/unassign
+
+**Bug reportado: linha do tempo mostrando marcos sem nenhum protocolo configurado:**
+- usuario reportou (com screenshot) uma "Linha do Tempo" no detalhe do paciente exibindo marcos, apesar de nao ter nenhum protocolo de contato cadastrado
+- investigacao (somente leitura, D1 remoto direto): `contact_protocols` tinha `0` linhas — descartada a hipotese do fallback `DEFAULT`. O culpado real era `app_settings.contact_protocol_days`, um residuo `GLOBAL` sem nenhuma UI pra edita-lo, com valor antigo `[-50,-2,0,2,5]` ainda sendo lido por `resolvePatientProtocol()` (arquitetura anterior, ordem `LINKED -> DEFAULT -> GLOBAL -> LEGACY`)
+- decisao do usuario: nao so limpar o valor residual, mas remover o mecanismo de fallback inteiro — a linha do tempo (e qualquer coisa derivada de dias de protocolo) so deve aparecer quando o paciente tiver protocolo de contato vinculado de verdade
+- implementado: `resolvePatientProtocol(patient)` simplificado pra `LINKED`/`EMPTY` (removida `getProtocolResolutionContext()`, que buscava o `DEFAULT`/`GLOBAL`); removida a rota `PATCH /api/settings/protocol` (nao fazia mais sentido sem o nivel `GLOBAL`); migration `0012_remove-global-protocol-fallback.sql` apaga a chave `contact_protocol_days` de `app_settings`; scheduler, rotas de paciente e frontend (`store/index.js`, `branding.js`, `PatientDetail.jsx`, `PatientPanel.jsx`) atualizados pra parar de ler/gravar essa chave
+- `is_default` em `contact_protocols` **nao foi removido** — continua servindo pra pre-selecionar protocolo no cadastro de paciente (ver `2.5`), mas deixou de ser um fallback de leitura; a diferenca e sutil e importante: antes um paciente sem protocolo linkado ainda "herdava" dias de protocolo em tempo de leitura, agora ele so tem dias se `protocol_id` foi de fato gravado (seja por escolha explicita, seja pelo default aplicado uma unica vez na criacao)
+- validado: `worker/test/protocols.test.js` reescrito pro novo comportamento (removidos os casos `DEFAULT`/`GLOBAL`), `npm test` nos dois pacotes, migration aplicada e verificada local e remoto via `sqlite_master`, commit/push/deploy feitos para validacao visual do usuario
+
+**Ajuste de processo registrado nesta rodada (ver tambem `[[feedback-visual-validation]]`):**
+- o usuario formalizou que validacao visual/de navegador e sempre feita por ele; o papel do Claude Code fica limitado a configuracao e criacao (codigo, schema, testes automatizados via `node:test`/`vitest`, curl quando fizer sentido) — nenhum Playwright/navegador automatizado deve rodar neste projeto daqui pra frente
+- o usuario tambem esclareceu que a tool `Monitor` (polling em background de CI) nao e validacao visual, mas prefere checagens diretas de status (`gh run view --json status,conclusion`) a deixar um `Monitor` aberto esperando
+
+Validacao final desta rodada:
+- `worker`: `npm test` ok
+- `frontend`: `npm test` ok, `npm run build` ok
+- producao: migrations `0011`/`0012` aplicadas e confirmadas via `sqlite_master`, commit `e266d84` publicado, `git status` limpo e sincronizado com `origin/main`
+
+### 11.49 Frente A do roadmap de escalabilidade — Aba Historico (implementada local, `2026-07-20`)
+
+Primeira frente do roadmap da secao `13`. Implementa a aba de Historico (#2) + os indices e a paginacao que a servem (#3), com as duas decisoes confirmadas pelo usuario: **pagina propria no menu lateral** e **coluna `created_by` no paciente** (registra quem cadastrou).
+
+**Estado (`2026-07-21`): implementada, testada, migration aplicada no remoto e deploy disparado por push apos o usuario autorizar (bateria de testes de frontend verde).**
+
+Backend:
+- `worker/migrations/0013_activity-history.sql`: `ALTER TABLE patients ADD COLUMN created_by TEXT REFERENCES agents(id) ON DELETE SET NULL` + indices `idx_followups_created ON followup_logs(created_at DESC)` e `idx_patients_created ON patients(created_at DESC)`
+- `worker/src/db/schema.sql`: refletido (coluna `created_by` + os 2 indices no bloco de performance)
+- `worker/src/routes/patients.js`: `POST /` grava `created_by = c.get('agent')?.sub` e devolve o campo no payload
+- `worker/src/routes/activity.js` (novo): `GET /api/activity?page&limit`, autenticada; `UNION ALL` de pacientes cadastrados (`patient_created`) + contatos (`contact`, com JOIN em `agents`/`patients`), ordenado por `ts DESC`, resposta `{ items, total }`; sempre paginado (default page 1, limit 20, cap 100)
+- `worker/src/index.js`: registrado `app.route('/api/activity', activityRoutes)`
+
+Frontend:
+- `frontend/src/pages/Historico.jsx` (novo): feed cronologico, icone/label por tipo reusando `utils/contactDisplay.js` (`CONTACT_TYPE_CONFIG`/`OUTCOME_CONFIG`/`getInitials`), badge de outcome, timestamp relativo + absoluto, paginacao identica a `Patients.jsx`
+- `frontend/src/components/layout/AppLayout.jsx`: item `Historico` (icone `history`) no `NAV_ITEMS` — visivel para agente e admin
+- `frontend/src/router/index.jsx`: rota `/historico` privada dentro de `AppLayout`
+- `frontend/src/services/api.js`: namespace `activity.list({page,limit})`
+
+Validacao local (o que cabe ao Claude Code — ver `[[feedback-visual-validation]]`):
+- migration `0013` aplicada no D1 local via `run-migrations.js`; verificado direto no `sqlite_master` que os 2 indices existem e que `patients.created_by` foi criada (regra da `0010`/`11.47`)
+- curl do fluxo com worker local: `POST /patients` devolveu `created_by` = id do admin logado; `GET /api/activity` vazio devolveu `{items:[],total:0}`; apos criar paciente + followup, o feed devolveu os 2 eventos ordenados por `ts DESC`, com `agent_name` resolvido nos dois lados e `total:2`
+- dado de teste removido do D1 local ao final (`patients`/`followup_logs` de volta a `0`)
+- `worker`: `npm test` ok (`29/29`); `frontend`: `npm test` ok (`32/32`), `npm run build` ok (bundle principal `~515 kB`, acima do aviso de `500 kB` — heranca da arquitetura sem lazy nas paginas de rota; `manualChunks` continua adiado de proposito, ver `11.37`)
+
+Deploy (`2026-07-21`, apos o usuario autorizar com a bateria de testes verde):
+- bateria de testes do frontend antes de liberar: `npm test` (`32/32`), `npm run build` ok; worker `npm test` (`29/29`) sem regressao
+- migration `0013` aplicada no D1 **remoto** via `db:migrate:remote` e **reconfirmada via `sqlite_master`**: os 2 indices existem e `patients.created_by` foi criada — aplicacao completa, sem a falha parcial da `0010`
+- migration remota aplicada **antes** do push, para o worker novo (que ja insere/consulta `created_by`) nao subir contra um schema remoto sem a coluna
+- commit staged so com os arquivos da Frente A + docs (`calculadora.py` e `.claude/` deixados de fora, untracked alheios); push para `origin/main` disparou o deploy do GitHub Actions (worker + frontend)
+
+## 13. Roadmap de Escalabilidade (definido em `2026-07-20`)
+
+Bloco de continuidade: registra a analise de escalabilidade feita com o usuario em `2026-07-20`. `13.1` lista **as 6 escalacoes avaliadas** com a decisao tomada em cada uma. `13.2` define a ordem de execucao das aprovadas. `13.3` a `13.5` detalham cada frente aprovada. `13.6` fixa o processo de fechamento. Qualquer sessao futura (Claude Code, Codex ou humano) deve seguir esta secao para dar prosseguimento.
+
+Prioridade oficial do projeto, guia de toda decisao aqui: **seguranca > saude do banco > fluidez**. A ordem das frentes segue risco crescente ao banco (leitura pura primeiro, novo caminho de escrita depois, otimizacao por ultimo).
+
+### 13.1 As 6 escalacoes avaliadas (decisao por item)
+
+Contexto: o Claude Code propos 6 frentes de escalabilidade; o usuario decidiu item a item. Resumo de cada proposta original + risco + **decisao**.
+
+**#1 — Multi-tenancy (multi-clinica)**
+- Proposta: decisao estrutural mais cara de adiar. Hoje uma instancia = uma clinica; todo `SELECT` assume dado global. Rodar mais de uma clinica no mesmo banco exigiria `tenant_id` em toda tabela + filtro em toda query. Retrofit com dados ja dentro e doloroso.
+- Risco de nao fazer: vazamento cross-clinica de dado clinico — o pior bug possivel nesse dominio.
+- **DECISAO: FORA.** O sistema roda para uma unica clinica, com exatamente **dois usuarios fixos**: um `agent` (cuida das tratativas com pacientes — cadastros, registro de contatos, uso operacional do dia a dia) e um `admin` (faz tudo que o agente faz + acesso a todas as configuracoes do sistema). Separacao mais fina de papeis pode ser revisitada **depois** do sistema pronto, nao agora.
+
+**#2 — Trilha de auditoria + LGPD**
+- Proposta: dado clinico no Brasil, hoje sem registro de "quem fez o que". `followup_logs` guarda contato, mas nao "admin X editou paciente Y as 14h" nem "agente Z abriu prontuario". Tabela `audit_log` (`actor_id`, `action`, `entity`, `entity_id`, `timestamp`, `ip`). Auditoria so serve se existir desde o comeco — nao da pra reconstruir evento passado. LGPD (consentimento, retencao, direito de exclusao) e mais barato desenhar cedo.
+- **DECISAO: APROVADA, em versao enxuta.** Vira uma **aba de Historico** que reflete as ultimas alteracoes — pacientes adicionados, ultimos contatos feitos, com quem foi e de que forma (tipo de contato). Detalhe na **Frente A** (`13.3`). A parte pesada de LGPD/audit-log formal completo fica implicita/futura; o escopo aprovado agora e o feed de historico legivel.
+
+**#3 — Busca real de pacientes (FTS) + paginacao cursor-based**
+- Proposta: busca hoje e `LIKE '%termo%'` em nome/telefone — nao usa indice, degrada linear com a base. Paginacao e `OFFSET`, lenta em pagina alta. D1 suporta FTS5 (full-text nativo SQLite); trocar `OFFSET` por cursor da escala constante. Ligado direto ao "detesto paginas travando" do usuario.
+- **DECISAO: APROVADA (indexacao e paginacao).** Implementada **junto da Frente A** (`13.3`) — os indices existem pra servir o feed de historico, e a paginacao segue o mesmo shape `{ items, total }`. **FTS5 fica como fase futura** (base atual e minuscula, `LIKE` nao trava hoje) — nao desperdicar esforco antes de virar necessidade real.
+
+**#4 — Observabilidade / monitoramento de erro**
+- Proposta: hoje zero metrica, zero log estruturado; erro so aparece se alguem reclama (foi o caso do bug da linha do tempo, invisivel ate virar screenshot). Log estruturado no Worker + taxa de erro/latencia por rota.
+- **DECISAO: APROVADA.** Dentro da aba de **Configuracoes**, adicionar uma **aba de Logs** para monitorar o sistema e mostrar notificacoes sobre erros. Detalhe na **Frente B** (`13.4`).
+
+**#5 — Backup automatizado + restore testado**
+- Proposta: hoje so um bookmark de Time Travel + um export manual unico em `backups/d1` — ponto unico de perda de dado. Cron semanal exportando D1 pro R2/externo, com retencao, e restore testado.
+- **DECISAO: FORA por enquanto.** Hoje so existe **dado de teste**, nada que precise ser preservado. Implementar **quando o sistema estiver pronto** para dado real.
+
+**#6 — Cache de catalogos read-heavy (KV / Cache API)**
+- Proposta: protocolos, documentos e settings/branding sao lidos em quase todo request e mudam raramente; hoje cada leitura bate no D1. KV/Cache API com invalidacao no write da ganho de fluidez barato, sem tocar no dado operacional.
+- **DECISAO: APROVADA.** Usar cache para nao sobrecarregar o sistema. Detalhe na **Frente C** (`13.5`).
+
+Resumo: **aprovadas #2, #3, #4, #6** (viram Frentes A/B/C). **Fora #1 e #5** (revisitar depois do sistema pronto).
+
+### 13.2 Ordem de execucao das frentes aprovadas
+
+1. **Frente A** (`13.3`) — Historico + indices + paginacao (#2 + #3). Risco baixo, valor visivel imediato, base de dado pronta.
+2. **Frente B** (`13.4`) — Aba Logs / monitoramento de erro (#4). Novo caminho de escrita, feito com blindagem depois que A estabilizar.
+3. **Frente C** (`13.5`) — Cache (#6). Otimizacao por cima de tudo ja funcionando.
+
+### 13.3 Frente A (PRIMEIRA) — Aba Historico + indices + paginacao
+
+> **STATUS (`2026-07-21`): IMPLEMENTADA, migration `0013` aplicada e verificada no remoto, deploy via push disparado.** Detalhes de implementacao/validacao em `11.49`.
+
+Junta as ideias #2 (historico) e #3 (indice/paginacao) numa frente so, porque os indices existem justamente para servir esse feed. **Risco baixo: 100% leitura, nenhum novo caminho de escrita.**
+
+Pedido do usuario: uma aba de Historico que reflete as ultimas alteracoes — pacientes adicionados, ultimos contatos feitos, com quem foi e de que forma (tipo de contato).
+
+O dado **ja existe**, nao criar tabela de eventos:
+- pacientes cadastrados: `patients.created_at` + `name`
+- contatos feitos: `followup_logs` (ja tem `agent_id`, `contact_type`, `outcome`, `created_at`) + JOIN em `agents` (quem) e `patients` (qual paciente)
+
+Backend:
+- nova rota `worker/src/routes/activity.js` → `GET /api/activity?page&limit`, autenticada (agente + admin veem)
+- query: `UNION ALL` dos dois SELECTs, ordenado por timestamp `DESC`, com `LIMIT/OFFSET`; resposta `{ items, total }` (mesmo shape da paginacao de pacientes)
+- cada item: `kind` (`patient_created` | `contact`), nome do paciente, timestamp; para `contact` inclui nome do agente + `contact_type` + `outcome`
+- registrar em `worker/src/index.js`: `app.route('/api/activity', activityRoutes)`
+
+Indices novos (migration `0013`):
+- `idx_followups_created ON followup_logs(created_at DESC)` — o indice atual e composto (`patient_id, contact_date`), nao serve um `ORDER BY created_at` global
+- `idx_patients_created ON patients(created_at DESC)`
+- aplicar via `worker/scripts/run-migrations.js` e **verificar com `sqlite_master` no remoto** (regra da `0010`/`11.47`: nao confiar so no exit code)
+
+`created_by` no paciente (**DECISAO CONFIRMADA PELO USUARIO em `2026-07-20`: ADICIONAR**):
+- hoje `patients` nao tem coluna de autor; o feed nao consegue dizer "quem cadastrou o paciente"
+- entra nesta migration `0013`: `ALTER TABLE patients ADD COLUMN created_by TEXT REFERENCES agents(id)`, gravado no `POST /patients` a partir de `c.get('agent').sub` — com dois usuarios (agente vs admin) isso tem valor real
+- backfill: linhas existentes ficam com `created_by = NULL` (feed mostra "cadastrado" sem autor so pros pacientes pre-existentes)
+
+Frontend:
+- **DECISAO CONFIRMADA PELO USUARIO em `2026-07-20`: pagina propria no menu lateral.**
+- nova pagina `frontend/src/pages/Historico.jsx` + item no sidebar (`frontend/src/components/layout/AppLayout.jsx`), ambos os papeis (agente + admin) veem
+- lista cronologica, badge por tipo reusando `frontend/src/utils/contactDisplay.js` (ja tem icone/cor por `contact_type`), paginacao igual `Patients.jsx`
+- rota nova no `frontend/src/router/index.jsx` (`/historico`, privada dentro de `AppLayout`)
+- `frontend/src/services/api.js`: namespace `activity.list({page,limit})`
+
+Fora de escopo desta frente: busca full-text (FTS5) de paciente. A busca atual e `LIKE '%x%'`; com base minuscula nao trava. FTS so vira necessario quando a base crescer — marcado como fase futura, nao desperdicar esforco agora.
+
+### 13.4 Frente B (SEGUNDA) — Aba Logs / monitoramento de erro
+
+Ideia #4. Introduz **novo caminho de escrita** — por isso vem depois da Frente A. Regra inegociavel: **registrar log nunca pode quebrar a resposta da API.**
+
+Pedido do usuario: dentro da aba de Configuracoes, adicionar uma aba de Logs, para monitorar o sistema e mostrar notificacoes sobre erros.
+
+Schema (migration `0014`):
+```sql
+CREATE TABLE system_logs (
+  id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  level      TEXT NOT NULL CHECK (level IN ('error','warn','info')),
+  source     TEXT,              -- rota ou 'scheduler'
+  message    TEXT NOT NULL,
+  detail     TEXT,              -- contexto/stack sanitizado (JSON)
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_system_logs_created ON system_logs(created_at DESC);
+```
+
+Captura:
+- `worker/src/index.js` `app.onError`: alem do `console.error` atual, inserir linha via `c.executionCtx.waitUntil(...)`, **envolto em try/catch que engole qualquer falha** — se o D1 falhar, a resposta 500 sai igual; log nunca derruba request
+- idem no `worker/src/services/scheduler.js` (erro por paciente)
+- **seguranca:** NUNCA logar body de request (pode conter senha). So rota, mensagem, `err.message`/stack e contexto sanitizado
+
+Retencao: cortar crescimento — no insert (ou no cron diario) apagar `WHERE created_at < datetime('now','-30 days')`. Trivial nessa escala, mas evita tabela infinita.
+
+Backend:
+- nova rota `worker/src/routes/system-logs.js` (`adminOnly`): `GET /api/system-logs?page&limit&level` e `DELETE /api/system-logs` (limpar)
+- registrar em `worker/src/index.js`
+
+Frontend:
+- nova aba em `frontend/src/pages/Admin.jsx` `TABS`: `{ id: 'logs', label: 'Logs', icon: 'monitoring' }` + novo `frontend/src/components/admin/SystemLogsTab.jsx`, **admin-only** (a pagina `/admin` ja e)
+- lista com filtro por nivel + badge de contagem de erros recentes
+- "notificacao sobre erros" = badge de erro nao-visto no menu de config (opcional, fase 2)
+
+### 13.5 Frente C (TERCEIRA) — Cache
+
+Ideia #6. Pura otimizacao — vem por ultimo, por cima de tudo ja funcionando. Precisa de **invalidacao disciplinada** ou serve dado velho.
+
+Fase 1 (ganho claro): cachear `GET /api/settings/public` — nao-autenticado, batido em todo load da tela de login, muda raro.
+- usar Workers **Cache API** (`caches.default`), chaveado por URL, TTL curto
+- invalidar no write: todo `PATCH /settings` e troca de asset **purga** essa entrada — sem isso, branding velho na tela de login
+
+Fase 2 (opcional): catalogos (`protocols`, `document-templates`, `message-protocols`) — autenticados mas globais, cacheaveis em KV com write-through invalidation. Com dois usuarios o ganho e marginal; e mais future-proof que alivio de carga real hoje. Fazer so se o usuario priorizar.
+
+### 13.6 Processo por frente
+
+Cada frente fecha com: migration propria aplicada e verificada (local + remoto via `sqlite_master`), `npm test` nos dois pacotes, `npm run build` no frontend, curl das rotas novas. Validacao visual e sempre do usuario (ver `[[feedback-visual-validation]]`) — o Claude Code para em build/teste/curl passando e avisa que esta pronto para a validacao visual dele. Commit/push/deploy so quando o usuario pedir.
