@@ -1,1841 +1,379 @@
 # Status do Projeto CareDesk
 
-Atualizado em: 2026-07-22
+Atualizado em: 2026-07-23
 
-Este arquivo registra como o CareDesk funciona hoje de verdade no codigo local.
+Este documento tem dois objetivos: (1) descrever como o sistema funciona hoje, pra quem chega no projeto entender rápido sem ler código primeiro; (2) manter um changelog datado de tudo que já foi decidido e por quê, pra não repetir debate nem redescobrir armadilha já mapeada. Seção 1 a 9 descrevem o **estado atual**. Seção 10 é o **changelog** (histórico, ordem cronológica). Seção 11 são **lições operacionais** que valem como runbook.
 
-## 1. Resumo Atual
+---
 
-O CareDesk e um sistema pessoal de acompanhamento pos-operatorio para uso interno de clinica.
+## 1. O que é o CareDesk
 
-Stack atual:
-- Frontend: React 18 + Vite + Tailwind + Framer Motion
-- Backend: Cloudflare Workers + Hono
-- Banco: Cloudflare D1
-- Autenticacao: JWT + hash de senha com PBKDF2
-- Deploy: Cloudflare Workers + Cloudflare Pages
+Sistema interno de acompanhamento pós-operatório de uma clínica. Um agente (ou o admin) cadastra o paciente, vincula um protocolo de contato, e o sistema calcula os marcos de acompanhamento (ligar em tal dia, checar em tal outro). O scheduler diário gera notificações internas quando um marco vence.
 
-Ambiente conhecido:
-- Frontend principal: `https://caredesk-lou.pages.dev`
-- Worker principal: `https://caredesk-worker.faugusto-thecoral.workers.dev`
-- Banco D1 remoto ativo
+**Escala do produto:** uma clínica, dois papéis fixos — `agent` (opera o dia a dia: cadastro, contato, checklist de documento) e `admin` (tudo que o agente faz + protocolos, equipe, identidade visual). Multi-clínica (multi-tenant) foi avaliado e **descartado por decisão do usuário** (ver `10.1`, item #1) — não vale a complexidade agora.
 
-Estado do Git:
-- `main` local alinhada ao ultimo commit versionado do remoto (`git status`: working tree limpa, `0` commits de diferenca em qualquer direcao com `origin/main`)
-- ultimo commit: `3f1929d` (`fix(security): sessao via cookie httpOnly (access 15min + refresh 7d)`), precedido por `feb5970` (`fix(security): sanitizacao server-side, CSP de prod e hardening de login`) — ver `11.50`
-- workspace e GitHub estao sincronizados; o alerta antigo de "GitHub atrasado" (secoes 4 e 7 abaixo) nao se aplica mais
+### 1.1 Stack
 
-## 2. O que o Sistema Faz Hoje
+| Camada | Tecnologia |
+|---|---|
+| Frontend | React 18 + Vite + Tailwind + Framer Motion |
+| Backend | Cloudflare Workers + Hono |
+| Banco | Cloudflare D1 (SQLite) |
+| Storage de arquivo | Cloudflare R2 |
+| Autenticação | JWT (HMAC, assinado a mão via Web Crypto — sem lib) + cookie `HttpOnly` |
+| Deploy | Cloudflare Workers + Cloudflare Pages, via GitHub Actions ou scripts `.ps1` manuais |
 
-### 2.1 Login e acesso
+### 1.2 Ambientes
 
-Fluxo atual:
-1. usuario acessa `/login`
-2. frontend envia credenciais para `POST /api/auth/login`
-3. worker busca o agente na tabela `agents`
-4. worker valida a senha com PBKDF2
-5. se valido, gera um JWT
-6. frontend persiste `token` e `agent`
-7. chamadas autenticadas usam `Authorization: Bearer <token>`
+- Frontend: `https://caredesk-lou.pages.dev`
+- Worker: `https://caredesk-worker.faugusto-thecoral.workers.dev`
+- Local: frontend `http://localhost:5173` (proxy `/api` → `http://localhost:8787`), worker `http://localhost:8787`
+- **D1 local e D1 remoto são bancos completamente separados** (`.wrangler/state` local vs. o banco de produção) — credencial, dado e migration aplicada num não existem automaticamente no outro. Ver `11.7` pra armadilha real que isso já causou.
 
-Perfis atuais:
-- `admin`
-- `agent`
+---
+
+## 2. Arquitetura Atual
+
+### 2.1 Autenticação e sessão
+
+Estado atual (desde `2026-07-22`, ver `10.13`):
+
+1. usuário envia `email`/`password` pra `POST /api/auth/login`
+2. worker busca o agente, valida a senha com PBKDF2 (`worker/src/routes/auth.js`, `verifyPassword`) em tempo constante — roda o PBKDF2 completo mesmo se o e-mail não existir, comparando contra um hash dummy fixo, pra não vazar por timing se a conta existe
+3. login certo → worker assina dois JWT (`worker/src/middleware/auth.js`):
+   - **access token**, `15 min`, claims `sub`/`email`/`role`/`name`
+   - **refresh token**, `7 dias`, claim `type:'refresh'`, só `sub`
+4. os dois vão como cookie `HttpOnly; Secure; SameSite=None` (`access_token` com `path=/`, `refresh_token` com `path=/api/auth/refresh` — só é enviado nessa rota)
+5. frontend não guarda mais o token em lugar nenhum acessível a JS — `services/api.js` manda `credentials:'include'` em toda chamada; a store (`store/index.js`) só persiste o objeto `agent`
+6. em qualquer `401` fora de `/auth/login`/`/auth/refresh`, o frontend tenta renovar a sessão uma vez (`POST /auth/refresh`, que relê o agente no banco antes de emitir novo access token) antes de deslogar de verdade
+7. `authMiddleware` lê o cookie primeiro, com fallback pro header `Authorization: Bearer` (mantido só por transição/scripts)
+8. `POST /auth/logout` limpa os dois cookies no servidor (idempotente, funciona mesmo sem sessão válida)
+
+**Por que `SameSite=None` e não `Strict`:** front (`pages.dev`) e worker (`workers.dev`) são domínios (sites) diferentes. `Strict`/`Lax` bloqueariam o navegador de mandar o cookie em qualquer request cross-site — quebraria o login inteiro, silenciosamente. `Secure` funciona em `http://localhost` porque Chrome/Firefox tratam `localhost` como origem confiável mesmo sem HTTPS.
+
+**Rate limit de login:** por IP **e** por e-mail normalizado, mesma tabela `login_rate_limit` (chave prefixada `ip:`/`email:`), bloqueia se qualquer uma estourar (5 tentativas / 15 min), com header `Retry-After` calculado a partir do `locked_until` real.
+
+**Perfis:** `admin`, `agent`.
+
+**O que ainda NÃO existe, por decisão explícita do usuário (`2026-07-22`):** 2FA (TOTP) no login, verificação por e-mail. 2FA na conta Cloudflare em si é responsabilidade do usuário, fora do código.
 
 ### 2.2 Pacientes
 
-Cada paciente trabalha hoje com:
-- nome
-- telefone
-- procedimento
-- data da cirurgia
-- agente responsavel
-- protocolo de contato
-- status
-- observacoes
+Campos: nome, telefone, procedimento, data da cirurgia, agente responsável, protocolo de contato, status (`active`/`inactive`/`done`), observações, `created_by` (quem cadastrou).
 
-Status disponiveis:
-- `active`
-- `paused`
-- `discharged`
+Sanitização server-side no `POST`/`PATCH` (`worker/src/routes/patients.js`, desde `2026-07-22`): `stripHtml` remove tags de `name`/`procedure`/`notes`, limites de tamanho, `surgery_date` validado por regex, `status` validado contra enum, e `assigned_agent_id`/`protocol_id` validados como FK real (rejeitam id inexistente com `400`, não gravam órfão).
 
-Paginas principais:
-- `Dashboard`
-- `Patients`
-- `NewPatient`
-- `PatientDetail`
+Listagem com paginação server-side (`page`/`limit`, resposta `{ patients, total }`) — o Dashboard continua consumindo a base ativa inteira sem paginar (comportamento preservado de propósito).
+
+Páginas: `Dashboard`, `Patients`, `NewPatient`, `PatientDetail`.
 
 ### 2.3 Contatos e acompanhamento
 
-Fluxo atual:
-1. paciente possui cirurgia e protocolo associado
-2. sistema calcula marcos previstos
-3. registros realizados ficam em `followup_logs`
-4. linha do tempo mostra progresso, proximos marcos e historico
-5. contatos sao registrados manualmente no detalhe do paciente ou pelo dashboard
+Cada paciente tem protocolo + data de cirurgia → sistema calcula marcos previstos. Contato realizado vira linha em `followup_logs` (tipo `call`/`email`/`whatsapp`/`in_person`, com `outcome`). Timeline no detalhe do paciente mostra progresso, próximo marco e histórico. Registro é manual (detalhe do paciente ou Dashboard).
 
-Tipos de contato ainda suportados pelo historico:
-- `call`
-- `email`
-- `whatsapp`
-- `in_person`
+Módulo de mensagens de WhatsApp/Telegram automatizado **não existe** nesta fase — o painel é centrado em ligação, protocolo e notificação interna.
 
-Observacao:
-- o modulo de mensagens foi retirado desta fase do produto
-- o painel permanece centrado em ligacao, protocolo e notificacoes internas
+### 2.4 Protocolos de contato
 
-### 2.4 Dashboard
+Tabelas `contact_protocols` (dias negativos/zero/positivos, cor, descrição) + `protocol_message_templates` (mensagem sugerida por marco).
 
-Hoje o dashboard mostra:
-- KPIs de pacientes ativos, contatos do dia, atrasados e em dia
-- lista de contatos do dia
-- selecao individual e em massa
-- abertura de ligacao
-- confirmacao para registrar contato no historico
-- atividade recente baseada em `notifications`
+**Resolução de protocolo, hoje só duas origens possíveis** (simplificado em `2026-07-20`, ver `10.11`):
+- `LINKED` — paciente tem `protocol_id` real, apontando pra um protocolo que existe
+- `EMPTY` — sem protocolo vinculado, nenhuma timeline/urgência calculada
 
-### 2.5 Protocolos de contato
+Não existe mais nenhum fallback automático invisível (os antigos níveis `DEFAULT`/`GLOBAL`/`LEGACY` foram removidos — ver `10.11`, `10.8`). `is_default` em `contact_protocols` ainda existe, mas só serve pra **pré-selecionar** o protocolo no formulário de cadastro — se o paciente for criado sem escolher protocolo, o backend grava o `id` do protocolo `is_default` direto no cadastro dele, e a partir daí ele resolve por `LINKED` normalmente (não por fallback em tempo de leitura).
 
-Hoje existe:
-- tabela `contact_protocols`
-- tabela `protocol_message_templates`
-- tela administrativa para listar, criar, editar e excluir protocolos
-- aba administrativa para criar mensagens ligadas aos marcos do protocolo
-- protocolo padrao
-- protocolo customizado por paciente
-- dias negativos, dia zero e dias positivos
+Scheduler e rotas de paciente compartilham a mesma função `resolvePatientProtocol(patient)`.
 
-Atualizacao mais recente (`2026-07-20`, ver `11.48`):
-- a resolucao de protocolo foi simplificada para **duas** origens possiveis, sem nenhum fallback automatico invisivel: `LINKED` (paciente tem `protocol_id` de verdade, apontando pra um `contact_protocols` existente) ou `EMPTY` (sem protocolo vinculado, nenhuma linha do tempo/urgencia calculada)
-- os niveis antigos `DEFAULT` (protocolo marcado `is_default`) e `GLOBAL` (`app_settings.contact_protocol_days`) foram **removidos** de `resolvePatientProtocol()` — motivo: um residuo de `GLOBAL` estava inventando marcos de linha do tempo pra pacientes sem nenhum protocolo configurado (ver `11.48`)
-- `is_default` continua existindo em `contact_protocols` e na UI, mas hoje so serve pra **pre-selecionar** o protocolo no formulario de cadastro de paciente (`worker/src/routes/patients.js`, resolucao de `protocol_id` no `POST /patients`) — se o paciente for criado sem escolher protocolo explicitamente, o backend grava o `id` do protocolo `is_default` diretamente no cadastro dele; a partir dai esse paciente resolve por `LINKED` normalmente, nao por um fallback em tempo de leitura
-- scheduler e rotas de pacientes compartilham a mesma logica de resolucao (`resolvePatientProtocol(patient)`, assinatura de um argumento so)
-- o detalhe do paciente ainda resolve a mensagem do proximo marco, quando existir template para `protocol_id + day_offset`
+### 2.5 Protocolo de Documentos
 
-### 2.5.1 Protocolo de Documentos
+Aba administrativa "Protocolo de Documentos" (entregue `2026-07-14` a `2026-07-20`, ver `10.10`): catálogo configurável (`document_templates`, categoria `send`/`request`) + checklist por paciente (`patient_documents`, status `pending`/`done`). Só metadado/checklist — **sem upload de arquivo real**, nenhum uso de R2 aqui. Atribuição acontece no cadastro (`NewPatient.jsx`) ou depois na página do paciente (`PatientDocumentsSection.jsx`). Exclusão de template em uso é bloqueada com `409` (mesmo padrão de `contact_protocols`).
 
-Nova aba administrativa "Protocolo de Documentos" (ao lado de Protocolo de Contatos e Protocolo de Mensagens), entregue nesta rodada:
-- catalogo configuravel pelo admin: `document_templates` (`name`, `category` em `send`/`request`, `description`), subabas Enviar/Solicitar na UI
-- checklist por paciente: `patient_documents` (join `patient_id` + `document_template_id`, `status` `pending`/`done`), unico por par (idempotente)
-- e so metadado/checklist — **sem upload de arquivo real**, nenhum uso de `R2` nessa feature
-- atribuicao de documento acontece em dois lugares: no formulario "Novo Paciente" (selecao por checkbox agrupada por categoria, atribuida logo apos o `POST /patients` bem-sucedido) e na secao "Documentos" da pagina do paciente ja existente (`PatientDocumentsSection.jsx`), onde tambem da pra alternar o status pendente/concluido
-- exclusao de um documento do catalogo em uso por algum paciente e bloqueada com `409` (mesmo padrao ja usado por `contact_protocols`)
+### 2.6 Dashboard
 
-### 2.6 Notificacoes e scheduler
+KPIs (ativos, contatos do dia, atrasados, em dia), lista de contatos do dia com seleção individual/massa, atalho de ligação, confirmação de registro de contato, atividade recente via `notifications`.
 
-O worker possui cron diario ativo.
+### 2.7 Histórico (aba própria)
 
-Estado atual do scheduler:
-1. busca pacientes ativos
-2. calcula o proximo marco pendente
-3. evita duplicar notificacao do mesmo dia
-4. cria registro em `notifications`
+Feed cronológico de pacientes cadastrados + contatos realizados (`GET /api/activity`, paginado). Entregue como Frente A do roadmap de escalabilidade — detalhe completo em `10.16`/`13.3`.
 
-Estado funcional:
-- scheduler gera notificacoes internas
-- nao ha canal de mensagem operacional ativo nesta fase
+### 2.8 Notificações e scheduler
 
-### 2.7 Area administrativa
+Cron diário (worker `scheduled`): busca pacientes ativos, calcula próximo marco pendente, evita duplicar notificação do mesmo dia, grava em `notifications`. Não existe canal de mensagem externo ativo — só notificação interna.
 
-A area administrativa hoje esta organizada em:
-- protocolos de contato
-- equipe
-- identidade visual
+### 2.9 Área administrativa
 
-O que ja existe:
-- gestao de protocolos
-- gestao de agentes
-- avatar de agentes com upload/remocao em edicao
-- temas visuais
-- configuracoes gerais da clinica
-- branding publico do login em fase final de consolidacao para nao depender mais de sessao autenticada
+Abas: Protocolos de Contato, Protocolo de Mensagens, Protocolo de Documentos, Equipe (agentes, com avatar), Identidade Visual (branding completo — logo, cores, tema, imagem/borda pulsante do login).
 
-## 3. Estrutura de Dados Atual
+### 2.10 Storage (R2 + D1)
 
-### 3.1 Estado do schema local
+Regra arquitetural: **R2 pra binário grande** (logo, background, imagem de login, favicon, avatar de agente), **D1 pra metadado/relação/permissão**. Nunca usar R2 como fonte de dado cadastral/clínico/operacional. Namespaces em uso: `branding/logos/`, `branding/backgrounds/`, `branding/login-images/`, `branding/login-backgrounds/`, `branding/favicons/`, `avatars/agents/`. `avatars/patients/` e `attachments/patients/` são roadmap, ainda não implementados (ver `8.2`).
 
-O schema local em `worker/src/db/schema.sql` hoje define (`10` tabelas, `13` migrations aplicadas local e remoto — `0000` a `0012`):
-- `agents`
-- `patients`
-- `followup_logs`
-- `notifications`
-- `contact_protocols`
-- `protocol_message_templates`
-- `document_templates`
-- `patient_documents`
-- `app_settings`
-- `login_rate_limit`
+---
 
-Pontos relevantes:
-- `agents` agora possui `avatar_url` e `avatar_storage_key`
-- `patients` nao possui coluna `email` nem mais a coluna legada `protocol_days` (removida na `0009`)
-- `password_reset_tokens` foi removida (`0007`) — feature orfa sem rota funcional, nunca implementada
-- `notifications` nao possui mais flags operacionais de mensagem no schema local novo
-- `app_settings` nao possui mais a chave `contact_protocol_days` (removida na `0012`, era o residuo causando o bug da linha do tempo — ver `11.48`)
-- o schema foi alinhado para a fase sem modulo de mensagens
+## 3. Modelo de Dados
 
-### 3.2 Estado remoto conhecido
+`worker/src/db/schema.sql` + `14` migrations aplicadas (`0000` a `0013`, local e remoto).
 
-O remoto passou por saneamento estrutural nesta rodada.
+**Tabelas:** `agents`, `patients`, `followup_logs`, `notifications`, `contact_protocols`, `protocol_message_templates`, `document_templates`, `patient_documents`, `app_settings`, `login_rate_limit`.
 
-Resultado confirmado:
-- schema remoto limpo de campos legados estruturais da fase anterior
-- nenhum paciente remoto ficou sem `protocol_id`
-- protocolo vinculado passou a prevalecer sobre snapshots legados
+**Colunas/tabelas legadas já removidas** (não existem mais, não precisa reavaliar):
+- `patients.protocol_days` (coluna `LEGACY`, removida `0009`, ver `10.9`)
+- `app_settings.contact_protocol_days` (fallback `GLOBAL`, removido `0012`, ver `10.11`)
+- `password_reset_tokens` (tabela órfã sem rota funcional, removida `0007`, ver `10.5`)
 
-### 3.3 Dumps e restauracao
+**Colunas adicionadas nas últimas rodadas:** `agents.avatar_url`/`avatar_storage_key`; `patients.created_by` (`0013`, quem cadastrou).
 
-Ja existe fluxo inicial de seguranca operacional:
-- bookmark de `Time Travel` registrado localmente
-- export remoto completo do D1 salvo em `backups/d1`
+**Índices (14, confirmados via `sqlite_master` em produção em `2026-07-22`):** `idx_patients_agent`, `idx_patients_status`, `idx_patients_surgery_date`, `idx_patients_protocol`, `idx_patients_created`, `idx_followups_patient`, `idx_followups_patient_date`, `idx_followups_created`, `idx_notif_agent`, `idx_notif_date`, `idx_message_templates_protocol_day`, `idx_document_templates_category`, `idx_patient_documents_patient`, `idx_patient_documents_template`.
 
-Aprendizados importantes:
-- comandos remotos do D1 precisam de `--remote`
-- imports SQL remotos pelo Wrangler nao devem usar `BEGIN TRANSACTION` / `COMMIT`
+**Saúde do banco de produção, última auditoria em `2026-07-22`:** zero `patients.protocol_id`/`assigned_agent_id` órfão, zero conta com hash placeholder (`$PLACEHOLDER_HASH$`), todos os índices esperados presentes. Contagem de linhas por tabela nessa data: `agents=1`, `patients=3`, `contact_protocols=0`, `followup_logs=0`, `notifications=4`, `app_settings=35`, `document_templates=3`, `patient_documents=6`, `login_rate_limit=17` (a maioria é dado de teste, ainda não há uso real em produção).
 
-## 4. Estado do Repositorio
+**Runbook de migration:** `worker/scripts/run-migrations.js` (`npm run db:migrate` / `db:migrate:remote`) aplica `migrations/*.sql` em ordem, rastreando o que já rodou numa tabela `_migrations` no próprio D1. **Regra dura desde o incidente da `0010`** (ver `11.3`): depois de qualquer migration multi-instrução aplicada com `--remote`, sempre confirmar o resultado real via `sqlite_master` — não confiar só no exit code do `wrangler` nem no que o script marca como aplicado.
 
-### 4.1 GitHub / origin
+---
 
-Atualizado em `2026-07-22`: o repositório remoto **esta em dia** com o workspace local. `git status` mostra working tree limpa, `main` local e `origin/main` sem nenhum commit de diferenca em qualquer direcao. O alerta historico "GitHub atrasado" que ocupava esta secao ate `2026-07-12` nao se aplica mais desde a rodada de consolidacao de versionamento (`11.23` em diante).
+## 4. Segurança — Estado Atual
 
-### 4.2 Workspace local
+Consolidado após três rodadas de hardening (`2026-07-13`, ver `10.4`; e `2026-07-22`, ver `10.13`).
 
-Estado atual: nada pendente de commit. As entregas mais recentes ja estao versionadas e publicadas (ver `11.44` a `11.50`):
-- paginacao server-side + indices de performance na listagem de pacientes
-- Protocolo de Documentos (catalogo + checklist por paciente, incluindo selecao no cadastro)
-- remocao total dos fallbacks automaticos de protocolo (`DEFAULT`/`GLOBAL`), deixando so `LINKED`/`EMPTY`
-- rodada de hardening de seguranca a partir de auditoria externa: sanitizacao server-side, CSP de producao limpa, e sessao migrada de JWT em `localStorage` (8h fixo) para cookie `HttpOnly` com access token de `15min` + refresh token de `7 dias` (`11.50`)
+**O que está protegido:**
+- IDOR em `PATCH /api/notifications/:id/read` — filtra por `agent_id` do token
+- Timing-safe: `verifyPassword` roda PBKDF2 completo mesmo com e-mail inexistente, comparação final byte a byte em tempo constante
+- Rate limit de login por IP **e** por e-mail, com `Retry-After`
+- `POST /api/setup/admin` bloqueado fora de ambiente de desenvolvimento (`APP_ENV`), com camada opcional de `SETUP_TOKEN`
+- Headers de segurança na API (`secureHeaders` do Hono: `X-Frame-Options: DENY`, `nosniff`, HSTS, `Cross-Origin-Opener-Policy`) e no frontend (`frontend/public/_headers`: CSP restritiva, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) — CSP de produção sem resíduo de `localhost` desde `2026-07-22`
+- SQL sempre parametrizado (sem SQLi) — testado ativamente contra produção, ver `10.13`
+- Mass assignment protegido — o backend monta o objeto campo a campo, nunca faz `INSERT` a partir do spread direto do body
+- Sanitização server-side de todo campo de texto de paciente (`stripHtml` + limites de tamanho) desde `2026-07-22`
+- Sessão via cookie `HttpOnly`/`Secure`/`SameSite=None`, access token de `15 min` + refresh token de `7 dias` com renovação automática — token de sessão não é mais legível por JavaScript (antes: JWT de `8h` fixo em `localStorage`) desde `2026-07-22`
+- CORS não reflete origem arbitrária (whitelist fixa: `FRONTEND_URL` + `localhost:5173`/`4173`), com `credentials: true` só pra essas origens
 
-Conclusao:
-- codigo local e GitHub estao sincronizados; nenhum dos dois e "mais atual" que o outro no momento
+**Decisões deliberadas de não fazer (por ora):**
+- 2FA (TOTP) no login e verificação por e-mail — usuário recusou explicitamente em `2026-07-22`
+- CAPTCHA/Turnstile após tentativas repetidas — item `4.3` do guia de segurança, não implementado ainda
+- Criptografia em nível de aplicação pra colunas sensíveis (notas/telefone) + base legal/retenção LGPD formal — item `5`, não implementado ainda
+- Crack offline do secret HS256 — item `7`, informativo, não executado
+- Multi-tenancy — decisão de produto, não de segurança (ver `10.15`, item #1)
 
-## 5. Deploy e Operacao
+**Validação de ataque mais recente (`2026-07-22`, produção, ver `10.13`):** SQLi (clássico/`UNION`/time-based), NoSQL, `alg:none`, cookie/token forjado, CORS com origem maliciosa, path traversal, `TRACE` — nenhum vetor comprometeu o sistema.
 
-### 5.1 Deploy manual
+---
 
-Scripts atuais:
-- `scripts/deploy-worker.ps1`
-- `scripts/deploy-frontend.ps1`
-- `scripts/deploy-all.ps1`
+## 5. Deploy e Operação
 
-### 5.2 Ambiente publicado
+**Scripts manuais:** `scripts/deploy-worker.ps1`, `scripts/deploy-frontend.ps1`, `scripts/deploy-all.ps1` (este último pede confirmação interativa — não roda em shell não-interativo, usar os dois primeiros separados nesse caso). `wrangler` pinado em `@4` nos três, mesma major usada no CI.
 
-Estado conhecido:
-- frontend publicado no Pages, worker publicado no Workers
-- todas as `13` migrations (`0000` a `0012`) aplicadas tanto local quanto remoto, inclusive as duas mais recentes (`0011_document-protocol.sql`, `0012_remove-global-protocol-fallback.sql`), com verificacao direta via `sqlite_master` alem do exit code do `wrangler`/`_migrations`
-- rotas antigas `/api/whatsapp` e `/api/telegram` responderam `404`
-- workflow `.github/workflows/deploy.yml` reforcado para validar secrets da Cloudflare e instalar `wrangler` no job de frontend, com deteccao de escopo (deploy so do que mudou)
+**CI/CD:** `.github/workflows/deploy.yml` ("Deploy CareDesk") — dispara em `push` pra `main` ou manualmente (`workflow_dispatch`, com `target: all|worker|frontend`). Job `changes` detecta escopo (`git diff` dos arquivos alterados) e decide se publica `worker`, `frontend` ou os dois — mudança só em `frontend/` não redeploya o worker e vice-versa. `npm audit --audit-level=high` roda nos dois jobs (não-bloqueante, só visibilidade).
 
-Estado atual:
-- workspace local e GitHub sincronizados (secao 4) — o ambiente publicado reflete o commit `e266d84`, sem defasagem conhecida
+**Regra de ouro pra mudança visual crítica:** nada pode ficar só no deploy manual — já causou regressão (`10.7`, o deploy automático via Actions republicou um estado do repositório sem o pacote visual que só tinha ido pro Cloudflare manualmente). O GitHub é a fonte de verdade de publicação; deploy manual é só contingência.
 
-## 6. O que Ja Esta Pronto
+**Secrets do Worker** (via `wrangler secret put`, nunca versionados): `JWT_SECRET`, `JWT_REFRESH_SECRET` (novo desde `2026-07-22`), `SETUP_TOKEN` (opcional).
 
-- base frontend/backend definida
-- autenticacao JWT funcionando, com hardening de seguranca aplicado (IDOR, timing-safe, rate limit IP+email, `secureHeaders`/CSP) — ver `11.36`
-- sessao migrada de `localStorage` para cookie `HttpOnly`/`Secure`/`SameSite=None`, access token de `15min` + refresh token de `7 dias` com renovacao automatica; sanitizacao server-side de paciente; `Retry-After` no rate limit; CSP de producao sem residuo — ver `11.50`
-- rate limit de login implementado (IP e email), com header `Retry-After`
-- painel de pacientes funcional, com paginacao server-side e indices de performance (`11.44`/`11.45`)
-- detalhe do paciente funcional, incluindo checklist de documentos por paciente
-- protocolos de contato e de mensagens com interface propria; resolucao simplificada para `LINKED`/`EMPTY`, sem fallback automatico (`11.48`)
-- Protocolo de Documentos: catalogo administravel (Enviar/Solicitar) + atribuicao no cadastro e na pagina do paciente (`11.48`)
-- dashboard funcional
-- deploy automatizado via GitHub Actions com deteccao de escopo, alem do deploy manual
-- base inicial de backup ja criada
-- workspace e GitHub sincronizados (sem defasagem de versionamento pendente)
+---
 
-## 7. O que Esta em Transicao
+## 6. Estado do Repositório
 
-- quebra de `PatientDetail.jsx`/`Admin.jsx` em componentes menores (ainda grandes, `1036`/`762` linhas — ver `12.4.2`, nao feito ainda)
-- roadmap de produto ainda planejado, nao urgente: `avatars/patients`, `attachments/patients` (`12.6.1`/`12.6.2`)
+`main` local sincronizada com `origin/main` — sem commits de diferença em nenhuma direção. Working tree limpa depois de cada rodada de trabalho.
 
-## 8. Pontos de Atencao
+Commits mais recentes relevantes: `3f1929d` (migração de sessão pra cookie `HttpOnly`), `feb5970` (sanitização/CSP/hardening de login), `e2b1adc` (doc — versão anterior deste arquivo).
 
-### Alta prioridade
+---
 
-Nenhum item de alta prioridade em aberto no momento — a consolidacao de protocolos, a remocao de compatibilidades legadas, o hardening de seguranca (`12.1`) e a sincronizacao com o GitHub ja foram concluidos (ver `11.36`, `11.37`, `11.42`, `11.48`). Revisar a secao 12 antes de abrir uma nova frente grande, caso alguma decisao arquitetural precise ser revisitada.
+## 7. O que Já Está Pronto
 
-### Media prioridade
+- autenticação com sessão via cookie `HttpOnly` (access `15min` + refresh `7d`), rate limit IP+e-mail, headers de segurança, sanitização server-side
+- CRUD de pacientes com paginação server-side e índices de performance
+- protocolos de contato (`LINKED`/`EMPTY`, sem fallback automático) e de mensagens
+- Protocolo de Documentos (catálogo + checklist por paciente)
+- aba de Histórico (feed de atividade paginado)
+- Dashboard funcional
+- área administrativa completa (protocolos, equipe com avatar, identidade visual)
+- scheduler diário de notificações internas
+- deploy automatizado via GitHub Actions com detecção de escopo, mais deploy manual de contingência
+- testes automatizados: worker `31/31` (`node --test`), frontend `32/32` (`vitest`)
+- backup inicial: bookmark de Time Travel + export manual em `backups/d1`
 
-- quebrar `PatientDetail.jsx` (`1036` linhas) e `Admin.jsx` (`762` linhas) em componentes menores — pendente, ver `12.4.2`
-- avaliar `avatars/patients` e `attachments/patients` como proximas features de roadmap, se fizer sentido priorizar (`12.6.1`/`12.6.2`)
-- reduzir o tempo de estado `Carregando ambiente...` na rota `/patients`, se quisermos um boot ainda mais direto
-- itens do `SECURITY_IMPROVEMENTS.md` que ficaram fora desta rodada por decisao do usuario ou por serem P2/P3: 2FA TOTP e verificacao por email (recusados explicitamente por ora), CAPTCHA/Turnstile apos falhas repetidas, criptografia em nivel de aplicacao para colunas sensiveis + base legal/retencao LGPD — ver `11.50`
+---
 
-## 9. Aprendizados Mais Recentes
+## 8. Débito Técnico e Pendências Conhecidas
 
-- a tela publica `/login` nao carregava ajustes de branding porque `frontend/src/App.jsx` encerrava o bootstrap ao detectar ausencia de token
-- `GET /api/settings` continuou autenticado; o worker agora precisa manter uma leitura publica separada e sanitizada para branding
-- o preview anterior da aba de identidade visual induzia erro de leitura, porque a imagem e a borda estavam separadas em dois blocos distintos
-- a borda pulsante estava tecnicamente renderizada para configuracoes locais, mas a faixa visivel do card era pequena demais para transmitir o efeito com clareza
-- o workflow de deploy do repositorio estava fragil no frontend porque chamava `npx wrangler pages deploy` sem garantir o CLI instalado naquele job
-- quando os secrets da Cloudflare nao estiverem presentes, o CI agora deve falhar com mensagem objetiva em vez de erro opaco mais adiante
-- a tela publica de login precisa esperar o branding remoto publico antes do primeiro paint util, ou a identidade visual aparece como regressao mesmo com os dados corretos salvos
-- a aba de identidade visual ficou mais coerente quando a preview duplicada do card foi removida e a composicao completa passou a ser a referencia unica
-- o shader do login precisa envolver o card principal inteiro da tela, enquanto o acabamento glass deve ficar restrito a coluna direita; qualquer outra distribuicao distorce a intencao visual
+### 8.1 Refatoração de arquivos grandes
 
-### Baixa prioridade
+`PatientDetail.jsx` (~`1036` linhas) e `Admin.jsx` (~`762` linhas) continuam grandes — quebra em componentes menores planejada, não feita ainda. Ver plano detalhado arquivo por componente na seção `10.6` (histórico, item `12.4.2` do plano original).
 
+### 8.2 Roadmap de produto (evolução planejada, não dívida)
+
+- `avatars/patients` — imagem de perfil do paciente, reusa o núcleo de storage já existente
+- `attachments/patients` — anexos clínicos, precisa de tabela nova (N anexos por paciente), só depois de `avatars/patients`
+
+### 8.3 Segurança — itens do guia externo ainda fora de escopo
+
+CAPTCHA/Turnstile após falhas repetidas, criptografia em nível de aplicação + base legal/retenção LGPD, crack offline do secret (ver seção `4`).
+
+### 8.4 Observabilidade e cache (aprovados, ainda não implementados)
+
+Frente B (aba de Logs/monitoramento de erro) e Frente C (cache de catálogos read-heavy) do roadmap de escalabilidade — aprovadas pelo usuário em `2026-07-20`, detalhadas em `13.4`/`13.5`, ainda não implementadas (Frente A já foi).
+
+---
+
+## 9. Pontos de Atenção
+
+**Alta prioridade:** nenhum item aberto no momento.
+
+**Média prioridade:**
+- quebrar `PatientDetail.jsx`/`Admin.jsx` em componentes menores (`8.1`)
+- avaliar `avatars/patients`/`attachments/patients` se fizer sentido priorizar (`8.2`)
+- CAPTCHA/Turnstile, criptografia de coluna sensível + LGPD formal (`8.3`)
+- Frente B (Logs) e Frente C (Cache) do roadmap de escalabilidade (`8.4`)
+
+**Baixa prioridade:**
 - refinamentos visuais adicionais
 - otimizar re-fetches no frontend
+- reduzir o tempo de estado "Carregando ambiente..." na rota `/patients`
 
-## 9. Direcao Recomendada de Trabalho
-
-Ordem recomendada:
-1. consolidar `README.md` e `Status.md` como espelho do estado real
-2. organizar o conjunto local em blocos claros de alteracao
-3. estabilizar a regra de negocio dos protocolos
-4. separar commits de backend/migracao e frontend/branding
-5. validar o ambiente publicado
-6. so depois seguir com novas features maiores
-
-## 10. Resumo Executivo
-
-Estado real atual (`2026-07-22`):
-- produto orientado a acompanhamento interno, agora com paginacao/indices de performance e Protocolo de Documentos
-- modulo de mensagens de WhatsApp/Telegram continua pausado; Protocolo de Mensagens (templates ligados ao protocolo de contato) segue ativo
-- protocolos de contato consolidados: so `LINKED`/`EMPTY`, sem nenhum fallback automatico
-- banco remoto saneado estruturalmente, `13` migrations aplicadas e verificadas
-- ambiente publicado validado nas rotas principais
-- GitHub e workspace local sincronizados, sem defasagem
-- nova rodada de hardening de seguranca concluida e validada em producao: sessao agora via cookie `HttpOnly` (access `15min` + refresh `7 dias`, fecha o item que tinha ficado deliberadamente pendente em `11.36`), sanitizacao server-side de paciente, CSP de producao sem residuo, `Retry-After` no rate limit — simulacao de ataque pos-deploy (SQLi, JWT forjado, CORS, CSRF via `SameSite`) e auditoria de saude do banco (zero FK orfa, zero hash placeholder, indices integros) sem achado — ver `11.50`
-
-Ou seja:
-- o projeto esta utilizavel
-- o codigo local tem direcao clara
-- ainda precisamos consolidar versionamento e validacao publicada antes de abrir uma nova frente grande de mudancas
-
-## 11. Aprendizados Operacionais Recentes
-
-### 11.35 Direcao visual `Luxo Clinico` para o fundo do login
-
-Decisao desta rodada:
-- o fundo externo da tela de login deixou de depender de um preto quase chapado
-- a direcao escolhida foi `Luxo Clinico`, com base azul-petroleo profunda, halos frios suaves e atmosfera mais editorial
-
-Implementacao aplicada:
-- o login publico passou a usar um helper compartilhado para montar o background da pagina
-- a miniatura da aba `Identidade Visual` passou a reutilizar essa mesma atmosfera externa
-- isso reduz divergencia entre preview administrativa e tela real publicada
-
-Regra consolidada:
-- imagem de fundo configurada continua sendo respeitada quando existir
-- sem imagem, a pagina ainda deve parecer premium, e nao vazia ou triste
-- o background externo agora virou parte da linguagem visual oficial do login, nao apenas um fallback neutro
-
-### 11.36 Correcao do workflow para deploy isolado de frontend
-
-Problema confirmado:
-- o workflow oficial `Deploy CareDesk` aceitava `target=frontend`, mas mesmo assim o job `Deploy Frontend` ficava `skipped`
-- o mesmo ocorreu em push normal de alteracao apenas no frontend
-
-Causa raiz:
-- o job `Deploy Frontend` ainda carregava `needs: [changes, deploy-worker]`
-- no GitHub Actions, um job preso a outro job opcional e pulado pode ser descartado antes mesmo de o `if` conseguir liberar a execucao
-
-Correcao aplicada:
-- `Deploy Frontend` agora depende apenas de `changes`
-- a decisao de publicar o frontend volta a ser guiada unicamente por `needs.changes.outputs.deploy_frontend`
-
-Regra consolidada:
-- deploy de frontend puro nao deve esperar worker
-- deploy de worker puro nao deve bloquear Pages
-- o escopo detectado passou a ser a unica fonte de verdade para decidir se o Pages publica ou nao
-
-### 11.37 Protocolo de mensagens ligado aos marcos do protocolo
-
-Escopo entregue:
-- nova aba `Protocolo de Mensagens` ao lado de `Protocolo de Contatos`
-- cada mensagem fica vinculada a um protocolo real e a um marco real desse protocolo
-- o modal `Registrar Contato` agora mostra a mensagem correspondente ao proximo marco do paciente, quando ela existir
-
-Modelo escolhido:
-- tabela nova: `protocol_message_templates`
-- unicidade por `protocol_id + day_offset`
-- cada template guarda `title`, `content` e `contact_type`
-
-Motivo da modelagem:
-- a mensagem continua sendo regra do protocolo, e nao dado solto do paciente
-- isso garante consistencia entre pacientes que compartilham o mesmo protocolo
-
-Placeholders suportados:
-- `{{patient_name}}`
-- `{{patient_phone}}`
-- `{{procedure}}`
-- `{{surgery_date}}`
-- `{{assigned_agent_name}}`
-- `{{clinic_name}}`
-- `{{protocol_name}}`
-- `{{milestone_label}}`
-- `{{milestone_date}}`
-- `{{contact_date}}`
-
-Comportamento operacional:
-- se o proximo marco do paciente tiver template cadastrado, o sistema exibe a mensagem renderizada no registro de contato
-- o agente pode copiar a mensagem ou jogar o texto nas observacoes do registro
-- se o marco existir, mas ainda nao houver template, a interface avisa explicitamente que falta cadastrar essa mensagem
-
-### 11.38 Modal de registro de contato alargado
-
-Refino aplicado:
-- o modal `Registrar Contato` ganhou largura maior do que os modais simples da tela
-- a mudanca foi feita apenas nesse fluxo, porque ele agora concentra campos de contato, bloco de protocolo e mensagem sugerida
+---
 
-Motivo:
-- a largura antiga deixava a composicao apertada e reduzia a leitura da mensagem protocolar
-- o modal mais largo melhora escaneabilidade sem inflar desnecessariamente modais menores como editar e excluir
+## 10. Changelog
 
-### 11.39 Escala horizontal ampliada para todos os modais
+Ordem cronológica. Cada entrada tem data, o que mudou e por quê — sem repetir aqui o "como funciona hoje" (isso já está nas seções `1` a `4`).
 
-Refino aplicado:
-- a escala horizontal dos modais do projeto foi ampliada em aproximadamente 30%
-- a mudanca entrou nos modais compartilhados de `Admin`, `Protocolo de Mensagens` e `PatientDetail`
+### 10.1 Avatares de agente + storage organizado (`2026-07-11`)
 
-Nova escala consolidada:
-- modal base administrativo: `max-w-[36rem]`
-- modal largo administrativo: `max-w-[55rem]`
-- modal base do detalhe do paciente: `max-w-[42rem]`
-- modal largo do detalhe do paciente: `max-w-[62rem]`
+Primeira aplicação real da regra "R2 pra binário, D1 pra metadado" (seção `2.10`). Rotas `POST/DELETE /api/agents/:id/avatar`, `GET /api/agents/avatar/:key`. Migration `0002_agent-avatars.sql`. Sidebar e lista de equipe passaram a renderizar avatar real com fallback por iniciais.
 
-Motivo:
-- a interface estava passando sensacao de aperto horizontal em varios fluxos
-- a ampliacao global deixa formularios, blocos de texto e acoes lado a lado com respiracao mais consistente
+### 10.2 Imagem exclusiva de login + imagem de fundo dedicada (`2026-07-11` a `2026-07-12`)
 
-### 11.40 Segunda ampliacao agressiva da largura dos modais
+`login_image_url` (coluna institucional esquerda) e depois `login_background_image_url` (fundo da página inteira, atrás do card) — chaves independentes, sem fallback cruzado entre elas. Migrations `0003`/`0005`. Corrigido também: favicon não estava sendo aplicado em todas as variações de `link rel` (`icon`/`shortcut icon`/`apple-touch-icon`) — `frontend/index.html` ganhou favicon base inline.
 
-Refino aplicado:
-- como a primeira ampliacao ainda pareceu sutil na percepcao visual, a largura dos modais foi aberta novamente
-- a nova escala prioriza leitura horizontal evidente, especialmente em fluxos com formularios extensos e blocos de mensagem
+### 10.3 Borda pulsante no login (`2026-07-11` a `2026-07-13`, iterativo)
 
-Nova escala ajustada:
-- modal base administrativo: `max-w-[54rem]`
-- modal largo administrativo: `max-w-[82rem]`
-- modal base do detalhe do paciente: `max-w-[63rem]`
-- modal largo do detalhe do paciente: `max-w-[93rem]`
+Efeito de shader (`@paper-design/shaders-react`, componente `PulsingBorder`) aplicado só no card de login, configurável na aba de Identidade Visual (preset, cores, intensidade, velocidade, espessura, bloom) e persistido em `app_settings` (migration `0004`). Passou por várias rodadas de ajuste fino até chegar no estado atual: glow envolvendo o card principal inteiro, glass suave restrito à coluna direita (credenciais), coluna institucional da esquerda sempre sólida, geometria do shader sincronizada com o `radius` real do card (antes usava valor fixo, gerava "ponta" visual nos cantos), e uma borda CSS duplicada removida (dois elementos desenhando contorno quase no mesmo raio, gerava costura visível). `frontend/src/components/login/LoginCardLayout.jsx` virou a fonte única de layout, compartilhada entre a tela pública e o preview administrativo — antes duas árvores JSX paralelas, causa raiz de regressões visuais recorrentes.
 
-Motivo:
-- o ganho anterior nao estava perceptivel o bastante no uso real
-- esta segunda rodada busca tornar a diferenca visual imediatamente clara, sem depender de comparacao fina
+### 10.4 Primeira rodada de hardening de segurança (`2026-07-13`)
 
-### 11.41 Largura explicita por viewport nos modais
+A partir de uma auditoria externa (nota "Segurança em apps web locais"), aplicado: IDOR em `PATCH /api/notifications/:id/read`, timing-safe compare no login, rate limit por IP+e-mail, segunda camada opcional (`SETUP_TOKEN`) em `POST /api/setup/admin`, `secureHeaders` no worker, CSP/headers no frontend, `npm audit` não-bloqueante no CI. **Decisão registrada na época:** migração de sessão pra cookie `HttpOnly` foi **deliberadamente adiada** — motivo, front e worker em domínios diferentes exigiriam `SameSite=None`, considerado risco maior que o benefício imediato dado que a CSP já reduzia boa parte do vetor de XSS. Essa pendência só foi fechada em `2026-07-22` (`10.13`).
 
-Correcao estrutural:
-- foi identificado que ampliar apenas `max-width` nao garantia aumento perceptivel, porque o modal ainda podia ficar preso ao comportamento do container fixo
-- os modais agora usam largura explicita baseada em viewport e centralizacao por `left-1/2` + `translate-x`, em vez de depender apenas de `inset-x`
+### 10.5 Limpeza de features órfãs + wrangler v4 + runbook de migration (`2026-07-13`)
 
-Nova base:
-- modais administrativos: `w-[calc(100vw-1rem)]`, com `max-w-[81rem]` no modo base e `max-w-[108rem]` no modo largo
-- modal do detalhe do paciente: `w-[calc(100vw-1rem)]`, com `max-w-[94.5rem]` no modo base e `max-w-[140rem]` no modo largo
+`password_reset_tokens`/`RESEND_API_KEY` removidos (nunca tiveram rota funcional — confirmado que produção tinha `0` linhas antes de dropar). `wrangler` `^3.65.0` → `^4.0.0` nos dois pacotes (alinhado ao que o CI já usava), dependência morta `jose` removida (JWT sempre foi hand-rolled). Criado `worker/scripts/run-migrations.js`, runbook único pra aplicar migrations em ordem com rastreio via tabela `_migrations` — motivado por um incidente real de migration parcialmente aplicada no meio do processo (detalhe em `11.4`).
 
-Efeito esperado:
-- o crescimento horizontal deve finalmente ficar visivel em telas desktop comuns
-- o modal `Registrar Contato` deixa de parecer estreito mesmo quando carrega blocos longos de protocolo e mensagem
+### 10.6 Deduplicação de código + testes automatizados + coluna legada removida (`2026-07-14`)
 
-### 11.42 Correcao de alinhamento dos modais largos
-
-Problema encontrado:
-- depois da ampliacao horizontal, o modal `Registrar Contato` passou a abrir deslocado para a direita
-- a causa foi um conflito entre o `-translate-x-1/2` do Tailwind e o `transform` aplicado pelo `framer-motion` nas animacoes de `scale` e `y`
+Lógica de exibição de contato (ícone/cor/label por tipo, badge de urgência) estava copiada entre `PatientDetail.jsx` e `PatientPanel.jsx` — extraída pra `frontend/src/utils/contactDisplay.js`. Helpers de mistura de cor duplicados entre `visualThemes.js`/`darkPalette.js` — extraídos pra `theme/colorUtils.js`. Defaults de branding duplicados entre a store e o formulário admin — unificados numa constante só. Função morta `SettingsTab()` removida de `Admin.jsx`. Testes automatizados criados do zero: `vitest` no frontend (`32/32`), suíte do worker expandida além de protocolos (`25/25`). Coluna legada `patients.protocol_days` removida (migration `0009`) depois de confirmar `0` pacientes dependendo do fallback `LEGACY`. Um incidente de lockfile no meio do caminho (`vitest@4.1.10` puxando um `esbuild` incompatível e quebrando `npm ci` no CI) — resolvido fixando `vitest@^3.2.4`, depois `3.2.7` por uma CVE crítica na 3.2.4/3.2.5.
 
-Correcao aplicada:
-- a centralizacao saiu do proprio `motion.div`
-- cada modal largo passou a ficar dentro de um wrapper fixo com `flex items-start justify-center`
-- o card animado agora recebe apenas largura e estilo visual, sem depender de `translate` para alinhamento
+### 10.7 Correções de fluxo de deploy e CI (`2026-07-12` a `2026-07-14`, várias entradas)
 
-Arquivos ajustados:
-- `frontend/src/pages/PatientDetail.jsx`
-- `frontend/src/pages/Admin.jsx`
-- `frontend/src/components/admin/MessageProtocolTab.jsx`
+Deploy manual publicando no Cloudflare sem passar pelo GitHub causou uma regressão real (produção "voltou" pra um estado anterior depois de um push menor reativar o workflow com o repositório desatualizado) — regra endurecida: nada crítico só no deploy manual. Workflow ganhou detecção de escopo (`changes` job, decide `worker`/`frontend`/ambos pelo diff), nome mais legível, e correção de um job que dependia de outro job opcional e ficava `skipped` incorretamente. `actions/checkout`/`actions/setup-node` atualizados pra v5 (deprecação de runtime `node20` anunciada pelo GitHub). `fetch-depth: 2` insuficiente quando um push agrupa múltiplos commits — trocado pra `fetch-depth: 0` no job que faz `git diff` contra commit arbitrário. Node do job de deploy do worker subido pra `22` (exigência do `wrangler@4.110`).
 
-Resultado esperado:
-- modal largo centralizado corretamente
-- mesma largura ampla mantida
-- animacao continua suave sem quebrar o posicionamento
-
-### 11.43 Recuo da escala e centralizacao total do modal
-
-Refino aplicado:
-- a escala anterior ficou grande demais no uso real e passou a dominar a tela
-- os modais foram reduzidos para uma largura intermediaria, mantendo conforto de leitura sem ocupar a viewport quase inteira
-- o surgimento do modal deixou de acontecer ancorado no topo e passou a ser centralizado no viewport
-
-Nova escala:
-- admin e mensagens: `max-w-[54rem]` no modo largo e `max-w-[40.5rem]` no modo base
-- detalhe do paciente: `max-w-[70rem]` no modo largo e `max-w-[47.25rem]` no modo base
-
-Posicionamento:
-- wrapper fixo agora usa `flex items-center justify-center`
-- padding externo simplificado para `p-2`, evitando efeito de card grudado no topo
-
-Resultado esperado:
-- modal visualmente equilibrado
-- leitura ainda confortavel
-- abertura centralizada de verdade na pagina
-
-### 11.44 Paginacao server-side da listagem de pacientes
+### 10.8 Bug de linha do tempo com paciente sem protocolo (`2026-07-20`)
 
-Escopo validado:
-- `frontend/src/pages/Patients.jsx` deixou de paginar no cliente e passou a pedir paginas reais ao backend
-- `worker/src/routes/patients.js` aceita `page` e `limit`, aplica `LIMIT/OFFSET` quando solicitado e devolve `{ patients, total }`
-- o comportamento legado para consumidores que precisam da base ativa inteira foi preservado no dashboard, que continua consumindo `data.patients ?? []`
+Usuário reportou timeline aparecendo mesmo sem protocolo de contato cadastrado. Causa: resíduo `app_settings.contact_protocol_days` (arquitetura antiga de fallback `GLOBAL`) ainda sendo lido por `resolvePatientProtocol()`, mesmo com `contact_protocols` vazia. Decisão do usuário: não só limpar o valor, remover o mecanismo de fallback inteiro. Ver `10.11`.
 
-Motivo:
-- reduzir custo de renderizacao e transferencia quando a base crescer
-- preparar a listagem principal para escalar sem depender de carregar todos os pacientes no browser
+### 10.9 Auditoria de escalabilidade + decisão de roadmap (`2026-07-20`)
 
-Validacao:
-- `npm run build` no frontend passou
-- `npm test` no worker passou com `25/25`
-
-### 11.45 Indices preventivos para query de pacientes
-
-Arquivos envolvidos:
-- `worker/src/db/schema.sql`
-- `worker/migrations/0010_patient_query_indexes.sql`
-
-Indices adicionados:
-- `idx_patients_surgery_date`
-- `idx_patients_protocol`
-- `idx_followups_patient_date`
-
-Motivo:
-- acelerar filtros por data de cirurgia e ordenacao da listagem
-- reduzir custo do join com `contact_protocols`
-- otimizar a subquery do ultimo contato por paciente
+Seis frentes de escalabilidade avaliadas com o usuário (multi-tenancy, auditoria/LGPD, busca/paginação, observabilidade, backup automatizado, cache). Aprovadas: aba de Histórico + índices/paginação (Frente A), aba de Logs (Frente B), cache de catálogos (Frente C). Fora por ora: multi-tenancy e backup automatizado (só dado de teste hoje, revisitar quando o sistema tiver dado real). Detalhe completo na seção `13`.
 
-Regra operacional:
-- esse bloco deve ser publicado como frente unica: frontend + rota + schema + migration
-- deploy do worker sem a migration nao quebra funcionalidade, mas deixa a melhora de performance incompleta no remoto
+### 10.10 Protocolo de Documentos (`2026-07-14` a `2026-07-20`)
 
-### 11.46 Validacao real da paginação publicada
+Feature nova: catálogo administrável (`document_templates`, categorias Enviar/Solicitar) + checklist por paciente (`patient_documents`, status `pending`/`done`). Migration `0011`. Decisão inicial era atribuir documento só na página do paciente; revertida depois do usuário ver a tela `Novo Paciente` publicada e pedir a seleção também ali.
 
-Data:
-- `2026-07-14`
+### 10.11 Remoção total do fallback automático de protocolo (`2026-07-20`)
 
-Ambiente validado:
-- worker publicado em `https://caredesk-worker.faugusto-thecoral.workers.dev`
-- frontend publicado em `https://caredesk-lou.pages.dev`
+Resposta direta ao bug de `10.8`. `resolvePatientProtocol()` simplificado de `LINKED → DEFAULT → GLOBAL → LEGACY` pra só `LINKED`/`EMPTY`. Rota `PATCH /api/settings/protocol` removida (não fazia mais sentido sem nível `GLOBAL`). Migration `0012` apaga a chave `contact_protocol_days`. `is_default` continua existindo, mas só pré-seleciona no cadastro — não é mais fallback de leitura.
 
-Credencial operacional usada:
-- `admin`
-- `CareDesk2026!`
+### 10.12 Frente A do roadmap — aba Histórico (`2026-07-20` a `2026-07-21`)
 
-Resultados:
-- `POST /api/auth/login` funcionou com a credencial documentada
-- `GET /api/patients?status=active` devolveu `total=2` e `patients.length=2`
-- `GET /api/patients?status=active&page=1&limit=5` devolveu os `2` registros
-- `GET /api/patients?status=active&page=2&limit=5` devolveu `0` registros, como esperado
-- `GET /api/patients?status=active&page=1&limit=5&search=felipe` devolveu `total=1`
-- `GET /api/patients?page=1&limit=1` e `GET /api/patients?page=2&limit=1` confirmaram troca real de pagina na API, com IDs distintos em cada resposta
+Implementada, testada e publicada. `GET /api/activity` (paginado, `patient_created` + `contact` via `UNION ALL`), migration `0013` (`patients.created_by` + dois índices novos), página `Historico.jsx` no menu lateral. Decisões confirmadas pelo usuário: página própria (não modal/aba dentro de outra tela) e adicionar `created_by` no paciente. Deploy feito depois de bateria de testes verde (worker `29/29`, frontend `32/32`) e confirmação explícita do usuário.
 
-Conclusao:
-- a paginação server-side esta funcional no ambiente real
-- a UI publicada ainda nao exibe navegacao multipagina visivel porque a base atual tem apenas `2` pacientes totais, abaixo do `PAGE_SIZE=20`
-- nao ha evidencia de regressao funcional; falta apenas massa real de dados para validar visualmente o estado de varias paginas no frontend publicado
+### 10.13 Segunda rodada de hardening + migração de sessão pra cookie `HttpOnly` (`2026-07-22`)
 
-### 11.47 Validacao visual multipagina (dados sinteticos locais) + incidente na migration `0010` no remoto
+Disparada por um pentest externo (`SECURITY_IMPROVEMENTS.md`) contra o ambiente publicado. Escopo definido pelo usuário: troca de senha do admin default (P0) já feita por ele antes; 2FA e verificação por e-mail recusados explicitamente; 2FA da conta Cloudflare fica por conta dele.
 
-Complementa o `11.46`: como producao so tinha `2` pacientes, a navegacao entre paginas nunca chegou a renderizar de verdade. Validado a parte, localmente:
+**Primeira leva (baixo risco):** sanitização server-side de paciente (seção `2.2`), header `Retry-After` no rate limit, remoção do toggle mostrar/ocultar senha do login (pedido literal: não deixar resíduo de senha visível no inspecionar — o campo agora é sempre `type="password"` e limpa o valor após erro de login), limpeza do resíduo `http://localhost:8787` na CSP de produção. Simulação de ataque rodada contra produção antes do deploy (SQLi, `alg:none`, CORS, path traversal, `TRACE`) — nenhum vetor comprometeu nada; o único achado foi que produção ainda rodava o código antigo (confirma que o fix ainda não tinha sido publicado).
 
-**UI multipagina, busca e Dashboard (Playwright, `worker`+`frontend` locais, `25` pacientes sinteticos):**
-- pagina 1: `20` linhas, "Mostrando 1–20 de 25 pacientes"
-- pagina 2: `5` linhas, "Mostrando 21–25 de 25 pacientes"
-- busca por `"Teste 1"`: `11` resultados (`1`, `10`-`19`), badge de total atualiza pra `11`
-- Dashboard: KPI "Pacientes ativos" = `25` (confirma que `Dashboard.jsx` consumindo `data.patients` sem `page` continua trazendo a base ativa inteira, sem paginar)
-- zero erros de console/pagina
-- dados sinteticos removidos do D1 local ao final, sem deixar residuo
+**Segunda leva (mudança de arquitetura de sessão):** fecha a pendência deixada deliberadamente em aberto desde `10.4`. Sessão migrada de JWT em `localStorage` (`8h` fixo) pra cookie `HttpOnly`: access token `15min` + refresh token `7 dias` com renovação automática, `SameSite=None`+`Secure` (desvio deliberado da recomendação `Strict` do guia externo — ver seção `2.1` pro motivo). Novos endpoints `POST /auth/refresh` e `POST /auth/logout`. Novo secret `JWT_REFRESH_SECRET`. Detalhe técnico completo na seção `2.1`.
 
-**Incidente: migration `0010` aplicada parcialmente no D1 remoto:**
-- `node scripts/run-migrations.js --remote` reportou sucesso e marcou `0010_patient_query_indexes.sql` como aplicada na tabela `_migrations`, mas so o primeiro `CREATE INDEX` do arquivo (`idx_patients_surgery_date`) realmente foi criado no banco — os outros dois (`idx_patients_protocol`, `idx_followups_patient_date`) ficaram faltando, sem nenhum erro reportado pelo `wrangler`
-- localmente (`--local`) o mesmo arquivo aplicou os `3` indices sem problema — a falha e especifica de multiplas instrucoes `CREATE INDEX` seguidas via `--file` no D1 remoto
-- `0008_protocol-message-templates.sql` (tambem multi-instrucao: `CREATE TABLE` + `CREATE INDEX`) foi conferido a parte e esta integro no remoto — nao e uma falha generalizada de todo `--file` multi-instrucao, parece um caso pontual
-- corrigido aplicando os `2` indices faltantes manualmente via `--command` (um de cada vez), depois confirmado com `SELECT name FROM sqlite_master WHERE type='index' ...` que os `3` indices existem no remoto
-- **licao para o runbook:** depois de qualquer migration multi-instrucao aplicada via `--remote`, nao confiar so no exit code do `wrangler`/no que o script marca em `_migrations` — vale conferir o resultado real no schema (`sqlite_master`) antes de dar como concluido, pelo menos ate esse comportamento do D1 remoto ser mais bem entendido
+**Armadilha na validação local:** D1 local é banco separado do remoto — a senha de admin trocada em produção não existe localmente, e o admin local seed tem hash `$PLACEHOLDER_HASH$` (proposital, nunca bate). A rota de correção natural (`create-admin.js` → `POST /api/setup/admin`) também falhou, porque `APP_ENV="production"` em `[vars]` do `wrangler.toml` vale também sob `wrangler dev --local` (sem override de ambiente) — `/api/setup` fica bloqueado localmente também, não só em produção. Contornado gravando o hash PBKDF2 direto no D1 local via `wrangler d1 execute --local`. Ver seção `1.2`.
 
-Validacao final:
-- `worker`: `npm test` ok (`25/25`)
-- `frontend`: `npm test` ok (`32/32`), `npm run build` ok
-- producao: os `3` indices confirmados presentes via `sqlite_master`; `/health` `200`
+**Deploy e verificação:** `JWT_REFRESH_SECRET` de produção configurado via `wrangler secret put` antes do deploy do worker. Persistência de configuração visual checada explicitamente (`GET /api/settings/public`) — intacta, deploy de worker não roda migration nem toca em dado. Segunda simulação de ataque pós-deploy (SQLi, JWT forjado, CORS, CSRF via `SameSite`) + auditoria de saúde do banco (zero FK órfã, zero hash placeholder, todos os índices presentes) — sem achado. Detalhe completo em `4` e `3`.
 
-### 11.1 Fluxo local mais eficiente
+### 10.14 Este documento reescrito (`2026-07-23`)
 
-Para mudancas predominantemente visuais ou de produto:
-1. subir o projeto inteiro localmente
-2. validar login e rotas principais
-3. fazer um bloco maior de refinamentos no `localhost`
-4. so no fim rodar build final, commit e deploy
+Reestruturado de um formato de diário cronológico (`11.x` crescente, com numeração duplicada em alguns pontos) pra separar claramente "como o sistema funciona hoje" (seções `1` a `9`) de "o que mudou e quando" (esta seção `10`) e "lição operacional reutilizável" (seção `11`). Nenhum fato técnico foi descartado — entradas muito granulares de ajuste visual (várias rodadas de pixel/raio da borda do login, larguras de modal) foram consolidadas em uma entrada por tema.
 
-### 11.2 Subida local validada
+---
 
-Frontend local:
-- `http://localhost:5173`
+## 11. Lições Operacionais (runbook)
 
-Backend local:
-- `http://localhost:8787`
+### 11.1 ACL quebrada entre Codex e Claude Code no Windows (`2026-07-12`, recorrente)
 
-Credenciais locais validadas:
-- usuario: `admin`
-- senha: `CareDesk2026!`
+Sintoma: uma ferramenta (geralmente Claude Code) recebe `EPERM`/acesso negado num caminho específico, mesmo com o resto do repositório editável. Causa: Codex roda sob uma identidade Windows sandbox própria e às vezes recria um caminho sem herdar a ACL corretamente, perdendo a entrada de escrita do usuário interativo. A permissão compartilhada (grupo `CodexSandboxUsers`, direito `Modify`) é uma entrada **explícita definida na raiz do repositório** — não herdada de pastas acima.
 
-### 11.3 Procedimento local que funcionou
+**Correção:** `takeown /F <caminho> /R /D Y` + `icacls <caminho> /reset /T`, **só no caminho específico afetado, nunca na raiz do projeto** (resetar a raiz apagaria a entrada `CodexSandboxUsers` e derrubaria o acesso do Codex ao repositório inteiro).
 
-1. confirmar em `frontend/vite.config.js` que o frontend sobe na porta `5173`
-2. confirmar que `/api` aponta para `http://localhost:8787`
-3. verificar se as portas `5173` e `8787` estao livres
-4. inicializar o D1 local com `npx wrangler d1 execute caredesk-sprint --local --file=src/db/schema.sql`
-5. subir o frontend com `npm run dev`
-6. subir o worker com variaveis explicitas de desenvolvimento
-7. confirmar resposta HTTP do frontend e do worker
-8. criar ou sobrescrever o admin local
-9. testar login antes de iniciar a rodada principal
+### 11.2 D1 remoto pode aplicar só parte de uma migration multi-instrução, sem erro (`2026-07-14`)
 
-### 11.4 Armadilhas encontradas
+`run-migrations.js --remote` reportou sucesso e marcou a migration como aplicada, mas só o primeiro `CREATE INDEX` de um arquivo com três realmente rodou no banco — sem nenhum erro reportado pelo `wrangler`. Local (`--local`) o mesmo arquivo aplicou os três sem problema.
 
-- nao assumir que o frontend local sozinho basta quando a UI depende de API proxied
-- nao assumir que scripts antigos continuam corretos depois de renomear banco ou binding
-- sem `JWT_SECRET` e `APP_ENV=development`, o worker local pode falhar no login
-- antes de anunciar `localhost` como pronto, validar frontend, worker e login
+**Regra dura:** depois de qualquer migration multi-instrução aplicada via `--remote`, sempre confirmar o resultado real com `SELECT ... FROM sqlite_master`, nunca confiar só no exit code ou na tabela de tracking.
 
-### 11.5 Comando local mais confiavel para o worker
+### 11.3 D1 local e D1 remoto são bancos separados — credencial de um não vale no outro (`2026-07-22`)
 
-```powershell
-npx wrangler dev --local --var JWT_SECRET:dev-caredesk-local-secret-2026 --var APP_ENV:development
-```
+Já causou confusão real: senha de admin trocada em produção não existe no D1 local (que tem seu próprio seed com hash placeholder). A rota de setup (`/api/setup/admin`) também não serve de atalho local, porque `APP_ENV="production"` do `wrangler.toml` vale igual sob `wrangler dev --local` (não tem override de ambiente hoje). Pra recriar uma senha de teste local sem depender do endpoint: calcular o hash PBKDF2 a mão (mesmo algoritmo de `hashPassword()`, via Web Crypto) e gravar direto com `wrangler d1 execute --local`.
 
-### 11.6 Pendencia aberta para a proxima sessao
+### 11.4 Path com espaço quebra `execFileSync`/`shell:true` no Windows (`2026-07-13`)
 
-A versao local ficou funcional, mas ainda nao espelhou corretamente o estado visual da online.
+`worker/scripts/run-migrations.js` falhava porque o projeto vive num caminho com espaço (`Developer CODEX`). `execFileSync` sem shell não achava `npx`; com `shell:true` e array de args, o Node não escapa argumentos automaticamente, e o path virava dois argumentos separados. Resolvido com `execSync` e uma string de comando montada manualmente, com aspas onde necessário.
 
-Hipoteses principais:
-- diferenca entre `app_settings` local e remoto
-- URLs divergentes de branding
-- assets externos nao refletidos no ambiente local
+### 11.5 Versão de dependência: sempre confirmar GA antes de subir major (regra geral, aplicada em `2026-07-12`/`2026-07-14`)
 
-### 11.7 Limpeza de arquivos orfaos desta rodada
-
-Arquivos removidos por nao fazerem mais parte do fluxo real do projeto:
-- `worker/reset-admin-password.mjs`
-- `worker/wrangler.toml.example`
-- residuos locais em `.codex/runtime/`
-
-Decisao operacional aplicada:
-- `.codex/` agora fica ignorado no `.gitignore` para evitar que logs, testes locais e artefatos temporarios voltem a poluir o workspace
-
-### 11.8 Correcao de boot visual desta rodada
-
-Sintoma observado:
-- ao abrir o frontend publicado autenticado, a interface carregava primeiro com branding antigo/default e so depois atualizava para o branding real vindo da API.
-
-Causa identificada:
-- o frontend renderizava a area autenticada com defaults locais antes do retorno de `api.settings.get()`.
-- havia tambem busca duplicada de configuracoes no `App.jsx` e no `AppLayout.jsx`.
-
-Correcao aplicada:
-- o render autenticado agora espera o carregamento inicial das configuracoes antes do primeiro paint principal.
-- a busca duplicada no `AppLayout.jsx` foi removida.
-
-### 11.9 Validacao publicada apos deploy
-
-Validacao feita em `2026-07-11` no frontend `https://caredesk-lou.pages.dev` e no worker `https://caredesk-worker.faugusto-thecoral.workers.dev`.
-
-Resultado:
-- dashboard abriu com o branding atual sem reproduzir o flash da versao antiga observado antes
-- rota `/patients` carregou um estado curto de `Carregando ambiente...` e depois estabilizou normalmente
-- detalhe do paciente abriu com protocolo resolvido, linha do tempo e acoes rapidas disponiveis
-- admin abriu com protocolos, equipe e identidade visual sem exibicao de modulo de mensagens
-- nenhuma tela validada mostrou termos ou acoes de WhatsApp, Telegram ou mensagens
-- console sem erros ou warnings relevantes nas telas validadas
-- `GET /health` respondeu `200` com `{\"status\":\"ok\",\"app\":\"CareDesk\"}`
-- `GET /api/whatsapp` respondeu `404`
-- `GET /api/telegram` respondeu `404`
-
-### 11.10 Correcao de favicon
-
-Sintoma observado:
-- o favicon configurado na aba de branding nao subia corretamente na aba do navegador, que continuava exibindo um icone antigo ou residual
-
-Causa mais provavel consolidada:
-- o `index.html` nao publicava um favicon base
-- o frontend atualizava apenas um unico `link[rel='icon']`
-- alguns navegadores mantem cache ou priorizam combinacoes como `shortcut icon` e `apple-touch-icon`
-
-Correcao aplicada:
-- `frontend/index.html` agora define um favicon base inline do CareDesk
-- `frontend/src/App.jsx` agora aplica o favicon resolvido em `icon`, `shortcut icon` e `apple-touch-icon`
-- o runtime tambem passou a inferir o `type` do asset para reduzir interpretacoes erradas do navegador
-
-Validacao local:
-- `npm run build` do frontend executado com sucesso em `2026-07-11`
-
-### 11.11 Diretriz atual para storage
-
-Decisao consolidada nesta fase:
-- o storage da Cloudflare deve ficar focado em arquivos pesados, especialmente imagens
-
-Casos indicados:
-- logo
-- imagem de fundo
-- imagem exclusiva da pagina de login
-- favicon
-- imagem de usuario, quando essa feature entrar
-- imagens e anexos visuais em geral
-
-Casos nao indicados como fonte principal:
-- dados cadastrais
-- prontuario estruturado
-- protocolos
-- contatos e eventos operacionais
-
-Regra arquitetural escolhida:
-- `R2` para binarios grandes
-- `D1` para metadados, relacoes, permissoes e dados operacionais
-
-Melhor caminho daqui para frente:
-- expandir o uso do storage primeiro para imagens de perfil e anexos visuais
-- evitar escopo maior de documentos clinicos completos antes de definir ACL, auditoria e backup externo
-
-### 11.12 Organizacao de fluxos para storage
-
-Objetivo desta organizacao:
-- preparar a base para novos ajustes visuais sem espalhar arquivos e regras de upload de forma inconsistente
-
-Estrutura recomendada de namespaces no `R2`:
-- `branding/logos/`
-- `branding/backgrounds/`
-- `branding/login-images/`
-- `branding/favicons/`
-- `avatars/agents/`
-- `avatars/patients/`
-- `attachments/patients/`
-
-Responsabilidade por camada:
-- `R2`: binarios e imagens
-- `D1`: metadados, relacoes, ownership, contexto e permissoes
-- `Worker`: validacao, upload, leitura, substituicao e remocao
-- `Frontend`: consumo das URLs servidas pela API e preview local antes do upload
-
-Fluxo ideal consolidado:
-1. frontend envia arquivo ao worker
-2. worker valida contexto, tipo e tamanho
-3. worker grava no `R2` com chave unica
-4. worker salva no `D1` a referencia do arquivo
-5. frontend consome a URL final retornada pela API
-
-Ordem recomendada para seguir sem bagunca:
-1. manter branding como caso oficial de referencia
-2. unificar o contrato de assets do worker
-3. adicionar `avatars/agents`
-4. adicionar `avatars/patients`
-5. so depois abrir anexos visuais de pacientes
-
-Decisao importante:
-- ajustes visuais futuros devem preferir reusar esse fluxo organizado em vez de criar campos soltos ou URLs manuais em tabelas de negocio
-
-Beneficio direto para a frente visual:
-- logo, background, favicon e futuros avatares passam a seguir um mesmo padrao tecnico
-- isso reduz retrabalho de cache, preview, remocao e fallback visual
-
-### 11.13 Implementacao inicial de avatars para agentes
-
-Escopo entregue:
-- backend ganhou fluxo proprio para `avatars/agents`
-- branding e avatar passaram a compartilhar o mesmo utilitario de storage em `worker/src/utils/storage.js`
-- `agents` agora expoe `avatar_url` nas rotas de login, `me` e listagem da equipe
-- admin permite upload e remocao de avatar ao editar agentes
-- sidebar autenticada e lista de equipe agora renderizam avatar real com fallback por iniciais
-
-Rotas novas:
-- `POST /api/agents/:id/avatar`
-- `DELETE /api/agents/:id/avatar`
-- `GET /api/agents/avatar/:key`
-
-Arquivos principais desta entrega:
-- `worker/migrations/0002_agent-avatars.sql`
-- `worker/src/routes/agents.js`
-- `worker/src/routes/auth.js`
-- `worker/src/utils/storage.js`
-- `frontend/src/components/common/Avatar.jsx`
-- `frontend/src/pages/Admin.jsx`
-- `frontend/src/components/layout/AppLayout.jsx`
-
-Validacao local desta rodada:
-- `frontend`: `npm run build` ok em `2026-07-11`
-- `worker`: `npm test` ok em `2026-07-11`
-
-### 11.14 Imagem exclusiva para a pagina de login
-
-Escopo entregue:
-- a tela de login agora pode usar uma imagem exclusiva, separada da imagem de fundo geral do painel
-- esse asset segue a diretriz oficial e fica no `R2`
-- a aba de identidade visual ganhou campo proprio de upload/remocao e preview dedicado da tela de login
-
-Contrato consolidado:
-- chave de configuracao: `login_image_url`
-- chave interna de storage: `login_image_storage_key`
-- namespace no storage: `branding/login-images/`
-
-Regra de fallback:
-- se `login_image_url` estiver vazio, a tela de login fica sem imagem
-
-Arquivos principais desta frente:
-- `worker/migrations/0003_login-branding.sql`
-- `worker/src/routes/notifications.js`
-- `frontend/src/theme/branding.js`
-- `frontend/src/components/admin/BrandingSettingsTab.jsx`
-- `frontend/src/pages/Login.jsx`
-- `frontend/src/store/index.js`
-
-Validacao local:
-- `frontend`: `npm run build` ok em `2026-07-11`
-- `worker`: `npm test` ok em `2026-07-11`
-
-### 11.16 Ajuste de fallback da imagem de login
-
-Decisao refinada:
-- a tela de login nao deve puxar automaticamente a imagem de fundo geral quando `login_image_url` estiver vazio
-- ausencia de imagem definida no login agora significa tela sem imagem
-
-Motivo:
-- isso deixa o comportamento mais previsivel e evita heranca visual indesejada entre painel interno e tela de acesso
-
-Validacao local:
-- `frontend`: `npm run build` ok em `2026-07-11`
-
-Estado publicado:
-- correcao publicada no frontend em `2026-07-11`
-- deployment URL desta subida: `https://21c0a90e.caredesk-lou.pages.dev`
-- `GET https://caredesk-lou.pages.dev/login` respondeu `200`
-
-### 11.17 Especificacao da borda pulsante no login
-
-Decisao desta rodada:
-- a borda animada inspirada no shader de `PulsingBorder` foi considerada viavel para o CareDesk
-- a aplicacao recomendada e somente no card de login da direita
-- a imagem institucional da esquerda nao deve receber esse efeito
-
-Limite de usabilidade definido:
-- o efeito nao pode competir com a imagem de login
-- o efeito nao deve invadir o container inteiro da tela
-- o foco visual precisa continuar em login, contraste e legibilidade
-
-Configuracoes que devem existir na aba de identidade visual:
-- habilitar/desabilitar o efeito
-- preset
-- cor 1
-- cor 2
-- cor 3
-- cor de fundo do shader
-- intensidade
-- velocidade
-- espessura
-- bloom
-
-Configuracoes que nao devem entrar nesta primeira fase:
-- spots
-- smoke
-- rotation
-- scale
-- offset
-- aspect ratio manual
-
-Fallback comportamental definido:
-- sem suporte ou com erro no shader, o card continua com borda estatica
-- com `prefers-reduced-motion`, o efeito deve ser reduzido ou neutralizado
-
-Proxima implementacao recomendada:
-- instalar e validar a dependencia do shader
-- criar wrapper local do componente
-- ligar apenas ao card de login
-- expor configuracoes enxutas na aba de identidade visual
-
-### 11.18 Validacao concreta da biblioteca do shader
-
-O que deixou de ser hipotese:
-- `@paper-design/shaders-react` foi instalada com sucesso no frontend
-- o pacote publicado realmente exporta `PulsingBorder`
-- o componente vem com presets reais publicados:
-  - `Default`
-  - `Circle`
-  - `Northern lights`
-  - `Solid line`
-
-Props principais confirmadas no pacote instalado:
-- `colors`
-- `colorBack`
-- `roundness`
-- `thickness`
-- `softness`
-- `aspectRatio`
-- `intensity`
-- `bloom`
-- `spots`
-- `spotSize`
-- `pulse`
-- `smoke`
-- `smokeSize`
-- `speed`
-- `scale`
-
-Conclusao refinada:
-- a frente e viavel tecnicamente no stack atual
-- a decisao de manter um wrapper local do CareDesk continua correta
-- a decisao de expor poucas configuracoes na aba de identidade visual continua correta
-
-### 11.19 Implementacao inicial da borda pulsante no login
-
-Escopo entregue:
-- shader conectado apenas ao card de login
-- configuracoes principais expostas na aba de identidade visual
-- preview do card com efeito dentro da propria tela administrativa
-- configuracoes persistidas em `app_settings`
-
-Chaves adicionadas:
-- `login_border_effect_enabled`
-- `login_border_preset`
-- `login_border_color_1`
-- `login_border_color_2`
-- `login_border_color_3`
-- `login_border_color_back`
-- `login_border_intensity`
-- `login_border_speed`
-- `login_border_thickness`
-- `login_border_bloom`
-
-Arquivos principais desta entrega:
-- `worker/migrations/0004_login-border-settings.sql`
-- `worker/src/routes/notifications.js`
-- `worker/src/db/schema.sql`
-- `frontend/src/theme/branding.js`
-- `frontend/src/components/ui/LoginPulsingBorder.jsx`
-- `frontend/src/components/admin/BrandingSettingsTab.jsx`
-- `frontend/src/pages/Login.jsx`
-- `frontend/src/store/index.js`
-
-Decisao tecnica importante:
-- o wrapper local foi simplificado para import estatico do shader
-- a troca reduz risco de falha silenciosa na renderizacao, mas aumentou o bundle principal e precisa ser acompanhada
-
-Validacao local:
-- `frontend`: `npm run build` ok em `2026-07-11`
-- `worker`: `npm test` ok em `2026-07-11`
-
-Estado publicado:
-- migracao remota `0004_login-border-settings.sql` aplicada em `2026-07-11`
-- worker publicado em `https://caredesk-worker.faugusto-thecoral.workers.dev`
-- frontend publicado em `https://caredesk-lou.pages.dev`
-- deployment URL desta subida: `https://4af79593.caredesk-lou.pages.dev`
-- `GET /health` respondeu `200`
-- `GET https://caredesk-lou.pages.dev/login` respondeu `200`
-
-### 11.20 Refino final do login premium
-
-Estado local consolidado em `2026-07-12`:
-- a borda pulsante foi reposicionada para envolver o container principal completo da tela de login
-- o efeito glass ficou restrito apenas a coluna direita de autenticacao
-- a coluna institucional da esquerda continua solida para preservar leitura, contraste e utilidade da imagem exclusiva do login
-- a miniatura da aba de identidade visual passou a seguir a mesma composicao estrutural da tela publica
-
-Decisao visual importante:
-- o melhor resultado nao e transformar toda a tela em glass
-- o contraste premium correto neste projeto e glow no card principal inteiro + glass apenas na faixa de credenciais
-
-Observacao operacional sobre publicacao:
-- deploy local por `scripts/deploy-frontend.ps1` ou `scripts/deploy-worker.ps1` publica no Cloudflare
-- esses deploys manuais nao aparecem no GitHub Actions
-- o `Actions` mostra apenas runs do workflow versionado no GitHub, disparados por `push` ou `workflow_dispatch`
-
-### 11.21 Ajuste do fluxo oficial de publicacao
-
-Consolidado em `2026-07-12`:
-- o workflow `.github/workflows/deploy.yml` passou a se chamar `Deploy CareDesk`
-- o workflow ganhou `run-name` mais legivel para ajudar no acompanhamento da evolucao
-- a regra de concorrencia foi ajustada para `cancel-in-progress: false`
-- o grupo de concorrencia agora segue a branch, mas sem cancelar o run anterior
-
-Impacto esperado no GitHub Actions:
-- novos deploys deixam de parecer substituidos no proprio historico do workflow
-- a leitura da evolucao por publicacao fica mais proxima do padrao visto em outros projetos com uso intensivo de `Actions`
-- o historico continua dependente de `push` e `workflow_dispatch`; deploy manual local segue fora dessa trilha
-
-Clarificacao operacional adicionada ao projeto:
-- `scripts/deploy-worker.ps1` e `scripts/deploy-frontend.ps1` agora avisam explicitamente que sao fluxos manuais
-- `package.json` ganhou aliases `deploy:manual:*` para deixar clara a natureza desses comandos
-- `README.md` agora define o GitHub Actions como trilha oficial de historico de publicacao
-
-### 11.22 Regressao explicada do login premium
-
-Causa raiz confirmada em `2026-07-12`:
-- o login premium havia sido publicado manualmente no Cloudflare
-- depois disso, um `push` menor acionou o `GitHub Actions`
-- o workflow republicou o estado do repositorio, que ainda nao continha todo o pacote visual do login
-- resultado: a producao voltou para um estado anterior da tela de login
-
-Regra operacional endurecida:
-- nenhuma mudanca visual critica pode ficar apenas no deploy manual
-- o estado canonico do produto precisa morar no GitHub antes do proximo deploy oficial
-
-Pacote minimo que precisa andar junto para o login premium nao regredir:
-- `frontend/src/App.jsx`
-- `frontend/src/services/api.js`
-- `frontend/src/store/index.js`
-- `frontend/src/theme/branding.js`
-- `frontend/src/pages/Login.jsx`
-- `frontend/src/components/admin/BrandingSettingsTab.jsx`
-- `frontend/src/components/ui/LoginPulsingBorder.jsx`
-- `frontend/package.json`
-- `frontend/package-lock.json`
-- `worker/src/routes/notifications.js`
-- `worker/src/utils/storage.js`
-- `worker/src/db/schema.sql`
-- `worker/migrations/0003_login-branding.sql`
-- `worker/migrations/0004_login-border-settings.sql`
-
-Decisao:
-- a correcao definitiva e publicar esse pacote coordenado no GitHub, e nao apenas reaplicar deploy manual no Cloudflare
-
-### 11.23 Alinhamento de revisionamento
-
-Objetivo desta rodada:
-- reduzir a distancia entre o workspace local e o estado versionado do GitHub
-- transformar as frentes ja consolidadas localmente em commits rastreaveis e publicados
-
-Critério adotado:
-- commits por bloco funcional real
-- testes e build executados antes do fechamento
-- evitar deixar backend, frontend e migracoes relacionadas separadas artificialmente
-
-Meta operacional:
-- apos esta rodada, o repositório deve refletir com fidelidade o estado local relevante do produto
-
-### 11.24 Correcao do escopo da borda pulsante
-
-Validado em `2026-07-12`:
-- a versao online ainda estava com o efeito preso apenas ao bloco da direita
-- isso contrariava a decisao consolidada de glow no card principal inteiro
-
-Correcao aplicada:
-- `frontend/src/pages/Login.jsx` agora envolve o card principal inteiro com `LoginPulsingBorder`
-- a coluna direita continua com glass e o bloco institucional da esquerda continua solido
-- `frontend/src/components/admin/BrandingSettingsTab.jsx` passou a reproduzir o mesmo comportamento na miniatura
-
-Resultado esperado:
-- o shader fica visivel no contorno do login completo
-- a preview administrativa volta a ser uma referencia fiel da tela publicada
-
-### 11.25 Simplificacao da coluna direita do login
-
-Validado em `2026-07-12`:
-- havia um container extra envolvendo toda a coluna direita
-- esse bloco criava borda redundante e deixava o layout mais pesado que o necessario
-
-Correcao aplicada:
-- o wrapper estrutural externo da coluna direita foi removido
-- o conteudo de acesso permanece centralizado
-- a caixa interna do formulario continua como unico agrupamento funcional visivel
-
-Refino adicional:
-- as bordas restantes marcadas visualmente como ruido tambem foram removidas
-- a coluna direita ficou sem moldura estrutural externa e sem caixa interna do formulario
-- a organizacao visual agora depende da faixa glass, da hierarquia tipografica e dos campos em si
-
-### 11.26 Glass suave restrito a coluna direita
-
-Validado em `2026-07-12`:
-- o pedido seguinte foi manter a composicao limpa, mas devolver um tratamento glass leve apenas na faixa direita
-- a coluna institucional da esquerda nao deve receber esse efeito
-
-Correcao aplicada:
-- a coluna direita ganhou `glass` suave por gradiente translucido, `backdrop-blur` e brilho interno discreto
-- os textos permaneceram com a mesma hierarquia e contraste para preservar legibilidade elegante
-- a miniatura administrativa foi alinhada ao mesmo comportamento
-
-### 11.29 Atualizacao de actions do GitHub para Node 24
-
-Causa da mudanca em `2026-07-12`:
-- `actions/checkout@v4` e `actions/setup-node@v4`, usados em `.github/workflows/deploy.yml`, ainda declaravam runtime `node20`
-- o GitHub deprecou esse runtime; troca forcada para `node24` comeca em `16 jun 2026`, remocao definitiva de `node20` em `16 set 2026`
-
-Validacao feita antes de aplicar:
-- confirmado via `action.yml` real de cada action que `v5.0.0`/`v5.0.1` (`checkout`) e `v5.0.0` (`setup-node`) sao releases GA, nao pre-release
-- changelog de `checkout` v5: unica mudanca e o runtime, sem impacto de input/comportamento
-- changelog de `setup-node` v5: unico breaking change real e cache automatico condicionado ao campo `packageManager` no `package.json` — nem `worker/package.json` nem `frontend/package.json` tem esse campo, entao o comportamento local fica identico ao v4
-- runner `ubuntu-latest` hospedado ja atende o requisito minimo (`v2.327.1+`) automaticamente, sem acao necessaria
-
-Decisao de escopo:
-- atualizado apenas para v5 (a versao minima que resolve o problema), nao para os majors mais recentes (`checkout@v7`, `setup-node@v6`) — mesmo criterio usado para manter o Wrangler travado em `@4` alinhado ao `4.104.0` ja validado, evitando absorver mudancas nao relacionadas
-
-Arquivos alterados:
-- `.github/workflows/deploy.yml` (5 ocorrencias: 3x `actions/checkout`, 2x `actions/setup-node`)
-
-### 11.15 Deploy publicado desta rodada
-
-Publicado em `2026-07-11`:
-- migracao remota `0002_agent-avatars.sql` aplicada com sucesso
-- migracao remota `0003_login-branding.sql` aplicada com sucesso
-- worker publicado em `https://caredesk-worker.faugusto-thecoral.workers.dev`
-- frontend publicado em `https://caredesk-lou.pages.dev`
-- deployment URL do frontend desta rodada: `https://52b18ab1.caredesk-lou.pages.dev`
-
-Checagem final:
-- `GET /health` respondeu `200` com `{\"status\":\"ok\",\"app\":\"CareDesk\"}`
-- `GET https://caredesk-lou.pages.dev/login` respondeu `200`
-
-### 11.27 Imagem de fundo dedicada para a pagina de login
-
-Escopo entregue em `2026-07-12`:
-- nova chave `login_background_image_url`, que cobre o fundo da pagina de login inteira, atras do card de acesso com o efeito de borda pulsante
-- e distinta de `login_image_url` (imagem institucional do painel esquerdo) — as duas sao independentes e podem ser configuradas separadamente
-- reaproveita o nucleo de storage ja existente (`worker/src/utils/storage.js`) e o mesmo padrao de rotas genericas de upload/remocao de assets (`/api/settings/assets/:type`)
-- novo namespace no R2: `branding/login-backgrounds/`
-- preview da aba de identidade visual passou a aplicar essa imagem no fundo do card de preview inteiro, nao so no bloco institucional
-
-Contrato consolidado:
-- chave de configuracao: `login_background_image_url`
-- chave interna de storage: `login_background_image_storage_key`
-
-Arquivos principais desta entrega:
-- `worker/migrations/0005_login-background.sql`
-- `worker/src/db/schema.sql`
-- `worker/src/routes/notifications.js` (`BRAND_ASSET_CONFIG`, whitelist de `PATCH /settings`, whitelist de `GET /settings/public`, pasta permitida em `sanitizeScopedAssetKey`)
-- `frontend/src/theme/branding.js`
-- `frontend/src/store/index.js`
-- `frontend/src/components/admin/BrandingSettingsTab.jsx`
-- `frontend/src/pages/Login.jsx`
-
-Validacao local:
-- `frontend`: `npm run build` ok em `2026-07-12` (bundle principal segue acima de `500 kB`, alerta ja conhecido do shader de login)
-- `worker`: `npm test` ok em `2026-07-12` (6/6 testes de protocolo, sem regressao)
-- `node --check` em `worker/src/routes/notifications.js` ok
-
-Pendencia:
-- a migration `0005_login-background.sql` ainda nao foi aplicada no D1 remoto — precisa rodar antes do proximo deploy oficial, junto com o restante do pacote de branding do login
-
-### 11.28 Armadilha de ambiente: ACL quebrada entre Codex e Claude Code no Windows
-
-Sintoma observado em `2026-07-12`:
-- o Claude Code recebeu erro de permissao (`EPERM`/acesso negado) ao tentar editar `worker/migrations/`, `frontend/src/components/admin/BrandingSettingsTab.jsx` e `frontend/src/pages/Login.jsx`, mesmo com o resto do repositorio editavel normalmente
-
-Causa raiz confirmada:
-- Codex roda localmente sob uma identidade Windows sandbox propria (`DESKTOP-HUGKHAV\CodexSandboxOffline`) e por vezes usa permissao mais elevada para gravar em caminhos especificos
-- em algum momento isso recriou esses 3 caminhos sem herdar a ACL corretamente, deixando-os sem a entrada de escrita do usuario interativo (`faugu`), usado pelo Claude Code
-- verificado via `icacls`: a permissao de escrita compartilhada pelas duas ferramentas (grupo `DESKTOP-HUGKHAV\CodexSandboxUsers`, direito `Modify`) e uma entrada **explicita definida na raiz do repositorio** (`caredesk-sprint`), nao herdada de pastas acima — ou seja, qualquer correcao de ACL precisa ficar restrita a um caminho especifico dentro do repo, nunca resetar a partir da raiz do projeto, sob risco de apagar essa entrada e derrubar o acesso do Codex ao repositorio inteiro
-
-Correcao aplicada:
-- `takeown /F <caminho> /R /D Y` seguido de `icacls <caminho> /reset /T`, rodado apenas nos 3 caminhos especificos (nao na raiz do projeto), restaurando a heranca normal do diretorio pai imediato — que ja contem tanto `faugu:(F)` quanto `CodexSandboxUsers:(M,DC)`
-- validado via `icacls` apos a correcao: os 3 caminhos voltaram a ter as duas identidades com acesso de escrita, nada foi perdido para o Codex
-
-Regra pratica para o futuro:
-- se qualquer ferramenta (Codex ou Claude Code) travar com erro de permissao num caminho especifico do projeto, comparar a ACL desse caminho com a de uma pasta irma via `icacls` antes de qualquer correcao
-- nunca rodar `icacls /reset` na raiz do projeto (`caredesk-sprint`) — a permissao de escrita de ambas as ferramentas depende de uma entrada explicita definida exatamente ali
-- corrigir sempre no nivel mais especifico possivel (a pasta ou arquivo com problema), nunca num ancestral maior do que o necessario
-
-### 11.29 Layout-base compartilhado entre login publico e preview administrativa
-
-Validado em `2026-07-12`:
-- o repositório local estava limpo e alinhado com `origin/main`
-- apesar disso, a tela publica de login e a miniatura da aba `Identidade Visual` ainda mantinham markup paralelo para a mesma composicao
-- essa duplicacao explicava parte das regressões visuais recentes: uma tela era corrigida e a outra podia voltar a divergir
-
-Correcao estrutural aplicada:
-- criado `frontend/src/components/login/LoginCardLayout.jsx` como fonte unica do layout-base do card de login
-- `frontend/src/pages/Login.jsx` passou a reutilizar esse layout compartilhado para a tela publica
-- `frontend/src/components/admin/BrandingSettingsTab.jsx` passou a reutilizar o mesmo layout compartilhado em modo compacto para a previsualizacao
-
-Regra consolidada:
-- glow pulsante continua envolvendo o card principal inteiro
-- glass suave continua restrito apenas a coluna direita
-- imagem institucional da esquerda, tipografia e bloco inferior passam a nascer da mesma estrutura nas duas telas
-- qualquer proximo refinamento da composicao do login deve acontecer primeiro no componente compartilhado, e nao em duas arvores JSX separadas
-
-### 11.30 Workflow oficial agora detecta escopo de deploy
-
-Consolidado em `2026-07-12`:
-- o fluxo oficial ainda publicava worker e frontend em todo `push` para `main`, mesmo quando so uma metade do produto tinha mudado
-- isso aumentava ruido no `Actions`, alongava publicacoes pequenas e mantinha uma diferenca desnecessaria entre o que mudou e o que era republicado
-
-Correcao aplicada:
-- `.github/workflows/deploy.yml` ganhou um job inicial de deteccao de escopo (`changes`)
-- em `push`, o workflow agora compara os arquivos alterados e decide separadamente se precisa publicar `worker`, `frontend` ou ambos
-- em `workflow_dispatch`, o operador agora escolhe `target = all | worker | frontend`
-- o `run-name` manual ficou mais informativo e passou a aceitar um `reason`
-- o job de frontend foi alinhado para `wrangler@4`, no mesmo patamar do fluxo manual local mais recente
-
-Regra operacional consolidada:
-- mudanca so em `frontend/` deve gerar deploy apenas do frontend
-- mudanca so em `worker/` deve gerar deploy apenas do worker
-- publicacao manual oficial pelo GitHub agora pode ser direcionada por alvo, sem republicar a outra metade do sistema sem necessidade
-- deploy manual local continua existindo para contingencia, mas o trilho principal rastreavel fica mais fiel ao pacote real publicado
-
-### 11.31 Geometria sincronizada da borda pulsante no login
-
-Validado em `2026-07-12`:
-- alguns cantos do glow do login pareciam arredondados e outros mostravam uma “ponta” visual
-- a causa raiz nao estava nas cores nem no bloom, e sim na geometria desalinhada entre o shader e o card real
-
-Causa raiz confirmada:
-- `frontend/src/components/ui/LoginPulsingBorder.jsx` ainda usava valores fixos de raio (`32px` externo e `26px` interno)
-- o login publico usava um card maior (`36px`) e a miniatura administrativa usava outro (`24px`)
-- como o `inner wrapper` tambem mantinha um `rounded` proprio e fixo, o shader seguia uma silhueta e o card seguia outra
-
-Correcao aplicada:
-- `LoginPulsingBorder` agora recebe `radius` explicito
-- o raio externo do shader e o clipping do wrapper passam a obedecer esse mesmo valor
-- o raio interno passa a ser calculado a partir de `radius - inset - 1`, sincronizando a curvatura com a espessura visivel do efeito
-- `frontend/src/pages/Login.jsx` passou a usar `radius={36}`
-- `frontend/src/components/admin/BrandingSettingsTab.jsx` passou a usar `radius={24}`
-- os wrappers filhos imediatos deixaram de reimpor um `rounded` concorrente e passaram a herdar a geometria correta
-
-Resultado esperado:
-- a borda pulsante passa a acompanhar melhor o formato real do card
-- o login publico e a miniatura administrativa mantêm a mesma logica geométrica, mesmo com raios diferentes
-
-Validacao:
-- `frontend`: `npm run build` ok em `2026-07-12`
-
-Refino adicional ainda em `2026-07-12`:
-- depois da sincronizacao do `radius`, as quinas arredondadas melhoraram, mas ainda restavam pontas visuais em alguns presets
-- a causa residual estava na `roundness` herdada do preset do shader, que podia continuar mais “reta” do que a silhueta real do card
-- `LoginPulsingBorder` passou a impor um piso de `roundness` derivado do `radius`, preservando `circle` como caso extremo e evitando que presets mais retos deformem as quinas do glow
-- `frontend`: `npm run build` ok novamente apos esse ajuste fino
-
-Refino complementar ainda em `2026-07-12`:
-- mesmo depois do ajuste de `roundness`, a ponta visual persistia mais no lado direito
-- a causa residual final estava na propria coluna direita do layout: como ela usa `backdrop-blur`, depender apenas do clipping do pai nao era suficiente para arredondar visualmente o bloco
-- `LoginPulsingBorder` passou a expor `--login-card-inner-radius` como variavel CSS
-- `frontend/src/components/login/LoginCardLayout.jsx` passou a aplicar explicitamente esse raio nas quinas esquerdas e direitas das duas colunas
-- `frontend`: `npm run build` ok novamente apos o ajuste
-
-## 12. Plano de Acao Detalhado — Proximos Passos (analise de 2026-07-12)
-
-Este bloco registra uma auditoria completa do estado do projeto em `2026-07-12`, com um passo a passo detalhado o suficiente para qualquer agente (Claude Code, Codex ou humano) executar cada item sem depender de contexto de conversa anterior. Cada item traz: objetivo, arquivos exatos, estado atual, mudanca proposta, passos concretos e criterio de validacao. Nenhum destes itens foi implementado ainda — este bloco e so o plano.
-
-Prioridade geral recomendada: **Seguranca > Operacional/Deploy > Duplicacao de codigo > Performance > Testes > Roadmap de produto**. Dentro de cada bloco, os itens estao na ordem sugerida de execucao.
-
-### 12.1 Seguranca
-
-#### 12.1.1 — Corrigir IDOR em `PATCH /api/notifications/:id/read`
-
-- **Objetivo:** impedir que um agente autenticado marque como lida a notificacao de outro agente.
-- **Arquivo:** `worker/src/routes/notifications.js`
-- **Estado atual:** a rota `notifications.patch('/:id/read', ...)` faz `UPDATE notifications SET is_read = 1 WHERE id = ?`, sem filtrar por `agent_id`. Qualquer agente autenticado pode chamar essa rota com o `id` de uma notificacao de outro agente e ela sera marcada como lida.
-- **Mudanca proposta:** adicionar `AND agent_id = ?` ao `WHERE`, ligando o valor a `c.get('agent').sub` (mesmo padrao ja usado em `notifications.post('/read-all', ...)`, poucas linhas abaixo, que ja filtra por `agent_id = ?`).
-- **Passos:**
-  1. Abrir `worker/src/routes/notifications.js`, localizar `notifications.patch('/:id/read', ...)`.
-  2. Trocar o SQL para `UPDATE notifications SET is_read = 1 WHERE id = ? AND agent_id = ?`.
-  3. Adicionar `agent.sub` como segundo `.bind(...)`, obtendo `agent` via `const agent = c.get('agent')` no topo do handler.
-  4. Opcional (recomendado): verificar `result.meta.changes` apos o `.run()` e retornar `404` se `changes === 0` (nenhuma notificacao daquele agente com aquele id foi encontrada).
-- **Validacao:** login como agente A, tentar `PATCH /api/notifications/<id-de-notificacao-do-agente-B>/read` autenticado como A — deve falhar silenciosamente (nenhuma linha afetada) ou retornar 404, nunca 200 com sucesso real sobre a notificacao de B. Rodar `npm test` no worker (nao deve quebrar nada, esse arquivo nao tem teste dedicado hoje).
-
-#### 12.1.2 — Reforcar rate limit de login (hoje so por IP)
-
-- **Objetivo:** reduzir a chance de contornar o rate limit girando IP, sem penalizar demais usuarios atras do mesmo IP/NAT.
-- **Arquivo:** `worker/src/routes/auth.js`, tabela `login_rate_limit` em `worker/src/db/schema.sql`.
-- **Estado atual:** o rate limit de `POST /api/auth/login` usa como chave apenas o IP (`CF-Connecting-IP` ou fallback), com bloqueio apos 5 tentativas por 15 minutos.
-- **Mudanca proposta:** adicionar uma segunda checagem de rate limit, com chave sendo o email normalizado (lowercase, trim) usado na tentativa de login, independente do IP. Bloquear a tentativa se **qualquer uma** das duas chaves (IP ou email) estiver com o limite atingido.
-- **Passos:**
-  1. Na tabela `login_rate_limit`, a `key` ja e um `TEXT PRIMARY KEY` generico — pode reusar a mesma tabela prefixando a chave (ex: `ip:1.2.3.4` vs `email:admin@caredesk.local`) para nao precisar de nova tabela/migration.
-  2. Em `worker/src/routes/auth.js`, no handler de `POST /login`, antes de validar a senha: checar e incrementar tanto `ip:<ip>` quanto `email:<email_normalizado>` na tabela, com a mesma logica de bloqueio ja existente (5 tentativas / 15 min).
-  3. Em caso de sucesso no login, limpar **ambas** as chaves (IP e email) associadas aquela tentativa, nao so a atual.
-- **Validacao:** simular 5 tentativas erradas para o mesmo email vindas de IPs diferentes — a 6a deve ser bloqueada mesmo com IP novo. `npm test` no worker continua passando.
-
-#### 12.1.3 — Tornar `verifyPassword` resistente a timing attack
-
-- **Objetivo:** eliminar a comparacao insegura de hash de senha.
-- **Arquivo:** `worker/src/routes/auth.js`, funcao `verifyPassword`.
-- **Estado atual:** a comparacao final do hash calculado com o hash armazenado usa `.every(...)`, que sai do loop no primeiro byte diferente — vulneravel a timing attack em teoria (mitigado na pratica pelo custo do PBKDF2, mas nao e a pratica correta).
-- **Mudanca proposta:** reusar o padrao `timingSafeEqual` ja implementado em `worker/src/middleware/auth.js` (usado hoje para comparar assinatura de JWT) para comparar os bytes do hash.
-- **Passos:**
-  1. Exportar `timingSafeEqual` de `worker/src/middleware/auth.js` (hoje pode ser funcao interna nao exportada — confirmar e ajustar o `export` se necessario).
-  2. Importar essa funcao em `worker/src/routes/auth.js`.
-  3. Trocar a comparacao `.every(...)` dentro de `verifyPassword` para usar `timingSafeEqual` sobre os arrays de bytes do hash calculado vs. armazenado.
-- **Validacao:** login com senha correta continua funcionando; login com senha errada continua sendo rejeitado; `npm test` no worker passa.
-
-#### 12.1.4 — Segunda camada de protecao em `POST /api/setup/admin`
-
-- **Objetivo:** nao depender de uma unica variavel de ambiente (`APP_ENV`) para impedir recriacao do admin sem autenticacao em producao.
-- **Arquivo:** `worker/src/routes/setup.js`, `worker/wrangler.toml` (secrets).
-- **Estado atual:** a rota inteira e bloqueada com `if (c.env.APP_ENV === 'production') return 403`. Se essa variavel estiver ausente ou errada em algum ambiente, a rota fica aberta e permite recriar o admin com senha arbitraria, sem autenticacao.
-- **Mudanca proposta:** exigir tambem um header com um segredo dedicado (ex: `X-Setup-Token`), comparado a uma nova secret `SETUP_TOKEN` do Worker. Sem o header correto, a rota falha mesmo que `APP_ENV` esteja mal configurado.
-- **Passos:**
-  1. Definir `SETUP_TOKEN` via `wrangler secret put SETUP_TOKEN` (worker) — nao versionar o valor.
-  2. Em `worker/src/routes/setup.js`, alem do guard de `APP_ENV`, adicionar checagem: `if (c.req.header('X-Setup-Token') !== c.env.SETUP_TOKEN) return c.json({ error: 'Nao autorizado' }, 403)`.
-  3. Atualizar `worker/scripts/create-admin.js` para enviar esse header (ler de uma env var local, ex: `SETUP_TOKEN`).
-  4. Atualizar `.dev.vars.example` e `README.md` (secao de setup local) documentando a nova variavel.
-- **Validacao:** `node scripts/create-admin.js ...` continua funcionando localmente com o token configurado; chamar a rota sem o header (mesmo com `APP_ENV` != production) deve falhar.
-
-#### 12.1.5 — Decisao sobre `password_reset_tokens` e `RESEND_API_KEY` (feature orfa)
-
-- **Objetivo:** eliminar a ambiguidade de uma tabela e uma credencial que existem no schema/env mas nao tem nenhuma rota funcional associada.
-- **Arquivos:** `worker/src/db/schema.sql` (tabela `password_reset_tokens`), `worker/.dev.vars.example` (`RESEND_API_KEY`).
-- **Estado atual:** a tabela existe desde o schema inicial, a credencial de email existe no `.dev.vars.example`, mas nenhuma rota emite ou valida token de reset — a unica forma de resetar senha hoje e um admin autenticado usar `POST /api/agents/:id/reset-password`.
-- **Duas opcoes, escolher uma:**
-  - **Opcao A — Implementar de vez:** criar `POST /api/auth/forgot-password` (recebe email, gera token, grava hash em `password_reset_tokens`, envia email via Resend usando `RESEND_API_KEY`) e `POST /api/auth/reset-password` (recebe token + nova senha, valida `expires_at`/`used`, atualiza `password_hash`, marca token como usado). Precisa de tela nova no frontend (`/esqueci-senha`, `/redefinir-senha/:token`).
-  - **Opcao B — Remover:** apagar a tabela `password_reset_tokens` do `schema.sql` (+ migration `DROP TABLE`), remover `RESEND_API_KEY` do `.dev.vars.example`, documentar em `README.md` que reset de senha e feito exclusivamente por admin.
-- **Recomendacao:** Opcao B no curto prazo (reduz superficie sem remover funcionalidade que ninguem usa), Opcao A se o produto realmente precisar de self-service de reset de senha no futuro.
-- **Validacao:** se opcao B, `npm run db:init` local continua criando o schema sem erro, sem a tabela.
-
-### 12.2 Operacional / Deploy
-
-#### 12.2.1 — Alinhar versao do Wrangler no `worker/package.json`
-
-- **Objetivo:** eliminar o aviso "The version of Wrangler you are using is now out-of-date" que aparece no job `Deploy Worker` do GitHub Actions, e alinhar com a versao ja validada manualmente (`4.104.0`) e usada no job `Deploy Frontend` (`wrangler@4`).
-- **Arquivo:** `worker/package.json`
-- **Estado atual:** `"devDependencies": { "wrangler": "^3.65.0" }` — o job `Deploy Worker` do CI roda `npx wrangler deploy` dentro de `worker/`, que resolve essa versao antiga via `npm ci`.
-- **Mudanca proposta:** atualizar para `"wrangler": "^4.0.0"` (ou fixar em `4.104.0` se quiser reprodutibilidade exata).
-- **Passos:**
-  1. Editar `worker/package.json`, trocar a versao do `wrangler` em `devDependencies`.
-  2. Rodar `npm install` dentro de `worker/` para atualizar `worker/package-lock.json`.
-  3. Rodar `npx wrangler --version` dentro de `worker/` para confirmar que resolveu para 4.x.
-  4. Testar localmente: `npm run dev` (sobe o worker local) e, se possivel, `npx wrangler deploy --dry-run` (ou um deploy real de teste) para garantir que nada quebrou com a major nova.
-- **Validacao:** proximo run do GitHub Actions (`Deploy Worker`) nao deve mais mostrar o aviso de versao desatualizada nos logs.
-
-#### 12.2.2 — Pinar versao do Wrangler nos scripts de deploy manual
-
-- **Objetivo:** eliminar divergencia de versao entre deploy manual local e o pipeline do GitHub Actions.
-- **Arquivos:** `scripts/deploy-worker.ps1`, `scripts/deploy-frontend.ps1`
-- **Estado atual:** ambos chamam `npx wrangler deploy` / `npx wrangler pages deploy` sem versao pinada — resolve para o que estiver disponivel/instalado no ambiente local no momento.
-- **Mudanca proposta:** trocar para `npx wrangler@4 deploy` / `npx wrangler@4 pages deploy ...` explicitamente em ambos os scripts, mesma major usada no CI.
-- **Passos:**
-  1. Editar as duas linhas de comando nos respectivos `.ps1`.
-  2. Rodar `npm run deploy:manual:worker` e `npm run deploy:manual:frontend` uma vez cada para confirmar que ainda funcionam.
-- **Validacao:** scripts continuam publicando com sucesso; `npx wrangler@4 --version` mostra a mesma major usada no Actions.
-
-#### 12.2.3 — Runbook unico para aplicar todas as migrations
-
-- **Objetivo:** evitar o que aconteceu durante a sessao de `2026-07-12` (D1 local desatualizado, faltando as migrations `0002` a `0006`, descoberto no meio de um teste).
-- **Arquivos:** `worker/package.json` (scripts), `worker/migrations/*.sql`
-- **Estado atual:** `db:init`/`db:init:remote`, `db:backfill`/`db:backfill:remote` e `db:cleanup`/`db:cleanup:remote` cobrem só `schema.sql`, `0000` e `0001`. As migrations `0002` a `0006` nao tem script npm — precisam de `wrangler d1 execute caredesk-sprint [--remote] --file=migrations/000X_nome.sql` manual, uma por uma, na ordem certa.
-- **Mudanca proposta:** criar um script (`worker/scripts/run-migrations.js` ou similar) que:
-  1. Le todos os arquivos em `worker/migrations/*.sql`, ordenados pelo prefixo numerico.
-  2. Aplica cada um via `wrangler d1 execute caredesk-sprint --file=<arquivo>` (local) ou `--remote` (remoto), na ordem.
-  3. Registra localmente (ex: em um arquivo `worker/migrations/.applied` ou tabela `_migrations` no proprio D1) quais ja foram aplicadas, para nao reaplicar (as migrations usam `INSERT OR IGNORE`/recreate-table, entao reaplicar nao quebra dados, mas evita trabalho/tempo desnecessario).
-  4. Adicionar `worker/package.json`: `"db:migrate": "node scripts/run-migrations.js"` e `"db:migrate:remote": "node scripts/run-migrations.js --remote"`.
-- **Validacao:** rodar `npm run db:migrate` num D1 local vazio (só com `schema.sql` aplicado) deve deixar o schema identico ao de um D1 que rodou `schema.sql` + todas as migrations manualmente uma a uma.
-
-#### 12.2.4 — Documentar a fricção recorrente de ACL entre Codex e Claude Code
-
-- **Objetivo:** nao perder tempo re-diagnosticando o mesmo problema a cada nova pasta/arquivo afetado.
-- **Estado atual:** já documentado em `README.md` (secao "Ambiente local com multiplas ferramentas de IA") e `Status.md` (`11.28`), mas o problema se repetiu em pelo menos 4 caminhos diferentes numa unica sessao (`worker/migrations/`, `frontend/src/components/admin/BrandingSettingsTab.jsx`, `frontend/src/pages/Login.jsx`, `.github/workflows/deploy.yml`).
-- **Acao recomendada:** nenhuma mudanca de codigo — so manter o procedimento ja documentado (`takeown /F <caminho> /R /D Y` + `icacls <caminho> /reset /T`, nunca na raiz do projeto) como resposta padrao sempre que uma das ferramentas travar com erro de permissao num caminho especifico. Nao vale tentar "resolver de vez" via reset na raiz — ja identificado como arriscado (apagaria a entrada `CodexSandboxUsers` que vive explicitamente ali).
-
-### 12.3 Duplicacao de codigo (risco de bug silencioso)
-
-#### 12.3.1 — Extrair logica de contato compartilhada entre `PatientDetail.jsx` e `PatientPanel.jsx`
-
-- **Objetivo:** parar de precisar editar dois arquivos toda vez que uma regra de exibicao de contato mudar (aconteceu ao adicionar WhatsApp/Email nesta sessao).
-- **Arquivos afetados:** `frontend/src/pages/PatientDetail.jsx`, `frontend/src/components/PatientPanel.jsx`
-- **Estado atual:** os dois arquivos definem separadamente: `typeConfig` (icone + cor por `contact_type`), `typeLabel`/`label` por tipo, `outcomeConfig`, `urgencyBadge`, `statusLabel`, `getInitials`. Sao objetos praticamente identicos, mantidos por copy-paste.
-- **Mudanca proposta:** criar `frontend/src/utils/contactDisplay.js` exportando `CONTACT_TYPE_CONFIG` (icone, cor, label por tipo — hoje `call`, `whatsapp`, `email`, `in_person`), `OUTCOME_CONFIG`, `URGENCY_BADGE`, `STATUS_LABEL` e `getInitials(name)`. Importar esses exports nos dois arquivos, removendo as copias locais.
-- **Passos:**
-  1. Criar o novo arquivo `frontend/src/utils/contactDisplay.js` com os objetos consolidados (usar a versao de `PatientDetail.jsx` como base, ja que é a mais completa/atual).
-  2. Em `PatientDetail.jsx`: remover as definicoes locais de `CONTACT_TYPES` (adaptar para gerar a partir do novo `CONTACT_TYPE_CONFIG`), `typeConfig`, `typeLabel`, `outcomeConfig` dentro de `LogItem`, `urgencyBadge`, `statusLabel`, `getInitials` — importar do novo util.
-  3. Em `PatientPanel.jsx`: mesma limpeza — importar `typeConfig`, `outcomeConfig`, `urgencyBadge`, `statusLabel`, `getInitials` do novo util.
-  4. Build (`npm run build`) e checagem visual das duas telas (detalhe completo do paciente e o painel lateral via `Patients.jsx`) para confirmar que nada mudou visualmente.
-- **Validacao:** `npm run build` sem erro; abrir um paciente com contatos de tipos variados (`call`, `whatsapp`, `email`, `in_person`) tanto na pagina completa quanto no painel lateral e conferir que icones/labels aparecem identicos a antes da refatoracao.
-
-#### 12.3.2 — Consolidar helpers de mistura de cor entre `visualThemes.js` e `darkPalette.js`
-
-- **Objetivo:** evitar que um ajuste no algoritmo de mistura de cor seja feito num arquivo e esquecido no outro.
-- **Arquivos:** `frontend/src/theme/visualThemes.js`, `frontend/src/theme/darkPalette.js`
-- **Estado atual:** as duas funcoes `mix`, `normalizeHex`, `hexToRgb`, `rgbToHex`, `hexToRgbTriplet` existem duplicadas (implementacao identica) nos dois arquivos.
-- **Mudanca proposta:** criar `frontend/src/theme/colorUtils.js` com essas 5 funcoes exportadas; importar em ambos `visualThemes.js` e `darkPalette.js`, removendo as copias locais.
-- **Passos:**
-  1. Criar `frontend/src/theme/colorUtils.js` movendo as 5 funcoes pra la (exportadas).
-  2. Atualizar `visualThemes.js` e `darkPalette.js` pra importar dessas funcoes em vez de defini-las localmente.
-  3. `npm run build` e conferir visualmente que a troca de tema (claro/escuro, e os 5 temas predefinidos no admin) continua identica.
-- **Validacao:** build sem erro; trocar entre os 5 temas visuais no admin e alternar dark/light — cores devem ficar identicas ao comportamento anterior.
-
-#### 12.3.3 — Unificar defaults de branding entre `useSettingsStore` e `BrandingSettingsTab`
-
-- **Objetivo:** ter uma unica fonte de verdade pros valores default de branding.
-- **Arquivos:** `frontend/src/store/index.js` (objeto `settings` default de `useSettingsStore`), `frontend/src/components/admin/BrandingSettingsTab.jsx` (`getDefaultFormState()`)
-- **Estado atual:** os dois objetos tem os mesmos ~20 campos com os mesmos valores default, mantidos separadamente.
-- **Mudanca proposta:** exportar uma constante `DEFAULT_BRANDING_SETTINGS` (provavelmente de `frontend/src/theme/branding.js`, que ja concentra a logica de branding) e usar essa mesma constante tanto no `useSettingsStore` quanto em `getDefaultFormState()`.
-- **Passos:**
-  1. Em `frontend/src/theme/branding.js`, exportar `DEFAULT_BRANDING_SETTINGS` com todos os campos e valores default hoje espalhados nos dois arquivos.
-  2. Em `frontend/src/store/index.js`, trocar o objeto `settings` inicial para spread desse default (`{ ...DEFAULT_BRANDING_SETTINGS }`).
-  3. Em `BrandingSettingsTab.jsx`, trocar `getDefaultFormState()` para retornar `{ ...DEFAULT_BRANDING_SETTINGS }`.
-- **Validacao:** `npm run build`; abrir o admin com um `app_settings` vazio/novo (D1 local recem-criado) e confirmar que os campos aparecem com os mesmos defaults de antes.
-
-#### 12.3.4 — Remover dependencia morta `jose` do worker
-
-- **Arquivo:** `worker/package.json`
-- **Estado atual:** `jose` está listada em `dependencies` mas nunca é importada em nenhum arquivo de `worker/src` — o JWT é implementado manualmente em `worker/src/middleware/auth.js` via Web Crypto.
-- **Passos:** remover a linha `"jose": "^5.6.3"` de `worker/package.json`, rodar `npm install` em `worker/` pra atualizar o lockfile.
-- **Validacao:** `npm test` e `npm run dev` no worker continuam funcionando normalmente (confirma que realmente nao era usada).
-
-#### 12.3.5 — Remover funcao morta `SettingsTab()` de `Admin.jsx`
-
-- **Arquivo:** `frontend/src/pages/Admin.jsx`
-- **Estado atual:** existe uma funcao `SettingsTab()` (por volta da linha 722) que implementa uma versao antiga/simplificada de configuracoes gerais, mas nunca e referenciada no componente `Admin()` — a aba "Identidade Visual" usa `BrandingSettingsTab` (componente importado separado).
-- **Passos:**
-  1. Confirmar via busca (`grep -n "SettingsTab" frontend/src/pages/Admin.jsx`) que a unica ocorrencia e a propria definicao (nenhum uso).
-  2. Remover a funcao inteira.
-  3. Remover imports que só eram usados por ela, se sobrarem sem uso (checar `useSettingsStore`, `VISUAL_THEMES` — confirmar se ainda sao usados em outra parte do arquivo antes de remover o import).
-- **Validacao:** `npm run build` sem erro (confirma que nada mais dependia dessa funcao).
-
-#### 12.3.6 — Decidir sobre os tokens `colors.urgency.*` nao usados no Tailwind
-
-- **Arquivo:** `frontend/tailwind.config.js`
-- **Estado atual:** existe um grupo `colors.urgency` (`ok`/`soon`/`due`/`overdue`) com valores hex fixos, mas `Patients.jsx`, `Dashboard.jsx` e `PatientDetail.jsx` reimplementam as mesmas cores de urgencia inline (`bg-[#fff8e1]` etc.) em vez de usar `bg-urgency-*`/`text-urgency-*`.
-- **Duas opcoes:**
-  - **Opcao A:** adotar os tokens de verdade — trocar as cores inline dos 3 arquivos pelas classes `urgency-*` do Tailwind, garantindo que os hex batam com os ja usados hoje (comparar valor por valor antes de trocar, pra nao mudar a aparencia).
-  - **Opcao B:** remover o grupo `colors.urgency` do `tailwind.config.js`, ja que nunca foi adotado.
-- **Recomendacao:** Opcao A se o objetivo e consistencia visual de longo prazo (facilita trocar a paleta de urgencia num lugar so no futuro); Opcao B se o objetivo e so reduzir superficie de configuracao morta agora.
-- **Validacao:** captura de tela antes/depois das 3 telas (Patients, Dashboard, PatientDetail) pra confirmar que as cores de urgencia continuam identicas visualmente.
-
-### 12.4 Performance
-
-#### 12.4.1 — Lazy-load do shader `@paper-design/shaders-react`
-
-- **Objetivo:** tirar o bundle principal de cima dos `500 kB` (aviso presente em todo build do frontend desde que o shader foi adotado).
-- **Arquivos:** `frontend/src/components/ui/LoginPulsingBorder.jsx`, `frontend/src/pages/Login.jsx`, `frontend/src/components/admin/BrandingSettingsTab.jsx`
-- **Estado atual:** `LoginPulsingBorder.jsx` importa `{ PulsingBorder, pulsingBorderPresets }` de `@paper-design/shaders-react` de forma estatica no topo do arquivo — isso inclui a lib inteira no bundle principal (`index-*.js`), mesmo em paginas que nao renderizam o componente.
-- **Mudanca proposta:** trocar para import dinamico via `React.lazy`, carregando o shader só quando o componente `LoginPulsingBorder` realmente monta (tela de login e preview do admin).
-- **Passos:**
-  1. Criar um componente interno `LoginPulsingBorderInner` (ou renomear o conteudo atual) que faz o `import` estatico de `@paper-design/shaders-react` como hoje.
-  2. No arquivo `LoginPulsingBorder.jsx` exportado publicamente, envolver esse componente interno com `React.lazy(() => import('./LoginPulsingBorderInner'))`.
-  3. Envolver o uso desse lazy component com `<Suspense fallback={...}>` — o fallback pode ser simplesmente `children` sem o efeito (ja que o proprio componente ja trata `isEnabled=false` como fallback pra borda estatica), ou `null`.
-  4. Como `Login.jsx` e `BrandingSettingsTab.jsx` já importam `LoginPulsingBorder` normalmente, nenhuma mudanca é necessária nesses dois arquivos além de garantir que o `Suspense` esteja no lugar certo (dentro do proprio `LoginPulsingBorder.jsx` é o mais simples, sem precisar tocar nos consumidores).
-- **Validacao:** `npm run build` — o bundle principal deve cair visivelmente abaixo de `500 kB`; a lib do shader deve aparecer como um chunk separado carregado sob demanda. Testar visualmente a tela de login e o preview do admin pra garantir que a borda pulsante ainda aparece (so que com um pequeno delay no primeiro carregamento, que é o comportamento esperado de lazy loading).
-
-#### 12.4.2 — Quebrar `PatientDetail.jsx` e `Admin.jsx` em componentes menores
-
-- **Objetivo:** reduzir o tamanho dos dois maiores arquivos do frontend (995 e 885 linhas respectivamente em `2026-07-12`), facilitando manutencao e reduzindo o risco descrito em `12.3.1`.
-- **`frontend/src/pages/PatientDetail.jsx` — quebra sugerida:**
-  - Extrair o modal "Registrar Contato" (incluindo o builder de protocolo customizado inline) para `frontend/src/components/patient/RegisterContactModal.jsx`.
-  - Extrair o modal "Editar Paciente" para `frontend/src/components/patient/EditPatientModal.jsx`.
-  - Extrair `LogItem` para `frontend/src/components/patient/ContactLogItem.jsx` (e reusar em `PatientPanel.jsx` tambem, complementando o item `12.3.1`).
-- **`frontend/src/pages/Admin.jsx` — quebra sugerida:**
-  - Extrair `ProtocolTab` (+ `ProtocolModal`, `DayChip`) para `frontend/src/components/admin/ProtocolTab.jsx`.
-  - Extrair `AgentsTab` (+ `AgentModal`, `ResetPasswordModal`) para `frontend/src/components/admin/AgentsTab.jsx`.
-  - Isso alem de reduzir o tamanho do arquivo, torna a remocao do `SettingsTab()` morto (item `12.3.5`) mais segura de revisar isoladamente.
-- **Validacao:** `npm run build` sem erro; percorrer manualmente os fluxos de registrar contato, editar paciente, criar/editar protocolo e criar/editar agente, conferindo que nada mudou de comportamento.
-
-### 12.5 Testes automatizados
-
-#### 12.5.1 — Configurar Vitest no frontend
-
-- **Objetivo:** sair de zero cobertura de teste no frontend.
-- **Passos:**
-  1. `npm install -D vitest @testing-library/react @testing-library/jest-dom jsdom` em `frontend/`.
-  2. Configurar `test` em `frontend/vite.config.js` (ambiente `jsdom`) e adicionar script `"test": "vitest run"` em `frontend/package.json`.
-  3. Primeiro alvo de teste: `frontend/src/utils/protocols.js` (espelha `worker/src/utils/protocols.js`, que ja tem testes no backend — usar os mesmos casos de `worker/test/protocols.test.js` como referencia, adaptando pra `buildProtocolTimeline`/`getNextFollowup`/etc.).
-  4. Segundo alvo: `frontend/src/theme/branding.js` (`sanitizeBrandUrl`, `sanitizePrimaryColor`, `sanitizeColorString` — funcoes puras, faceis de testar, e criticas para seguranca/XSS).
-- **Validacao:** `npm test` roda e passa no CI (considerar adicionar como step no `deploy-frontend` job do workflow, antes do build).
-
-#### 12.5.2 — Expandir testes do worker alem de `utils/protocols.js`
-
-- **Objetivo:** cobrir a logica de negocio critica que hoje depende so de teste manual.
-- **Alvos sugeridos, em ordem de prioridade:**
-  1. `worker/src/utils/storage.js` — `sanitizeScopedAssetKey` (camada de seguranca contra path traversal, testavel sem precisar de R2 real), `isSupportedImageAssetType`, `extensionForMimeType`.
-  2. `worker/src/middleware/auth.js` — `signToken`/`verifyToken` (gerar token, verificar, testar expiracao e assinatura invalida).
-  3. `worker/src/routes/auth.js` — `hashPassword`/`verifyPassword` (incluindo o caso especial do `$PLACEHOLDER_HASH$`).
-- **Validacao:** `npm test` no worker continua rodando via `node --test`, sem precisar de framework novo.
-
-#### 12.5.3 — Formalizar os scripts de verificacao visual (Playwright) usados nesta sessao
-
-- **Objetivo:** nao reinventar o driver de teste visual a cada sessao — nesta mesma sessao, scripts Playwright ad-hoc foram criados no scratchpad (fora do repositorio) pra validar upload de imagens, layout da aba de identidade visual e o seletor de tipos de contato, e depois descartados.
-- **Mudanca proposta:** criar uma skill de projeto (`.claude/skills/run/SKILL.md` ou equivalente) documentando como subir `worker` + `frontend` localmente e dirigir via Playwright, com os comandos exatos ja validados nesta sessao (login com `admin`/`CareDesk2026!`, portas `5173`/`8787`, etc.), para que a proxima sessao nao precise redescobrir isso.
-- **Validacao:** proxima vez que uma mudanca visual precisar de verificacao, o fluxo deve ser "invocar a skill" em vez de escrever um script novo do zero.
-
-### 12.6 Roadmap de produto (nao e divida tecnica — e evolucao planejada)
-
-#### 12.6.1 — `avatars/patients` (imagem de perfil do paciente)
-
-- Proximo passo natural depois de `avatars/agents` (ja entregue), seguindo a ordem ja definida na secao "Ordem recomendada de implementacao" do `README.md`.
-- Reusar o mesmo nucleo de storage (`worker/src/utils/storage.js`, `BRAND_ASSET_CONFIG`-like pattern) e o mesmo padrao de rotas (`POST/DELETE /api/patients/:id/avatar`, espelhando `worker/src/routes/agents.js`).
-- Precisa de migration nova (`avatar_url`, `avatar_storage_key` em `patients`) e de UI no cadastro/detalhe do paciente.
-
-#### 12.6.2 — `attachments/patients` (anexos clinicos)
-
-- So depois de `avatars/patients`, por decisao ja registrada no `README.md`.
-- Precisa de tabela nova (não cabe em 2 colunas simples como avatar — são N anexos por paciente), com os campos descritos na secao "Metadados que devem ficar no D1" do `README.md` (`owner_type`, `owner_id`, `storage_key`, `mime_type`, `file_size`, `category`, `uploaded_by`, etc.).
-
-#### 12.6.3 — Decidir sobre `patients.protocol_days` (coluna legada)
-
-- **Estado atual:** a coluna ainda existe em `patients` e é o ultimo nivel de fallback (`LEGACY`) na cadeia de resolucao de protocolo (`worker/src/utils/protocols.js`), atras de `LINKED` → `DEFAULT` → `GLOBAL`.
-- **Passos para avaliar remocao:**
-  1. Rodar uma query no D1 remoto: `SELECT COUNT(*) FROM patients WHERE protocol_id IS NULL` — se o resultado for `0`, nenhum paciente depende mais do fallback legado (todos tem `protocol_id` valido).
-  2. Se confirmado, criar migration pra remover a coluna `protocol_days` de `patients` (padrao recreate-table, como as migrations `0001`/`0006`).
-  3. Remover o branch `LEGACY` de `worker/src/utils/protocols.js` e do teste correspondente em `worker/test/protocols.test.js`.
-- **Risco de nao fazer:** nenhum — é so divida tecnica de uma coluna nao usada. Nao é urgente, mas fecha de vez a consolidacao de protocolos ja mencionada como pendente em varias secoes anteriores deste documento.
-
-### 11.32 Borda CSS duplicada no card de login
-
-Sintoma reportado em `2026-07-13`:
-- mesmo apos as correcoes de geometria da secao `11.31`, ainda aparecia uma "ponta" visual em cantos do card de login, mais visivel em screenshots com zoom
-
-Causa raiz identificada:
-- havia duas bordas CSS de 1px aplicadas em raios praticamente identicos, em elementos DOM separados: uma no wrapper interno do `LoginPulsingBorder.jsx` (`border-outline-variant/60`, sempre presente, serve de fallback estatico quando o efeito esta desativado) e outra redundante no `<div>` filho imediato, tanto em `Login.jsx` quanto no preview de `BrandingSettingsTab.jsx`
-- duas linhas finas sobrepostas, renderizadas por elementos distintos com anti-aliasing independente, sao um padrao classico para gerar esse tipo de costura visual nos cantos, especialmente sensivel em cantos arredondados
-
-Correcao aplicada:
-- removida a borda redundante do `<div>` interno em `frontend/src/pages/Login.jsx` (linha do card principal) e em `frontend/src/components/admin/BrandingSettingsTab.jsx` (preview da aba Identidade Visual)
-- a borda estatica de fallback do `LoginPulsingBorder.jsx` foi mantida intacta e continua aparecendo corretamente quando o efeito esta desativado (validado visualmente)
-
-Validacao:
-- `frontend`: `npm run build` ok em `2026-07-13`
-- testado com o efeito de borda pulsante desativado (`login_border_effect_enabled: false`) — contorno unico, limpo, sem regressao
-- nao foi possivel reproduzir a "ponta" de forma 100% consistente em capturas automatizadas (o rendering de WebGL em Chromium headless pode diferir do navegador real), mas a duplicacao de borda encontrada e um problema real e objetivamente redundante, independente de ser ou nao a causa unica do sintoma reportado
-
-### 11.33 `fetch-depth: 2` insuficiente no job de deteccao de escopo
-
-Sintoma em `2026-07-13`:
-- push com 3 commits de uma vez fez o job `Detect Deploy Scope` falhar com `fatal: bad object <sha>` ao tentar `git diff` contra o `before` do evento de push
-
-Causa raiz:
-- o step de checkout desse job usava `fetch-depth: 2`, suficiente apenas quando o push traz exatamente 1 commit novo
-- quando um push agrupa varios commits, o `github.event.before` pode apontar para um commit mais antigo que o clone raso buscou, e o `git diff` falha por nao ter esse objeto localmente
-
-Correcao aplicada:
-- `fetch-depth: 2` trocado para `fetch-depth: 0` (historico completo) no checkout desse job especifico, unico lugar do workflow que faz `git diff` contra um commit arbitrario
-- os demais jobs (`deploy-worker`, `deploy-frontend`) continuam com checkout raso padrao, que nao precisa de historico completo
-
-Validacao:
-- proximo push deve concluir o job `Detect Deploy Scope` mesmo agrupando multiplos commits
-
-### 11.34 Remocao do selo "Acesso institucional" do login
-
-Solicitado em `2026-07-13`:
-- remover o texto `Acesso institucional` da coluna esquerda do card de login
-
-Correcao aplicada:
-- o texto foi removido diretamente de `frontend/src/components/login/LoginCardLayout.jsx`, fonte unica da composicao do login
-- com isso, a mudanca vale ao mesmo tempo para a tela publica e para a miniatura da aba `Identidade Visual`
-
-Resultado esperado:
-- composicao mais limpa na coluna institucional
-- a hierarquia visual passa a iniciar diretamente em `heroTitle` e `heroSubtitle`
-
-Validacao:
-- `frontend`: `npm run build` ok em `2026-07-13`
-
-### 11.36 Hardening de seguranca (auditoria via mapa de aprendizados de seguranca)
-
-Aplicado em `2026-07-13`, a partir da leitura da nota externa "Seguranca em apps web locais" (vault Obsidian do usuario), cruzada com o codigo atual do projeto.
-
-Correcoes aplicadas (baixo risco, sem mudanca de schema):
-- **IDOR em `PATCH /api/notifications/:id/read`** (`worker/src/routes/notifications.js`): agora filtra por `agent_id` do token, alem do `id`; retorna `404` se nenhuma linha do proprio agente for afetada. Antes, qualquer agente autenticado podia marcar como lida a notificacao de outro.
-- **Timing leak no login** (`worker/src/routes/auth.js`): `verifyPassword` agora roda o PBKDF2 completo mesmo quando o email nao existe (usa um hash dummy fixo), e a comparacao final passou a ser byte a byte em tempo constante (`timingSafeEqualBytes`) em vez de `.every()` com early-exit.
-- **Rate limit de login por IP + email** (`worker/src/routes/auth.js`): alem da chave por IP, agora existe uma chave por email normalizado na mesma tabela `login_rate_limit` (prefixos `ip:`/`email:`); bloqueia se qualquer uma das duas estourar. Nao precisou de migration — a tabela ja era chave-valor generica.
-- **Segunda camada em `POST /api/setup/admin`** (`worker/src/routes/setup.js`): se a secret `SETUP_TOKEN` estiver configurada no Worker, exige o header `X-Setup-Token` alem do guard de `APP_ENV`. Opcional por design — sem a secret configurada, comportamento local continua identico ao anterior (nao quebra ambientes existentes). `worker/scripts/create-admin.js` atualizado para enviar o header quando `SETUP_TOKEN` estiver no ambiente local.
-- **Security headers na API** (`worker/src/index.js`): middleware `secureHeaders` do Hono adicionado — `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Opener-Policy`, HSTS, etc. `Cross-Origin-Resource-Policy` explicitamente setado para `cross-origin` (nao o default `same-origin`), porque a API e consumida de um dominio diferente (Pages) e serve as imagens de branding/avatar via `<img src>` — `same-origin` quebraria essas imagens.
-- **CSP e headers no frontend** (`frontend/public/_headers`, convencao nativa do Cloudflare Pages): `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`. `style-src` inclui `'unsafe-inline'` porque o app usa `style={{...}}` inline extensivamente (branding dinamico); `img-src` inclui `https:` amplo porque o admin pode configurar URLs de imagem arbitrarias; `connect-src` lista o worker de producao e `localhost:8787`.
-- **`npm audit --audit-level=high` no CI** (`.github/workflows/deploy.yml`): adicionado nos dois jobs de deploy, com `|| true` — nao bloqueante, so visibilidade por enquanto.
-
-Validacao feita antes de aplicar (sem tocar producao):
-- `worker`: `npm test` ok (6/6), login local com senha certa/errada continua funcionando, rate limit e IDOR testados manualmente com sucesso
-- `frontend`: `npm run build` ok
-- CSP validada com um servidor estatico local simulando os headers do Cloudflare Pages + worker local: paginas `/login` e `/admin` (com o shader WebGL da borda pulsante ativo) carregaram sem nenhuma violacao de CSP no console — o unico erro observado foi CORS bloqueando uma origem de teste nao whitelisted, comportamento esperado e correto
-- deploy real para uma branch de preview foi bloqueado pelo classificador de seguranca do Claude Code (deploy de producao sem aprovacao explicita do usuario) — respeitado, validacao feita 100% local
-
-Item que ficou fora desta rodada por decisao deliberada (nao por pendencia):
-- migracao do token JWT de `localStorage` para cookie `HttpOnly` — nao aplicada porque frontend e worker vivem em dominios diferentes (`pages.dev` e `workers.dev`), o que exigiria `SameSite=None` + `Secure` e mudanca de arquitetura de sessao; risco de quebra maior que o beneficio imediato dado que o CSP ja reduz boa parte do vetor de XSS que tornaria isso critico. Registrado como recomendacao futura, condicionada a migrar frontend+worker para um dominio unico primeiro.
-
-### 11.37 Remocao de `password_reset_tokens` + bloco operacional/deploy + bundle do login
-
-Aplicado em `2026-07-13`, continuando o plano de acao (secao 12) com foco em seguranca, saude do banco e fluidez, nessa ordem.
-
-**Tabela orfa removida (`12.1.5`, decisao tomada: remover):**
-- confirmado por busca em todo o codigo: `password_reset_tokens` e `RESEND_API_KEY` nunca tiveram rota funcional associada
-- migration `0007_remove-password-reset-tokens.sql` (`DROP TABLE IF EXISTS`), `schema.sql` atualizado, `RESEND_API_KEY` removido de `.dev.vars.example`
-- checado o total de linhas no D1 remoto antes de dropar (`0`) — zero risco de perda de dado
-- aplicado local e remoto, `npm test` ok nos dois
-
-**Wrangler alinhado (`12.2.1`):**
-- `worker/package.json`: `wrangler` `^3.65.0` → `^4.0.0` (resolveu `4.110.0`, mesma linha ja validada no `Deploy Frontend` do CI)
-- aproveitado para remover tambem a dependencia morta `jose` (nunca importada, JWT e feito a mao em `middleware/auth.js`)
-- `npm install` sem vulnerabilidades, `npx wrangler dev --local` testado e funcionando normalmente sob a major nova
-
-**Scripts de deploy manual pinados (`12.2.2`):**
-- `scripts/deploy-worker.ps1` nao precisou de mudanca — `npx wrangler deploy` dentro de `worker/` ja resolve a versao 4.x local pelo `package.json`/lockfile, que agora e a fonte de verdade
-- `scripts/deploy-frontend.ps1`: `npx wrangler pages deploy` → `npx wrangler@4 pages deploy`, porque `frontend/` nao tem `wrangler` como dependencia local (so instalado globalmente no CI) e ficaria sem nenhuma ancora de versao
-
-**Runbook unico de migrations (`12.2.3`) — com um incidente real no meio do caminho:**
-- criado `worker/scripts/run-migrations.js` (+ `npm run db:migrate` / `db:migrate:remote`): le `migrations/*.sql` em ordem, rastreia o que ja foi aplicado numa tabela `_migrations` no proprio D1, pula o que ja esta em dia
-- modo `--bootstrap`: marca migrations existentes como aplicadas sem rodar o SQL, para nao reaplicar `ALTER TABLE` nao-idempotente contra um banco que ja tinha o schema em dia (aplicado manualmente ao longo da sessao, antes deste script existir)
-- **primeira tentativa quebrou duas vezes por causa do path do projeto ter espaco** (`Developer CODEX`): `execFileSync` sem shell nao achava `npx` no Windows; com `shell:true` e array de args, o Node (versao atual) nao escapa os argumentos automaticamente (`DEP0190`), entao o path com espaco virava dois argumentos separados e o wrangler recusava. Resolvido trocando para `execSync` com uma string de comando montada manualmente, cada argumento entre aspas quando necessario
-- **incidente real durante o teste no remoto:** a leitura da tabela `_migrations` (via `--file` com `--json`) veio contaminada por um aviso do proprio wrangler no stdout, quebrando o `JSON.parse`; o `catch` silencioso tratava isso como "nada aplicado" e o script comecou a reaplicar `0000` e `0001` de verdade contra producao antes de travar em `0002` com erro de coluna duplicada (esperado, e serviu de alarme)
-  - **verificado que nao houve perda de dado**: `0000`/`0001` sao idempotentes por design (recreate-table/backfill condicional), a propria Cloudflare garante rollback automatico em caso de falha no meio de um `--file`, e a contagem de `patients`/`agents`/`followups`/`notifications`/`protocols`/`settings` foi conferida igual antes e depois; `/health` e login testados em producao logo em seguida, tudo normal
-  - **causa raiz corrigida**: leitura de tracking trocada de `--file` para `--command` (sem o aviso de upload assincrono que contaminava o stdout), e o `catch` de parsing deixou de assumir silenciosamente "nada aplicado" — agora aborta alto e claro se nao conseguir confirmar o estado com seguranca, em vez de arriscar reaplicar migration contra dado real
-  - reconfirmado local e remoto depois do fix: as 8 migrations aparecem como "ja aplicada, pulando" nos dois ambientes
-
-**Bundle do login (`12.4.1`):**
-- `@paper-design/shaders-react` isolado em `frontend/src/components/ui/LoginPulsingBorderShader.jsx`, carregado via `React.lazy` + `Suspense` a partir de `LoginPulsingBorder.jsx`, que perdeu o import estatico da lib
-- bundle principal caiu de `536.22 kB` para `483.07 kB` — aviso de chunk `>500 kB` desapareceu por completo; o shader vira um chunk proprio de `55.68 kB`, buscado so quando o efeito esta ativo
-- `manualChunks` (sugerido pela nota de aprendizados) avaliado e descartado por ora: o projeto so tem essa unica dependencia pesada, ja isolada pelo lazy load — adicionar mais grupos de chunk sem outro problema real seria otimizacao prematura
-- validado com `vite preview` (build de producao de verdade, nao o dev server) + Playwright: o chunk do shader aparece como request de rede separado, a borda pulsante renderiza normalmente na tela de login publicada, sem erro de console
-
-Validacao final desta rodada:
-- `worker`: `npm test` ok (6/6)
-- `frontend`: `npm run build` ok, sem aviso de chunk grande
-- producao: `/health` `200`, login funcionando, contagem de registros confirmada igual antes/depois do incidente de migration
-
-### 11.42 Fechamento da secao 12.3/12.5/12.6.3 — duplicacao de codigo, testes automatizados, coluna legada
-
-Aplicado em `2026-07-14`, continuando o plano de acao (secao 12) apos o `11.37`.
-
-**Duplicacao de codigo removida (`12.3`):**
-- `12.3.1`: `CONTACT_TYPES`/`OUTCOMES`/`STATUS_LABEL`/`URGENCY_BADGE`/`getInitials`, antes duplicados em `PatientDetail.jsx` e `PatientPanel.jsx` (ja levemente divergentes entre si), extraidos para `frontend/src/utils/contactDisplay.js`; o `LogItem` local de `PatientDetail.jsx` tambem tinha sua propria copia de `typeConfig`/`typeLabel`/`outcomeConfig`, removida e repontada pro modulo compartilhado
-- `12.3.2`: `normalizeHex`/`mix`/`interpolate`/`hexToRgb`/`rgbToHex`/`hexToRgbTriplet` estavam copiados identicos em `theme/visualThemes.js` e `darkPalette.js`; extraidos para `theme/colorUtils.js`
-- `12.3.3`: `useSettingsStore` (defaults iniciais da store) e `BrandingSettingsTab.getDefaultFormState()` cada um mantinha sua propria copia dos valores default de branding (tagline, hero copy, cores/preset/intensidade da borda de login etc). `theme/branding.js` ja tinha essas constantes internamente (usadas em `getBranding()`); passaram a ser exportadas e ambos os consumidores importam da mesma fonte — `getDefaultFormState()` virou uma chamada direta a `normalizeBrandingSettings({})`
-- `12.3.5`: removida `SettingsTab()` de `Admin.jsx` — implementacao antiga da aba "Identidade Visual", sem nenhuma referencia ativa desde que `BrandingSettingsTab` assumiu a aba; junto saíram os imports `VISUAL_THEMES`/`useSettingsStore`, que so essa funcao usava
-- `12.3.6`: confirmado por busca no codigo que nenhuma classe `urgency-ok/soon/due/overdue` do Tailwind e usada em lugar nenhum (a estilizacao de urgencia hoje vem inline de `URGENCY_BADGE`); tokens `colors.urgency.*` removidos de `tailwind.config.js`
-
-**Testes automatizados (`12.5`):**
-- `12.5.1`: `frontend` nao tinha test runner. Instalado `vitest`, configurado `test: { environment: 'node' }` em `vite.config.js` (reaproveita o alias `@` ja existente) e `npm test` (`vitest run`) em `package.json`. Cobertura inicial: `utils/protocols.test.js` (normalizacao/milestones/timeline/urgencia/labels — 14 casos) e `theme/branding.test.js` (sanitizadores de cor/URL, defaults, `getBranding` — 18 casos). `32/32` passando
-- `12.5.2`: testes do worker expandidos alem de `utils/protocols.js`. `worker/test/storage.test.js` cobre `sanitizeScopedAssetKey` (guarda contra path traversal e extensao fora da whitelist em chaves de asset no R2), `isSupportedImageAssetType`, `extensionForMimeType`. `worker/test/auth-middleware.test.js` cobre `signToken`/`authMiddleware`/`adminOnly` via um contexto Hono fake (token valido, header ausente, sem `Bearer`, token malformado, secret errado, assinatura adulterada, token expirado, checagem de role). `25/25` passando no worker
-
-**Coluna legada `patients.protocol_days` removida (`12.6.3`):**
-- consultado o D1 remoto (`SELECT COUNT(*) ... WHERE protocol_id IS NULL`): `0` de `2` pacientes — o branch `LEGACY` de `resolvePatientProtocol()` ja estava morto havia tempo, porque todo paciente resolve via `LINKED`, `DEFAULT` ou `GLOBAL` antes de chegar nele
-- testado `ALTER TABLE patients DROP COLUMN protocol_days` primeiro no D1 **local**, para confirmar que o SQLite do D1 suporta `DROP COLUMN` nativamente (suporta) antes de tocar em producao
-- recontagem feita de novo imediatamente antes de aplicar no remoto (ainda `0`/`2`) — migration `0009_drop-legacy-patient-protocol-days.sql` aplicada local e remoto via `run-migrations.js`
-- removidos do codigo: o branch `LEGACY` inteiro em `resolvePatientProtocol()`, a constante `PROTOCOL_DAY_SOURCES.LEGACY`, a coluna em `schema.sql` e o teste que cobria esse branch (substituido por um teste cobrindo o fallback pra `EMPTY`)
-
-**Incidente no deploy: `vitest@4.1.10` quebrou o `npm ci` do CI:**
-- `npm install -D vitest` instalou `4.1.10` (major mais recente); localmente `npm ci`/`npm install` pareciam consistentes no Windows, mas o job `Deploy Frontend` falhou com `npm error Missing: esbuild@0.28.1 from lock file` e dezenas de `@esbuild/<plataforma>@0.28.1` ausentes
-- causa raiz: `vitest@4.1.10` depende internamente de um `vite@8.1.4` proprio (isolado do `vite@5.4.21` do projeto), que exige `esbuild ^0.27.0 || ^0.28.0`; isso colidia com o `esbuild@0.21.5` do `vite@5` do projeto e gerava um `package-lock.json` que o `npm ci` estrito do Linux/CI nao conseguia reproduzir (`npm ls esbuild` no Windows so acusava isso como `invalid`, sem travar o `npm ci` local)
-- corrigido fixando `vitest` em `^3.2.4` (depende de `vite ^5.0.0`, compativel com o `vite@5.4.21` do projeto, resolvendo um unico `esbuild@0.21.5`); ao rodar `npm audit` nessa versao apareceu uma vulnerabilidade **critica** propria do `vitest` 3.2.4/3.2.5 (`GHSA-5xrq-8626-4rwp`, leitura arbitraria de arquivo quando o UI server do Vitest esta ativo — nao usamos o UI server, mas corrigido de qualquer forma), resolvida subindo para `vitest@3.2.7`
-- validado com `rm -rf node_modules && npm ci` (replicando exatamente o passo do CI) antes de subir o commit de correcao; `Deploy CareDesk` voltou a passar (worker + frontend) na run seguinte
-- vulnerabilidades remanescentes (`npm audit`): apenas do dev server do `vite@5.4.21` (path traversal em `.map` de deps otimizadas, disclosure de hash NTLMv2 via UNC no Windows, bypass de `server.fs.deny`) — expostas somente rodando `vite dev`/`vite preview` localmente, nao afetam a build estatica publicada no Cloudflare Pages; corrigir exigiria pular pra `vite@6/7/8` (breaking, fora de escopo aqui)
-
-Validacao final desta rodada:
-- `worker`: `npm test` ok (`25/25`)
-- `frontend`: `npm test` ok (`32/32`), `npm run build` ok, `rm -rf node_modules && npm ci` limpo (replicando o CI)
-- CI: `Deploy CareDesk` (`Deploy Worker` + `Deploy Frontend`) verde apos o fix do lockfile
-- producao: contagem de `patients` confirmada igual (`2`) antes/depois da migration, `/health` `200` do worker e `200` do frontend (`caredesk-lou.pages.dev`) apos o deploy
-
-**Efeito colateral pego no proprio deploy do GitHub Actions:** o job `Deploy Worker` falhou logo apos o push — `wrangler` `4.110.0` exige Node.js `22+`, e o workflow ainda usava `node-version: 20` nos dois jobs de deploy. Corrigido para `22` em `deploy-worker` e `deploy-frontend` no mesmo `.github/workflows/deploy.yml`. Consequencia direta de resolver `^4.0.0` para a ultima 4.x disponivel; nao afeta ambiente local (ja em Node 24 nas maquinas usadas nesta sessao).
-
-### 11.48 Protocolo de Documentos + remocao total do fallback automatico de protocolo
-
-Aplicado entre `2026-07-14` e `2026-07-20`, continuando o plano de acao (secao 12) e respondendo a um bug reportado pelo usuario em producao.
-
-**Protocolo de Documentos (feature nova, planejada antes de implementar):**
-- pedido original: aba "Protocolo de Documentos" ao lado dos outros protocolos, catalogo com subabas Enviar/Solicitar, e possibilidade de marcar no cadastro do paciente quais documentos cobrar dele
-- decisoes confirmadas com o usuario antes de codar: sem upload de arquivo real (so metadado/checklist), com rastreio de status (`pending`/`done`), atribuicao editavel tanto no cadastro quanto depois na pagina do paciente (a decisao inicial foi "so na pagina do paciente"; revertida apos o usuario ver a tela `Novo Paciente` publicada e pedir a selecao tambem ali)
-- schema novo: `document_templates` (catalogo) + `patient_documents` (checklist por paciente, `UNIQUE(patient_id, document_template_id)`, `ON DELETE RESTRICT` no template pra nao sumir historico se o catalogo mudar) — migration `0011_document-protocol.sql`
-- backend: CRUD do catalogo em `worker/src/routes/document-templates.js` (espelha `protocols.js`, incluindo bloqueio `409` de exclusao em uso), rotas aninhadas `GET/PUT/PATCH/DELETE /api/patients/:id/documents[/:templateId]` em `patients.js` (nao `adminOnly` — qualquer agente autenticado marca o checklist)
-- frontend: `DocumentProtocolTab.jsx` (aba admin), `PatientDocumentsSection.jsx` (card na pagina do paciente), selecao por checkbox em `NewPatient.jsx` (atribuida via `Promise.all` logo apos o `POST /patients` bem-sucedido, reusando o mesmo endpoint `PUT` da secao de documentos — nenhuma rota nova precisou ser criada pra isso)
-- validado: `worker/test/document-templates.test.js` (6 testes), `npm test` nos dois pacotes, `npm run build`, persistencia confirmada via query direta no D1 apos assign/status/unassign
-
-**Bug reportado: linha do tempo mostrando marcos sem nenhum protocolo configurado:**
-- usuario reportou (com screenshot) uma "Linha do Tempo" no detalhe do paciente exibindo marcos, apesar de nao ter nenhum protocolo de contato cadastrado
-- investigacao (somente leitura, D1 remoto direto): `contact_protocols` tinha `0` linhas — descartada a hipotese do fallback `DEFAULT`. O culpado real era `app_settings.contact_protocol_days`, um residuo `GLOBAL` sem nenhuma UI pra edita-lo, com valor antigo `[-50,-2,0,2,5]` ainda sendo lido por `resolvePatientProtocol()` (arquitetura anterior, ordem `LINKED -> DEFAULT -> GLOBAL -> LEGACY`)
-- decisao do usuario: nao so limpar o valor residual, mas remover o mecanismo de fallback inteiro — a linha do tempo (e qualquer coisa derivada de dias de protocolo) so deve aparecer quando o paciente tiver protocolo de contato vinculado de verdade
-- implementado: `resolvePatientProtocol(patient)` simplificado pra `LINKED`/`EMPTY` (removida `getProtocolResolutionContext()`, que buscava o `DEFAULT`/`GLOBAL`); removida a rota `PATCH /api/settings/protocol` (nao fazia mais sentido sem o nivel `GLOBAL`); migration `0012_remove-global-protocol-fallback.sql` apaga a chave `contact_protocol_days` de `app_settings`; scheduler, rotas de paciente e frontend (`store/index.js`, `branding.js`, `PatientDetail.jsx`, `PatientPanel.jsx`) atualizados pra parar de ler/gravar essa chave
-- `is_default` em `contact_protocols` **nao foi removido** — continua servindo pra pre-selecionar protocolo no cadastro de paciente (ver `2.5`), mas deixou de ser um fallback de leitura; a diferenca e sutil e importante: antes um paciente sem protocolo linkado ainda "herdava" dias de protocolo em tempo de leitura, agora ele so tem dias se `protocol_id` foi de fato gravado (seja por escolha explicita, seja pelo default aplicado uma unica vez na criacao)
-- validado: `worker/test/protocols.test.js` reescrito pro novo comportamento (removidos os casos `DEFAULT`/`GLOBAL`), `npm test` nos dois pacotes, migration aplicada e verificada local e remoto via `sqlite_master`, commit/push/deploy feitos para validacao visual do usuario
-
-**Ajuste de processo registrado nesta rodada (ver tambem `[[feedback-visual-validation]]`):**
-- o usuario formalizou que validacao visual/de navegador e sempre feita por ele; o papel do Claude Code fica limitado a configuracao e criacao (codigo, schema, testes automatizados via `node:test`/`vitest`, curl quando fizer sentido) — nenhum Playwright/navegador automatizado deve rodar neste projeto daqui pra frente
-- o usuario tambem esclareceu que a tool `Monitor` (polling em background de CI) nao e validacao visual, mas prefere checagens diretas de status (`gh run view --json status,conclusion`) a deixar um `Monitor` aberto esperando
-
-Validacao final desta rodada:
-- `worker`: `npm test` ok
-- `frontend`: `npm test` ok, `npm run build` ok
-- producao: migrations `0011`/`0012` aplicadas e confirmadas via `sqlite_master`, commit `e266d84` publicado, `git status` limpo e sincronizado com `origin/main`
-
-### 11.49 Frente A do roadmap de escalabilidade — Aba Historico (implementada local, `2026-07-20`)
-
-Primeira frente do roadmap da secao `13`. Implementa a aba de Historico (#2) + os indices e a paginacao que a servem (#3), com as duas decisoes confirmadas pelo usuario: **pagina propria no menu lateral** e **coluna `created_by` no paciente** (registra quem cadastrou).
-
-**Estado (`2026-07-21`): implementada, testada, migration aplicada no remoto e deploy disparado por push apos o usuario autorizar (bateria de testes de frontend verde).**
-
-Backend:
-- `worker/migrations/0013_activity-history.sql`: `ALTER TABLE patients ADD COLUMN created_by TEXT REFERENCES agents(id) ON DELETE SET NULL` + indices `idx_followups_created ON followup_logs(created_at DESC)` e `idx_patients_created ON patients(created_at DESC)`
-- `worker/src/db/schema.sql`: refletido (coluna `created_by` + os 2 indices no bloco de performance)
-- `worker/src/routes/patients.js`: `POST /` grava `created_by = c.get('agent')?.sub` e devolve o campo no payload
-- `worker/src/routes/activity.js` (novo): `GET /api/activity?page&limit`, autenticada; `UNION ALL` de pacientes cadastrados (`patient_created`) + contatos (`contact`, com JOIN em `agents`/`patients`), ordenado por `ts DESC`, resposta `{ items, total }`; sempre paginado (default page 1, limit 20, cap 100)
-- `worker/src/index.js`: registrado `app.route('/api/activity', activityRoutes)`
-
-Frontend:
-- `frontend/src/pages/Historico.jsx` (novo): feed cronologico, icone/label por tipo reusando `utils/contactDisplay.js` (`CONTACT_TYPE_CONFIG`/`OUTCOME_CONFIG`/`getInitials`), badge de outcome, timestamp relativo + absoluto, paginacao identica a `Patients.jsx`
-- `frontend/src/components/layout/AppLayout.jsx`: item `Historico` (icone `history`) no `NAV_ITEMS` — visivel para agente e admin
-- `frontend/src/router/index.jsx`: rota `/historico` privada dentro de `AppLayout`
-- `frontend/src/services/api.js`: namespace `activity.list({page,limit})`
-
-Validacao local (o que cabe ao Claude Code — ver `[[feedback-visual-validation]]`):
-- migration `0013` aplicada no D1 local via `run-migrations.js`; verificado direto no `sqlite_master` que os 2 indices existem e que `patients.created_by` foi criada (regra da `0010`/`11.47`)
-- curl do fluxo com worker local: `POST /patients` devolveu `created_by` = id do admin logado; `GET /api/activity` vazio devolveu `{items:[],total:0}`; apos criar paciente + followup, o feed devolveu os 2 eventos ordenados por `ts DESC`, com `agent_name` resolvido nos dois lados e `total:2`
-- dado de teste removido do D1 local ao final (`patients`/`followup_logs` de volta a `0`)
-- `worker`: `npm test` ok (`29/29`); `frontend`: `npm test` ok (`32/32`), `npm run build` ok (bundle principal `~515 kB`, acima do aviso de `500 kB` — heranca da arquitetura sem lazy nas paginas de rota; `manualChunks` continua adiado de proposito, ver `11.37`)
-
-Deploy (`2026-07-21`, apos o usuario autorizar com a bateria de testes verde):
-- bateria de testes do frontend antes de liberar: `npm test` (`32/32`), `npm run build` ok; worker `npm test` (`29/29`) sem regressao
-- migration `0013` aplicada no D1 **remoto** via `db:migrate:remote` e **reconfirmada via `sqlite_master`**: os 2 indices existem e `patients.created_by` foi criada — aplicacao completa, sem a falha parcial da `0010`
-- migration remota aplicada **antes** do push, para o worker novo (que ja insere/consulta `created_by`) nao subir contra um schema remoto sem a coluna
-- commit staged so com os arquivos da Frente A + docs (`calculadora.py` e `.claude/` deixados de fora, untracked alheios); commit `b9f8387`, push para `origin/main`
-- deploy `Deploy CareDesk` (GitHub Actions) concluido com `conclusion: success`; producao verificada: worker `/health` `200`, frontend (`caredesk-lou.pages.dev`) `200`, e `GET /api/activity` sem token devolveu `401` (rota nova deployada e protegida, nao `404`)
-- nota de armadilha: a primeira tentativa de commit usou `git commit -m @'...'@` (here-string do PowerShell) dentro do Bash tool, que interpretou `@` como literal e prefixou a mensagem; corrigido com `--amend -F <arquivo>` antes do push. Licao: no Bash tool, mensagem multilinha vai por heredoc/`-F`, nunca com a sintaxe `@'...'@`
-
-**Frente A CONCLUIDA.** Proxima frente do roadmap: **Frente B** (`13.4`) — aba Logs / monitoramento de erro.
-
-### 11.50 Rodada de hardening de seguranca via auditoria externa + migracao de sessao pra cookie `HttpOnly` (`2026-07-22`)
-
-Disparada pelo usuario trazendo `SECURITY_IMPROVEMENTS.md` (pentest externo de `2026-07-22` contra `caredesk-lou.pages.dev` + o worker), com pedido explicito pra seguir o guia. Decisao de escopo do usuario: **P0 1.1** (trocar senha/email do admin default) ja tinha sido feita por ele antes desta rodada; **1.2** (2FA TOTP) e verificacao por email foram **recusados explicitamente**; **1.3** (2FA na conta Cloudflare) ficou por conta do usuario, fora do codigo. O resto do guia foi seguido nesta ordem: primeiro os itens de baixo risco (P1/P2/P3), depois o item que exigia mudanca de arquitetura de sessao (P1, item 2).
-
-**Rodada 1 — commit `feb5970` (sanitizacao, CSP, hardening pontual do login):**
-- **`Login.jsx`:** removido o botao de mostrar/ocultar senha (o `input` deixou de alternar pra `type="text"`, fica sempre `password`); campo `password` do estado tambem e limpo apos erro de credenciais — pedido literal do usuario era nao deixar "residuo de senha" visivel no inspecionar
-- **`worker/src/routes/patients.js`:** sanitizacao server-side em `POST`/`PATCH` (`stripHtml` remove tags, limites de tamanho em `name`/`procedure`/`notes`/`phone`), validacao de `surgery_date` (regex `YYYY-MM-DD`) e de `status` (enum), e nova validacao de FK pra `assigned_agent_id` (mesmo padrao que ja existia pra `protocol_id`) — item `3`/`7` do guia
-- **`worker/src/routes/auth.js`:** header `Retry-After` no `429` de rate limit, calculado a partir do `locked_until` real (nao um valor fixo) — item `4.2`
-- **`frontend/public/_headers`:** removido residuo `http://localhost:8787` do `connect-src` da CSP de producao — item `6`
-
-**Simulacao de ataque (antes do deploy, contra producao ainda rodando o codigo antigo):** SQLi/NoSQL em login, `alg:none`, cookie/token forjado, CORS com origem maliciosa, path traversal em avatar, `TRACE` — nenhum vetor comprometeu o sistema; achado real foi que producao ainda estava com o `Login.jsx` antigo (toggle visivel) e CSP com o residuo, confirmando que a correcao ainda nao tinha sido publicada.
-
-**Rodada 2 — commit `3f1929d` (migracao de sessao pra cookie `HttpOnly`, item `2` do guia):**
-
-Fecha a decisao que tinha ficado **deliberadamente pendente em `11.36`** ("migracao do token JWT de `localStorage` para cookie `HttpOnly` — nao aplicada... condicionada a migrar frontend+worker para um dominio unico primeiro"). Desta vez foi implementada mesmo com `pages.dev`/`workers.dev` sendo dominios diferentes:
-
-- **`worker/src/middleware/auth.js`:** `signToken` (TTL fixo de `8h`) virou `signAccessToken` (`15min`) + `signRefreshToken` novo (`7 dias`, claim `type:'refresh'`); `authMiddleware` passou a ler o cookie `access_token` primeiro, com fallback pro header `Authorization: Bearer` (transicao/scripts); `readCookie()` novo — parser de cookie feito a mao (mesmo estilo hand-rolled do JWT no arquivo), pra nao depender do `getCookie` do `hono/cookie` dentro do contexto falso usado nos testes unitarios existentes
-- **`worker/src/routes/auth.js`:** login agora seta os dois cookies (`access_token` e `refresh_token`) via `hono/cookie`; novos `POST /auth/refresh` (relê o agente no banco antes de emitir novo access token, entao mudanca de `role`/desativacao valem sem esperar o refresh expirar) e `POST /auth/logout` (limpa os dois cookies, idempotente mesmo sem sessao valida)
-- **Atributos do cookie — desvio deliberado do guia:** `SameSite=None` (nao `Strict`, como o `SECURITY_IMPROVEMENTS.md` sugeria) + `Secure` + `HttpOnly`. Motivo: front (`pages.dev`) e worker (`workers.dev`) sao *sites* diferentes (eTLD+1 distintos) — `Strict`/`Lax` bloqueariam o navegador de mandar o cookie em qualquer request cross-site, quebrando o login inteiro silenciosamente. `Secure` funciona em `http://localhost` porque Chrome/Firefox tratam `localhost` como origem confiavel mesmo sem HTTPS — validado no dev local antes do deploy
-- **Frontend:** `token` saiu inteiramente da store (`store/index.js` so persiste `agent`); `services/api.js` manda `credentials:'include'` em toda chamada e, em qualquer `401` fora de `/auth/login`/`/auth/refresh`, tenta renovar a sessao uma vez (`POST /auth/refresh`) antes de deslogar; `AppLayout.jsx` — botao "Sair" agora chama `api.auth.logout()` (limpa cookie no servidor) antes de limpar o estado local
-- **Secret novo:** `JWT_REFRESH_SECRET` — adicionado em `worker/.dev.vars(.example)` pro local; em producao, configurado via `wrangler secret put JWT_REFRESH_SECRET` **antes** do deploy do worker (senao o refresh token seria assinado com secret vazia)
-- **Testes:** `worker/test/auth-middleware.test.js` atualizado (`signToken`→`signAccessToken`, TTL `8h`→`15min`, teste novo de auth via cookie + testes de `readCookie`) — `31/31` (eram `29/29`)
-
-**Armadilha encontrada na validacao local — vale pro runbook:** o D1 **local** (`.wrangler/state`) e um banco completamente separado do D1 remoto — a senha de admin que o usuario trocou em producao nunca existiu localmente; o admin local ainda tinha o hash-seed `$PLACEHOLDER_HASH$` do `schema.sql` (proposital, nunca bate com senha nenhuma). A correcao natural (`node worker/scripts/create-admin.js`, que chama `POST /api/setup/admin`) **tambem falhou**, porque `wrangler.toml` define `APP_ENV="production"` em `[vars]` (sem override de ambiente), e isso vale tanto pra `wrangler deploy` quanto pra `wrangler dev --local` — ou seja, `/api/setup` fica bloqueado localmente tambem, nao so em producao. Contornado calculando o hash PBKDF2 localmente (mesmo algoritmo do `hashPassword()`, via Web Crypto do Node) e gravando direto no D1 local com `wrangler d1 execute --local`. Usuario validou o login local com sucesso depois disso.
-
-**Deploy (`2026-07-22`, apos validacao local):**
-- `JWT_REFRESH_SECRET` de producao gerado (`openssl rand -base64 48`) e configurado via `wrangler secret put` **antes** do deploy do worker
-- commit `feb5970` e `3f1929d` — push pra `origin/main`; deploy manual via `deploy-worker.ps1` + `deploy-frontend.ps1` (o `deploy-all.ps1` pede confirmacao interativa por `Read-Host`, incompativel com shell nao-interativo — rodados os dois scripts de deploy direto)
-- persistencia checada explicitamente a pedido do usuario: `GET /api/settings/public` em producao devolveu logo, cores, borda de login e favicon intactos — deploy do worker nao roda migration nem toca em dado, mesma `D1`/`R2` de antes
-
-**Segunda simulacao de ataque + verificacao completa pos-deploy (pedido explicito do usuario, foco em seguranca + saude do banco):**
-- **Login/API:** SQLi classico/`UNION`/time-based blind seguros (parametrizado, sem delay); XSS refletido inerte; `alg:none` rejeitado via header e via cookie forjado; cookie/token forjado sem assinatura valida rejeitado; `/auth/refresh` rejeita cookie ausente ou do tipo errado; CORS preflight de origem nao-whitelisted volta sem `Access-Control-Allow-Origin` (navegador bloqueia); rate limit + `Retry-After` confirmados ao vivo, contagem regressiva correta
-- **CSRF (raciocinio, dado `SameSite=None`):** nao explorável na pratica — CORS nao reflete origem arbitraria (bloqueia fetch cross-site com credenciais) e os endpoints exigem `Content-Type: application/json`, que um `<form>` simples nao consegue mandar sem JS
-- **Verificacao geral:** `logout` sem sessao ainda limpa os dois cookies (`Max-Age=0`); `change-password` sem token → `401`; `/api/setup` continua bloqueado em producao; CSP/HSTS/`X-Frame-Options`/`nosniff` intactos pos-deploy
-- **Saude do banco (D1 remoto, `--remote`, so leitura):** contagem de linhas nas `9` tabelas principais; **zero** `patients.protocol_id`/`assigned_agent_id` orfao; **zero** conta com hash `$PLACEHOLDER_HASH$` em producao (admin com senha real confirmada); os `14` indices esperados presentes via `sqlite_master` — schema integro, nenhuma migration faltando
-
-Itens do guia que ficaram fora desta rodada (ver `8`, media prioridade): `4.3` CAPTCHA/Turnstile, `5` cripto em nivel de aplicacao + base legal/retencao LGPD, `7` crack offline do secret (informativo).
-
-## 13. Roadmap de Escalabilidade (definido em `2026-07-20`)
-
-Bloco de continuidade: registra a analise de escalabilidade feita com o usuario em `2026-07-20`. `13.1` lista **as 6 escalacoes avaliadas** com a decisao tomada em cada uma. `13.2` define a ordem de execucao das aprovadas. `13.3` a `13.5` detalham cada frente aprovada. `13.6` fixa o processo de fechamento. Qualquer sessao futura (Claude Code, Codex ou humano) deve seguir esta secao para dar prosseguimento.
-
-Prioridade oficial do projeto, guia de toda decisao aqui: **seguranca > saude do banco > fluidez**. A ordem das frentes segue risco crescente ao banco (leitura pura primeiro, novo caminho de escrita depois, otimizacao por ultimo).
-
-### 13.1 As 6 escalacoes avaliadas (decisao por item)
-
-Contexto: o Claude Code propos 6 frentes de escalabilidade; o usuario decidiu item a item. Resumo de cada proposta original + risco + **decisao**.
-
-**#1 — Multi-tenancy (multi-clinica)**
-- Proposta: decisao estrutural mais cara de adiar. Hoje uma instancia = uma clinica; todo `SELECT` assume dado global. Rodar mais de uma clinica no mesmo banco exigiria `tenant_id` em toda tabela + filtro em toda query. Retrofit com dados ja dentro e doloroso.
-- Risco de nao fazer: vazamento cross-clinica de dado clinico — o pior bug possivel nesse dominio.
-- **DECISAO: FORA.** O sistema roda para uma unica clinica, com exatamente **dois usuarios fixos**: um `agent` (cuida das tratativas com pacientes — cadastros, registro de contatos, uso operacional do dia a dia) e um `admin` (faz tudo que o agente faz + acesso a todas as configuracoes do sistema). Separacao mais fina de papeis pode ser revisitada **depois** do sistema pronto, nao agora.
-
-**#2 — Trilha de auditoria + LGPD**
-- Proposta: dado clinico no Brasil, hoje sem registro de "quem fez o que". `followup_logs` guarda contato, mas nao "admin X editou paciente Y as 14h" nem "agente Z abriu prontuario". Tabela `audit_log` (`actor_id`, `action`, `entity`, `entity_id`, `timestamp`, `ip`). Auditoria so serve se existir desde o comeco — nao da pra reconstruir evento passado. LGPD (consentimento, retencao, direito de exclusao) e mais barato desenhar cedo.
-- **DECISAO: APROVADA, em versao enxuta.** Vira uma **aba de Historico** que reflete as ultimas alteracoes — pacientes adicionados, ultimos contatos feitos, com quem foi e de que forma (tipo de contato). Detalhe na **Frente A** (`13.3`). A parte pesada de LGPD/audit-log formal completo fica implicita/futura; o escopo aprovado agora e o feed de historico legivel.
-
-**#3 — Busca real de pacientes (FTS) + paginacao cursor-based**
-- Proposta: busca hoje e `LIKE '%termo%'` em nome/telefone — nao usa indice, degrada linear com a base. Paginacao e `OFFSET`, lenta em pagina alta. D1 suporta FTS5 (full-text nativo SQLite); trocar `OFFSET` por cursor da escala constante. Ligado direto ao "detesto paginas travando" do usuario.
-- **DECISAO: APROVADA (indexacao e paginacao).** Implementada **junto da Frente A** (`13.3`) — os indices existem pra servir o feed de historico, e a paginacao segue o mesmo shape `{ items, total }`. **FTS5 fica como fase futura** (base atual e minuscula, `LIKE` nao trava hoje) — nao desperdicar esforco antes de virar necessidade real.
-
-**#4 — Observabilidade / monitoramento de erro**
-- Proposta: hoje zero metrica, zero log estruturado; erro so aparece se alguem reclama (foi o caso do bug da linha do tempo, invisivel ate virar screenshot). Log estruturado no Worker + taxa de erro/latencia por rota.
-- **DECISAO: APROVADA.** Dentro da aba de **Configuracoes**, adicionar uma **aba de Logs** para monitorar o sistema e mostrar notificacoes sobre erros. Detalhe na **Frente B** (`13.4`).
-
-**#5 — Backup automatizado + restore testado**
-- Proposta: hoje so um bookmark de Time Travel + um export manual unico em `backups/d1` — ponto unico de perda de dado. Cron semanal exportando D1 pro R2/externo, com retencao, e restore testado.
-- **DECISAO: FORA por enquanto.** Hoje so existe **dado de teste**, nada que precise ser preservado. Implementar **quando o sistema estiver pronto** para dado real.
-
-**#6 — Cache de catalogos read-heavy (KV / Cache API)**
-- Proposta: protocolos, documentos e settings/branding sao lidos em quase todo request e mudam raramente; hoje cada leitura bate no D1. KV/Cache API com invalidacao no write da ganho de fluidez barato, sem tocar no dado operacional.
-- **DECISAO: APROVADA.** Usar cache para nao sobrecarregar o sistema. Detalhe na **Frente C** (`13.5`).
-
-Resumo: **aprovadas #2, #3, #4, #6** (viram Frentes A/B/C). **Fora #1 e #5** (revisitar depois do sistema pronto).
-
-### 13.2 Ordem de execucao das frentes aprovadas
-
-1. **Frente A** (`13.3`) — Historico + indices + paginacao (#2 + #3). Risco baixo, valor visivel imediato, base de dado pronta.
-2. **Frente B** (`13.4`) — Aba Logs / monitoramento de erro (#4). Novo caminho de escrita, feito com blindagem depois que A estabilizar.
-3. **Frente C** (`13.5`) — Cache (#6). Otimizacao por cima de tudo ja funcionando.
-
-### 13.3 Frente A (PRIMEIRA) — Aba Historico + indices + paginacao
-
-> **STATUS (`2026-07-21`): IMPLEMENTADA, migration `0013` aplicada e verificada no remoto, deploy via push disparado.** Detalhes de implementacao/validacao em `11.49`.
-
-Junta as ideias #2 (historico) e #3 (indice/paginacao) numa frente so, porque os indices existem justamente para servir esse feed. **Risco baixo: 100% leitura, nenhum novo caminho de escrita.**
-
-Pedido do usuario: uma aba de Historico que reflete as ultimas alteracoes — pacientes adicionados, ultimos contatos feitos, com quem foi e de que forma (tipo de contato).
-
-O dado **ja existe**, nao criar tabela de eventos:
-- pacientes cadastrados: `patients.created_at` + `name`
-- contatos feitos: `followup_logs` (ja tem `agent_id`, `contact_type`, `outcome`, `created_at`) + JOIN em `agents` (quem) e `patients` (qual paciente)
-
-Backend:
-- nova rota `worker/src/routes/activity.js` → `GET /api/activity?page&limit`, autenticada (agente + admin veem)
-- query: `UNION ALL` dos dois SELECTs, ordenado por timestamp `DESC`, com `LIMIT/OFFSET`; resposta `{ items, total }` (mesmo shape da paginacao de pacientes)
-- cada item: `kind` (`patient_created` | `contact`), nome do paciente, timestamp; para `contact` inclui nome do agente + `contact_type` + `outcome`
-- registrar em `worker/src/index.js`: `app.route('/api/activity', activityRoutes)`
-
-Indices novos (migration `0013`):
-- `idx_followups_created ON followup_logs(created_at DESC)` — o indice atual e composto (`patient_id, contact_date`), nao serve um `ORDER BY created_at` global
-- `idx_patients_created ON patients(created_at DESC)`
-- aplicar via `worker/scripts/run-migrations.js` e **verificar com `sqlite_master` no remoto** (regra da `0010`/`11.47`: nao confiar so no exit code)
-
-`created_by` no paciente (**DECISAO CONFIRMADA PELO USUARIO em `2026-07-20`: ADICIONAR**):
-- hoje `patients` nao tem coluna de autor; o feed nao consegue dizer "quem cadastrou o paciente"
-- entra nesta migration `0013`: `ALTER TABLE patients ADD COLUMN created_by TEXT REFERENCES agents(id)`, gravado no `POST /patients` a partir de `c.get('agent').sub` — com dois usuarios (agente vs admin) isso tem valor real
-- backfill: linhas existentes ficam com `created_by = NULL` (feed mostra "cadastrado" sem autor so pros pacientes pre-existentes)
-
-Frontend:
-- **DECISAO CONFIRMADA PELO USUARIO em `2026-07-20`: pagina propria no menu lateral.**
-- nova pagina `frontend/src/pages/Historico.jsx` + item no sidebar (`frontend/src/components/layout/AppLayout.jsx`), ambos os papeis (agente + admin) veem
-- lista cronologica, badge por tipo reusando `frontend/src/utils/contactDisplay.js` (ja tem icone/cor por `contact_type`), paginacao igual `Patients.jsx`
-- rota nova no `frontend/src/router/index.jsx` (`/historico`, privada dentro de `AppLayout`)
-- `frontend/src/services/api.js`: namespace `activity.list({page,limit})`
-
-Fora de escopo desta frente: busca full-text (FTS5) de paciente. A busca atual e `LIKE '%x%'`; com base minuscula nao trava. FTS so vira necessario quando a base crescer — marcado como fase futura, nao desperdicar esforco agora.
-
-### 13.4 Frente B (SEGUNDA) — Aba Logs / monitoramento de erro
-
-Ideia #4. Introduz **novo caminho de escrita** — por isso vem depois da Frente A. Regra inegociavel: **registrar log nunca pode quebrar a resposta da API.**
-
-Pedido do usuario: dentro da aba de Configuracoes, adicionar uma aba de Logs, para monitorar o sistema e mostrar notificacoes sobre erros.
-
-Schema (migration `0014`):
-```sql
-CREATE TABLE system_logs (
-  id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-  level      TEXT NOT NULL CHECK (level IN ('error','warn','info')),
-  source     TEXT,              -- rota ou 'scheduler'
-  message    TEXT NOT NULL,
-  detail     TEXT,              -- contexto/stack sanitizado (JSON)
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX idx_system_logs_created ON system_logs(created_at DESC);
-```
-
-Captura:
-- `worker/src/index.js` `app.onError`: alem do `console.error` atual, inserir linha via `c.executionCtx.waitUntil(...)`, **envolto em try/catch que engole qualquer falha** — se o D1 falhar, a resposta 500 sai igual; log nunca derruba request
-- idem no `worker/src/services/scheduler.js` (erro por paciente)
-- **seguranca:** NUNCA logar body de request (pode conter senha). So rota, mensagem, `err.message`/stack e contexto sanitizado
-
-Retencao: cortar crescimento — no insert (ou no cron diario) apagar `WHERE created_at < datetime('now','-30 days')`. Trivial nessa escala, mas evita tabela infinita.
-
-Backend:
-- nova rota `worker/src/routes/system-logs.js` (`adminOnly`): `GET /api/system-logs?page&limit&level` e `DELETE /api/system-logs` (limpar)
-- registrar em `worker/src/index.js`
-
-Frontend:
-- nova aba em `frontend/src/pages/Admin.jsx` `TABS`: `{ id: 'logs', label: 'Logs', icon: 'monitoring' }` + novo `frontend/src/components/admin/SystemLogsTab.jsx`, **admin-only** (a pagina `/admin` ja e)
-- lista com filtro por nivel + badge de contagem de erros recentes
-- "notificacao sobre erros" = badge de erro nao-visto no menu de config (opcional, fase 2)
-
-### 13.5 Frente C (TERCEIRA) — Cache
-
-Ideia #6. Pura otimizacao — vem por ultimo, por cima de tudo ja funcionando. Precisa de **invalidacao disciplinada** ou serve dado velho.
-
-Fase 1 (ganho claro): cachear `GET /api/settings/public` — nao-autenticado, batido em todo load da tela de login, muda raro.
-- usar Workers **Cache API** (`caches.default`), chaveado por URL, TTL curto
-- invalidar no write: todo `PATCH /settings` e troca de asset **purga** essa entrada — sem isso, branding velho na tela de login
-
-Fase 2 (opcional): catalogos (`protocols`, `document-templates`, `message-protocols`) — autenticados mas globais, cacheaveis em KV com write-through invalidation. Com dois usuarios o ganho e marginal; e mais future-proof que alivio de carga real hoje. Fazer so se o usuario priorizar.
-
-### 13.6 Processo por frente
-
-Cada frente fecha com: migration propria aplicada e verificada (local + remoto via `sqlite_master`), `npm test` nos dois pacotes, `npm run build` no frontend, curl das rotas novas. Validacao visual e sempre do usuario (ver `[[feedback-visual-validation]]`) — o Claude Code para em build/teste/curl passando e avisa que esta pronto para a validacao visual dele. Commit/push/deploy so quando o usuario pedir.
+Ao atualizar `actions/checkout`/`setup-node` (v4→v5) e `wrangler` (`^3`→`^4`), a prática foi: confirmar changelog real da versão, subir só o mínimo necessário pra resolver o problema (não pular pra major mais recente disponível), e travar a mesma versão entre CI e scripts de deploy manual. Evita absorver mudança não relacionada ao problema que motivou o upgrade.
+
+### 11.6 Lockfile de dependência dev pode quebrar `npm ci` no CI mesmo funcionando local (`2026-07-14`)
+
+`npm install -D vitest` puxou a `4.1.10` (major mais nova), que depende de um `vite`/`esbuild` isolado incompatível com o `vite@5` do projeto. Localmente (Windows) parecia consistente; o `npm ci` estrito do CI (Linux) falhava com dependência ausente do lockfile. **Prática:** depois de instalar/atualizar dependência dev, rodar `rm -rf node_modules && npm ci` localmente antes de subir — replica exatamente o passo do CI.
+
+### 11.7 Mensagem de commit multilinha no Bash tool: nunca usar sintaxe de here-string do PowerShell (`2026-07-21`)
+
+`git commit -m @'...'@` dentro do Bash tool trata `@` como literal (interpretado por `sh`, não por `pwsh`), prefixando a mensagem incorretamente. Usar heredoc (`$(cat <<'EOF' ... EOF)`) ou `-F <arquivo>` sempre que a mensagem tiver mais de uma linha.
+
+### 11.8 CORS + cookie cross-site: `SameSite=None` é obrigatório quando front e API são domínios diferentes (`2026-07-22`)
+
+Guias genéricos de segurança costumam recomendar `SameSite=Strict` por padrão — mas isso pressupõe front e backend no mesmo site (mesmo eTLD+1). Com `pages.dev` e `workers.dev` sendo domínios diferentes, `Strict`/`Lax` bloqueiam silenciosamente o cookie em qualquer request cross-site (o navegador nunca envia, sem erro explícito no clique do usuário — só o login parece "não fazer nada"). Antes de aplicar uma recomendação de segurança sobre cookie, checar primeiro se front e API vivem no mesmo site.
+
+### 11.9 Validação e deploy: papel do Claude Code vs. papel do usuário (consolidado `2026-07-20`)
+
+Validação visual/de navegador é sempre feita pelo usuário — o papel do Claude Code fica limitado a configuração, código, schema, testes automatizados (`node:test`/`vitest`) e `curl` quando fizer sentido. Nenhum Playwright/navegador automatizado roda neste projeto por conta própria. Commit/push/deploy só acontecem quando o usuário pede explicitamente — mesmo com testes 100% verdes.
+
+---
+
+## 12. Roadmap de Escalabilidade
+
+Definido com o usuário em `2026-07-20`. Prioridade oficial do projeto, guia de toda decisão: **segurança > saúde do banco > fluidez**. Ordem das frentes segue risco crescente ao banco (leitura pura primeiro, novo caminho de escrita depois, otimização por último).
+
+### 12.1 As seis frentes avaliadas
+
+| # | Proposta | Decisão |
+|---|---|---|
+| 1 | Multi-tenancy (multi-clínica) | **Fora.** Uma clínica, dois papéis fixos. Revisitar só depois do sistema pronto. |
+| 2 | Trilha de auditoria + LGPD completa | **Aprovada, em versão enxuta** → virou a aba de Histórico (Frente A). Audit-log formal completo fica implícito/futuro. |
+| 3 | Busca real (FTS5) + paginação cursor-based | **Aprovada a indexação/paginação** (junto da Frente A). FTS5 fica pra quando a base crescer de verdade — `LIKE` não trava numa base pequena. |
+| 4 | Observabilidade / log de erro | **Aprovada** → aba de Logs (Frente B). |
+| 5 | Backup automatizado + restore testado | **Fora por enquanto.** Só dado de teste hoje; implementar quando houver dado real. |
+| 6 | Cache de catálogo read-heavy | **Aprovada** → Frente C. |
+
+### 12.2 Frente A — Histórico + índices + paginação — CONCLUÍDA (`2026-07-21`)
+
+Ver `10.12` pra detalhe de implementação.
+
+### 12.3 Frente B — Aba de Logs / monitoramento de erro — aprovada, não implementada
+
+Novo caminho de escrita — regra inegociável: **registrar log nunca pode quebrar a resposta da API** (sempre `try/catch` engolindo falha de escrita do log). Plano: tabela `system_logs` (migration `0014`, `level`/`source`/`message`/`detail`/`created_at`, índice por data, retenção de 30 dias), captura em `app.onError` e no scheduler (nunca logar body de request — pode conter senha), rota `adminOnly` `GET/DELETE /api/system-logs`, aba nova em `Admin.jsx`.
+
+### 12.4 Frente C — Cache de catálogo — aprovada, não implementada
+
+Fase 1: cachear `GET /api/settings/public` (Workers Cache API, TTL curto, invalidado em todo `PATCH /settings` ou troca de asset). Fase 2 (opcional, baixo ganho com só dois usuários): catálogos autenticados (protocolos, templates de documento/mensagem) em KV com invalidação write-through.
+
+### 12.5 Processo por frente
+
+Cada frente fecha com: migration própria aplicada e verificada (local + remoto via `sqlite_master`), `npm test` nos dois pacotes, `npm run build` no frontend, `curl` das rotas novas. Validação visual é sempre do usuário. Commit/push/deploy só quando ele pedir.
