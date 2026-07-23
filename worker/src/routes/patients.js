@@ -144,13 +144,19 @@ patients.get('/:id', async (c) => {
 patients.post('/', async (c) => {
   try {
     const body = await c.req.json()
-    const { name, phone, procedure, surgery_date, assigned_agent_id, protocol_id, notes } = body
+
+    const name      = stripHtml(body.name).slice(0, 120)
+    const procedure = stripHtml(body.procedure).slice(0, 120)
+    const notes     = body.notes != null ? stripHtml(body.notes).slice(0, 2000) : null
+    const phone     = body.phone != null ? String(body.phone).replace(/[^\d+()\s-]/g, '').slice(0, 20) : null
+    const surgery_date = /^\d{4}-\d{2}-\d{2}$/.test(body.surgery_date) ? body.surgery_date : null
 
     if (!name || !procedure || !surgery_date) {
       return c.json({ error: 'Nome, procedimento e data da cirurgia são obrigatórios' }, 400)
     }
 
-    const resolvedProtocolId = await resolveWritableProtocolId(c.env.DB, protocol_id)
+    const assigned_agent_id = await resolveWritableAgentId(c.env.DB, body.assigned_agent_id)
+    const resolvedProtocolId = await resolveWritableProtocolId(c.env.DB, body.protocol_id)
     const id = crypto.randomUUID()
     const createdBy = c.get('agent')?.sub || null
 
@@ -159,23 +165,23 @@ patients.post('/', async (c) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, name,
-      phone             || null,
+      phone || null,
       procedure,
       surgery_date,
-      assigned_agent_id || null,
+      assigned_agent_id,
       resolvedProtocolId,
-      notes             || null,
+      notes,
       createdBy
     ).run()
 
     return c.json({
       id, name,
-      phone:             phone             || null,
+      phone:             phone || null,
       procedure,
       surgery_date,
-      assigned_agent_id: assigned_agent_id || null,
+      assigned_agent_id,
       protocol_id:       resolvedProtocolId,
-      notes:             notes             || null,
+      notes,
       created_by:        createdBy,
       status:            'active',
       created_at:        new Date().toISOString(),
@@ -196,11 +202,30 @@ patients.patch('/:id', async (c) => {
     const fields = Object.keys(body).filter(k => allowed.includes(k))
     if (!fields.length) return c.json({ error: 'Nenhum campo válido enviado' }, 400)
 
+    if (fields.includes('surgery_date') && !/^\d{4}-\d{2}-\d{2}$/.test(body.surgery_date)) {
+      return c.json({ error: 'Data da cirurgia inválida' }, 400)
+    }
+    if (fields.includes('status') && !['active', 'inactive', 'done'].includes(body.status)) {
+      return c.json({ error: 'Status inválido' }, 400)
+    }
+
     const sets = fields.map(f => `${f} = ?`).join(', ')
     const nullable = ['phone', 'assigned_agent_id', 'protocol_id', 'notes']
     const values = await Promise.all(fields.map(async (field) => {
       if (field === 'protocol_id') {
         return resolveWritableProtocolId(c.env.DB, body[field])
+      }
+      if (field === 'assigned_agent_id') {
+        return resolveWritableAgentId(c.env.DB, body[field])
+      }
+      if (field === 'name' || field === 'procedure') {
+        return stripHtml(body[field]).slice(0, 120)
+      }
+      if (field === 'notes') {
+        return body[field] === '' ? null : stripHtml(body[field]).slice(0, 2000)
+      }
+      if (field === 'phone') {
+        return body[field] === '' ? null : String(body[field]).replace(/[^\d+()\s-]/g, '').slice(0, 20)
       }
 
       if (nullable.includes(field) && body[field] === '') return null
@@ -328,6 +353,24 @@ patients.delete('/:id/documents/:templateId', async (c) => {
 
 export default patients
 
+function stripHtml(value) {
+  if (typeof value !== 'string') return ''
+  return value.replace(/<[^>]*>/g, '').trim()
+}
+
+async function resolveWritableAgentId(db, requestedAgentId) {
+  const normalized = typeof requestedAgentId === 'string' ? requestedAgentId.trim() : requestedAgentId
+  if (!normalized) return null
+
+  const agent = await db.prepare('SELECT id FROM agents WHERE id = ? LIMIT 1').bind(normalized).first()
+  if (!agent) {
+    const error = new Error('AGENT_NOT_FOUND')
+    error.status = 400
+    throw error
+  }
+  return agent.id
+}
+
 async function resolveWritableProtocolId(db, requestedProtocolId) {
   const normalized = typeof requestedProtocolId === 'string'
     ? requestedProtocolId.trim()
@@ -357,6 +400,9 @@ async function resolveWritableProtocolId(db, requestedProtocolId) {
 function writeProtocolError(c, error) {
   if (error?.message === 'PROTOCOL_NOT_FOUND') {
     return c.json({ error: 'Protocolo informado não existe' }, error.status || 400)
+  }
+  if (error?.message === 'AGENT_NOT_FOUND') {
+    return c.json({ error: 'Agente informado não existe' }, error.status || 400)
   }
 
   throw error

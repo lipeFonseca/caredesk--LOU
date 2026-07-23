@@ -40,9 +40,17 @@ auth.post('/login', async (c) => {
   ])
 
   const now = new Date()
-  if ((rlIp?.locked_until && new Date(rlIp.locked_until) > now) ||
-      (rlEmail?.locked_until && new Date(rlEmail.locked_until) > now)) {
-    return c.json({ error: 'Muitas tentativas de login. Aguarde 15 minutos.' }, 429)
+  const lockedUntilIp = rlIp?.locked_until ? new Date(rlIp.locked_until) : null
+  const lockedUntilEmail = rlEmail?.locked_until ? new Date(rlEmail.locked_until) : null
+  const activeLock = [lockedUntilIp, lockedUntilEmail].filter(d => d && d > now).sort((a, b) => b - a)[0]
+
+  if (activeLock) {
+    const retryAfterSeconds = Math.ceil((activeLock - now) / 1000)
+    return c.json(
+      { error: 'Muitas tentativas de login. Aguarde 15 minutos.' },
+      429,
+      { 'Retry-After': String(retryAfterSeconds) }
+    )
   }
 
   const agent = await c.env.DB.prepare(

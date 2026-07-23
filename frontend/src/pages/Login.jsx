@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, LogIn } from 'lucide-react'
+import { LogIn } from 'lucide-react'
 import { useAuthStore, useSettingsStore } from '@/store'
 import { api } from '@/services/api'
 import { getBranding } from '@/theme/branding'
@@ -15,7 +15,6 @@ export default function Login() {
   const branding = getBranding(useSettingsStore((state) => state.settings))
 
   const [form, setForm] = useState({ email: '', password: '' })
-  const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -43,6 +42,7 @@ export default function Login() {
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message || 'Credenciais invalidas')
+      setForm((current) => ({ ...current, password: '' }))
     } finally {
       setLoading(false)
     }
@@ -92,24 +92,15 @@ export default function Login() {
 
                   <div>
                     <label className="label text-[#cec4cf]">Senha</label>
-                    <div className="relative">
-                      <input
-                        type={showPwd ? 'text' : 'password'}
-                        className="input border-white/10 bg-[rgba(35,29,29,0.55)] pr-10 text-[#f6eee8] placeholder:text-[#ab9faa]"
-                        placeholder="••••••••"
-                        value={form.password}
-                        onChange={set('password')}
-                        autoComplete="current-password"
-                        disabled={loading}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPwd((value) => !value)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#aa9eaa] hover:text-[#f6eee8]"
-                      >
-                        {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
+                    <input
+                      type="password"
+                      className="input border-white/10 bg-[rgba(35,29,29,0.55)] text-[#f6eee8] placeholder:text-[#ab9faa]"
+                      placeholder="••••••••"
+                      value={form.password}
+                      onChange={set('password')}
+                      autoComplete="current-password"
+                      disabled={loading}
+                    />
                   </div>
 
                   {error && (
