@@ -1,6 +1,6 @@
 # Status do Projeto CareDesk
 
-Atualizado em: 2026-07-20
+Atualizado em: 2026-07-22
 
 Este arquivo registra como o CareDesk funciona hoje de verdade no codigo local.
 
@@ -22,7 +22,7 @@ Ambiente conhecido:
 
 Estado do Git:
 - `main` local alinhada ao ultimo commit versionado do remoto (`git status`: working tree limpa, `0` commits de diferenca em qualquer direcao com `origin/main`)
-- ultimo commit: `e266d84` (`fix(protocols): remove default/global protocol-days fallback`)
+- ultimo commit: `3f1929d` (`fix(security): sessao via cookie httpOnly (access 15min + refresh 7d)`), precedido por `feb5970` (`fix(security): sanitizacao server-side, CSP de prod e hardening de login`) — ver `11.50`
 - workspace e GitHub estao sincronizados; o alerta antigo de "GitHub atrasado" (secoes 4 e 7 abaixo) nao se aplica mais
 
 ## 2. O que o Sistema Faz Hoje
@@ -197,14 +197,15 @@ Aprendizados importantes:
 
 ### 4.1 GitHub / origin
 
-Atualizado em `2026-07-20`: o repositório remoto **esta em dia** com o workspace local. `git status` mostra working tree limpa, `main` local e `origin/main` sem nenhum commit de diferenca em qualquer direcao. O alerta historico "GitHub atrasado" que ocupava esta secao ate `2026-07-12` nao se aplica mais desde a rodada de consolidacao de versionamento (`11.23` em diante).
+Atualizado em `2026-07-22`: o repositório remoto **esta em dia** com o workspace local. `git status` mostra working tree limpa, `main` local e `origin/main` sem nenhum commit de diferenca em qualquer direcao. O alerta historico "GitHub atrasado" que ocupava esta secao ate `2026-07-12` nao se aplica mais desde a rodada de consolidacao de versionamento (`11.23` em diante).
 
 ### 4.2 Workspace local
 
-Estado atual: nada pendente de commit. As entregas mais recentes ja estao versionadas e publicadas (ver `11.44` a `11.49`):
+Estado atual: nada pendente de commit. As entregas mais recentes ja estao versionadas e publicadas (ver `11.44` a `11.50`):
 - paginacao server-side + indices de performance na listagem de pacientes
 - Protocolo de Documentos (catalogo + checklist por paciente, incluindo selecao no cadastro)
 - remocao total dos fallbacks automaticos de protocolo (`DEFAULT`/`GLOBAL`), deixando so `LINKED`/`EMPTY`
+- rodada de hardening de seguranca a partir de auditoria externa: sanitizacao server-side, CSP de producao limpa, e sessao migrada de JWT em `localStorage` (8h fixo) para cookie `HttpOnly` com access token de `15min` + refresh token de `7 dias` (`11.50`)
 
 Conclusao:
 - codigo local e GitHub estao sincronizados; nenhum dos dois e "mais atual" que o outro no momento
@@ -233,7 +234,8 @@ Estado atual:
 
 - base frontend/backend definida
 - autenticacao JWT funcionando, com hardening de seguranca aplicado (IDOR, timing-safe, rate limit IP+email, `secureHeaders`/CSP) — ver `11.36`
-- rate limit de login implementado (IP e email)
+- sessao migrada de `localStorage` para cookie `HttpOnly`/`Secure`/`SameSite=None`, access token de `15min` + refresh token de `7 dias` com renovacao automatica; sanitizacao server-side de paciente; `Retry-After` no rate limit; CSP de producao sem residuo — ver `11.50`
+- rate limit de login implementado (IP e email), com header `Retry-After`
 - painel de pacientes funcional, com paginacao server-side e indices de performance (`11.44`/`11.45`)
 - detalhe do paciente funcional, incluindo checklist de documentos por paciente
 - protocolos de contato e de mensagens com interface propria; resolucao simplificada para `LINKED`/`EMPTY`, sem fallback automatico (`11.48`)
@@ -259,6 +261,7 @@ Nenhum item de alta prioridade em aberto no momento — a consolidacao de protoc
 - quebrar `PatientDetail.jsx` (`1036` linhas) e `Admin.jsx` (`762` linhas) em componentes menores — pendente, ver `12.4.2`
 - avaliar `avatars/patients` e `attachments/patients` como proximas features de roadmap, se fizer sentido priorizar (`12.6.1`/`12.6.2`)
 - reduzir o tempo de estado `Carregando ambiente...` na rota `/patients`, se quisermos um boot ainda mais direto
+- itens do `SECURITY_IMPROVEMENTS.md` que ficaram fora desta rodada por decisao do usuario ou por serem P2/P3: 2FA TOTP e verificacao por email (recusados explicitamente por ora), CAPTCHA/Turnstile apos falhas repetidas, criptografia em nivel de aplicacao para colunas sensiveis + base legal/retencao LGPD — ver `11.50`
 
 ## 9. Aprendizados Mais Recentes
 
@@ -289,13 +292,14 @@ Ordem recomendada:
 
 ## 10. Resumo Executivo
 
-Estado real atual (`2026-07-20`):
+Estado real atual (`2026-07-22`):
 - produto orientado a acompanhamento interno, agora com paginacao/indices de performance e Protocolo de Documentos
 - modulo de mensagens de WhatsApp/Telegram continua pausado; Protocolo de Mensagens (templates ligados ao protocolo de contato) segue ativo
 - protocolos de contato consolidados: so `LINKED`/`EMPTY`, sem nenhum fallback automatico
 - banco remoto saneado estruturalmente, `13` migrations aplicadas e verificadas
 - ambiente publicado validado nas rotas principais
 - GitHub e workspace local sincronizados, sem defasagem
+- nova rodada de hardening de seguranca concluida e validada em producao: sessao agora via cookie `HttpOnly` (access `15min` + refresh `7 dias`, fecha o item que tinha ficado deliberadamente pendente em `11.36`), sanitizacao server-side de paciente, CSP de producao sem residuo, `Retry-After` no rate limit — simulacao de ataque pos-deploy (SQLi, JWT forjado, CORS, CSRF via `SameSite`) e auditoria de saude do banco (zero FK orfa, zero hash placeholder, indices integros) sem achado — ver `11.50`
 
 Ou seja:
 - o projeto esta utilizavel
@@ -1668,6 +1672,44 @@ Deploy (`2026-07-21`, apos o usuario autorizar com a bateria de testes verde):
 - nota de armadilha: a primeira tentativa de commit usou `git commit -m @'...'@` (here-string do PowerShell) dentro do Bash tool, que interpretou `@` como literal e prefixou a mensagem; corrigido com `--amend -F <arquivo>` antes do push. Licao: no Bash tool, mensagem multilinha vai por heredoc/`-F`, nunca com a sintaxe `@'...'@`
 
 **Frente A CONCLUIDA.** Proxima frente do roadmap: **Frente B** (`13.4`) — aba Logs / monitoramento de erro.
+
+### 11.50 Rodada de hardening de seguranca via auditoria externa + migracao de sessao pra cookie `HttpOnly` (`2026-07-22`)
+
+Disparada pelo usuario trazendo `SECURITY_IMPROVEMENTS.md` (pentest externo de `2026-07-22` contra `caredesk-lou.pages.dev` + o worker), com pedido explicito pra seguir o guia. Decisao de escopo do usuario: **P0 1.1** (trocar senha/email do admin default) ja tinha sido feita por ele antes desta rodada; **1.2** (2FA TOTP) e verificacao por email foram **recusados explicitamente**; **1.3** (2FA na conta Cloudflare) ficou por conta do usuario, fora do codigo. O resto do guia foi seguido nesta ordem: primeiro os itens de baixo risco (P1/P2/P3), depois o item que exigia mudanca de arquitetura de sessao (P1, item 2).
+
+**Rodada 1 — commit `feb5970` (sanitizacao, CSP, hardening pontual do login):**
+- **`Login.jsx`:** removido o botao de mostrar/ocultar senha (o `input` deixou de alternar pra `type="text"`, fica sempre `password`); campo `password` do estado tambem e limpo apos erro de credenciais — pedido literal do usuario era nao deixar "residuo de senha" visivel no inspecionar
+- **`worker/src/routes/patients.js`:** sanitizacao server-side em `POST`/`PATCH` (`stripHtml` remove tags, limites de tamanho em `name`/`procedure`/`notes`/`phone`), validacao de `surgery_date` (regex `YYYY-MM-DD`) e de `status` (enum), e nova validacao de FK pra `assigned_agent_id` (mesmo padrao que ja existia pra `protocol_id`) — item `3`/`7` do guia
+- **`worker/src/routes/auth.js`:** header `Retry-After` no `429` de rate limit, calculado a partir do `locked_until` real (nao um valor fixo) — item `4.2`
+- **`frontend/public/_headers`:** removido residuo `http://localhost:8787` do `connect-src` da CSP de producao — item `6`
+
+**Simulacao de ataque (antes do deploy, contra producao ainda rodando o codigo antigo):** SQLi/NoSQL em login, `alg:none`, cookie/token forjado, CORS com origem maliciosa, path traversal em avatar, `TRACE` — nenhum vetor comprometeu o sistema; achado real foi que producao ainda estava com o `Login.jsx` antigo (toggle visivel) e CSP com o residuo, confirmando que a correcao ainda nao tinha sido publicada.
+
+**Rodada 2 — commit `3f1929d` (migracao de sessao pra cookie `HttpOnly`, item `2` do guia):**
+
+Fecha a decisao que tinha ficado **deliberadamente pendente em `11.36`** ("migracao do token JWT de `localStorage` para cookie `HttpOnly` — nao aplicada... condicionada a migrar frontend+worker para um dominio unico primeiro"). Desta vez foi implementada mesmo com `pages.dev`/`workers.dev` sendo dominios diferentes:
+
+- **`worker/src/middleware/auth.js`:** `signToken` (TTL fixo de `8h`) virou `signAccessToken` (`15min`) + `signRefreshToken` novo (`7 dias`, claim `type:'refresh'`); `authMiddleware` passou a ler o cookie `access_token` primeiro, com fallback pro header `Authorization: Bearer` (transicao/scripts); `readCookie()` novo — parser de cookie feito a mao (mesmo estilo hand-rolled do JWT no arquivo), pra nao depender do `getCookie` do `hono/cookie` dentro do contexto falso usado nos testes unitarios existentes
+- **`worker/src/routes/auth.js`:** login agora seta os dois cookies (`access_token` e `refresh_token`) via `hono/cookie`; novos `POST /auth/refresh` (relê o agente no banco antes de emitir novo access token, entao mudanca de `role`/desativacao valem sem esperar o refresh expirar) e `POST /auth/logout` (limpa os dois cookies, idempotente mesmo sem sessao valida)
+- **Atributos do cookie — desvio deliberado do guia:** `SameSite=None` (nao `Strict`, como o `SECURITY_IMPROVEMENTS.md` sugeria) + `Secure` + `HttpOnly`. Motivo: front (`pages.dev`) e worker (`workers.dev`) sao *sites* diferentes (eTLD+1 distintos) — `Strict`/`Lax` bloqueariam o navegador de mandar o cookie em qualquer request cross-site, quebrando o login inteiro silenciosamente. `Secure` funciona em `http://localhost` porque Chrome/Firefox tratam `localhost` como origem confiavel mesmo sem HTTPS — validado no dev local antes do deploy
+- **Frontend:** `token` saiu inteiramente da store (`store/index.js` so persiste `agent`); `services/api.js` manda `credentials:'include'` em toda chamada e, em qualquer `401` fora de `/auth/login`/`/auth/refresh`, tenta renovar a sessao uma vez (`POST /auth/refresh`) antes de deslogar; `AppLayout.jsx` — botao "Sair" agora chama `api.auth.logout()` (limpa cookie no servidor) antes de limpar o estado local
+- **Secret novo:** `JWT_REFRESH_SECRET` — adicionado em `worker/.dev.vars(.example)` pro local; em producao, configurado via `wrangler secret put JWT_REFRESH_SECRET` **antes** do deploy do worker (senao o refresh token seria assinado com secret vazia)
+- **Testes:** `worker/test/auth-middleware.test.js` atualizado (`signToken`→`signAccessToken`, TTL `8h`→`15min`, teste novo de auth via cookie + testes de `readCookie`) — `31/31` (eram `29/29`)
+
+**Armadilha encontrada na validacao local — vale pro runbook:** o D1 **local** (`.wrangler/state`) e um banco completamente separado do D1 remoto — a senha de admin que o usuario trocou em producao nunca existiu localmente; o admin local ainda tinha o hash-seed `$PLACEHOLDER_HASH$` do `schema.sql` (proposital, nunca bate com senha nenhuma). A correcao natural (`node worker/scripts/create-admin.js`, que chama `POST /api/setup/admin`) **tambem falhou**, porque `wrangler.toml` define `APP_ENV="production"` em `[vars]` (sem override de ambiente), e isso vale tanto pra `wrangler deploy` quanto pra `wrangler dev --local` — ou seja, `/api/setup` fica bloqueado localmente tambem, nao so em producao. Contornado calculando o hash PBKDF2 localmente (mesmo algoritmo do `hashPassword()`, via Web Crypto do Node) e gravando direto no D1 local com `wrangler d1 execute --local`. Usuario validou o login local com sucesso depois disso.
+
+**Deploy (`2026-07-22`, apos validacao local):**
+- `JWT_REFRESH_SECRET` de producao gerado (`openssl rand -base64 48`) e configurado via `wrangler secret put` **antes** do deploy do worker
+- commit `feb5970` e `3f1929d` — push pra `origin/main`; deploy manual via `deploy-worker.ps1` + `deploy-frontend.ps1` (o `deploy-all.ps1` pede confirmacao interativa por `Read-Host`, incompativel com shell nao-interativo — rodados os dois scripts de deploy direto)
+- persistencia checada explicitamente a pedido do usuario: `GET /api/settings/public` em producao devolveu logo, cores, borda de login e favicon intactos — deploy do worker nao roda migration nem toca em dado, mesma `D1`/`R2` de antes
+
+**Segunda simulacao de ataque + verificacao completa pos-deploy (pedido explicito do usuario, foco em seguranca + saude do banco):**
+- **Login/API:** SQLi classico/`UNION`/time-based blind seguros (parametrizado, sem delay); XSS refletido inerte; `alg:none` rejeitado via header e via cookie forjado; cookie/token forjado sem assinatura valida rejeitado; `/auth/refresh` rejeita cookie ausente ou do tipo errado; CORS preflight de origem nao-whitelisted volta sem `Access-Control-Allow-Origin` (navegador bloqueia); rate limit + `Retry-After` confirmados ao vivo, contagem regressiva correta
+- **CSRF (raciocinio, dado `SameSite=None`):** nao explorável na pratica — CORS nao reflete origem arbitraria (bloqueia fetch cross-site com credenciais) e os endpoints exigem `Content-Type: application/json`, que um `<form>` simples nao consegue mandar sem JS
+- **Verificacao geral:** `logout` sem sessao ainda limpa os dois cookies (`Max-Age=0`); `change-password` sem token → `401`; `/api/setup` continua bloqueado em producao; CSP/HSTS/`X-Frame-Options`/`nosniff` intactos pos-deploy
+- **Saude do banco (D1 remoto, `--remote`, so leitura):** contagem de linhas nas `9` tabelas principais; **zero** `patients.protocol_id`/`assigned_agent_id` orfao; **zero** conta com hash `$PLACEHOLDER_HASH$` em producao (admin com senha real confirmada); os `14` indices esperados presentes via `sqlite_master` — schema integro, nenhuma migration faltando
+
+Itens do guia que ficaram fora desta rodada (ver `8`, media prioridade): `4.3` CAPTCHA/Turnstile, `5` cripto em nivel de aplicacao + base legal/retencao LGPD, `7` crack offline do secret (informativo).
 
 ## 13. Roadmap de Escalabilidade (definido em `2026-07-20`)
 
