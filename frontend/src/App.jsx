@@ -11,7 +11,7 @@ export default function App() {
   const settings       = useSettingsStore(s => s.settings)
   const settingsLoaded = useSettingsStore(s => s.isLoaded)
   const primaryColor   = useSettingsStore(s => sanitizePrimaryColor(s.settings.primary_color))
-  const isAuthenticated = useAuthStore(s => Boolean(s.token))
+  const isAuthenticated = useAuthStore(s => Boolean(s.agent))
   const { dark } = useThemeStore()
 
   // Aplica paleta (light ou dark) sempre que mudar tema ou modo

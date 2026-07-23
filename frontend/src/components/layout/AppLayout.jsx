@@ -27,6 +27,11 @@ export default function AppLayout() {
   const notifRef = useRef(null)
 
   const { agent, logout, isAdmin } = useAuthStore()
+
+  async function handleLogout() {
+    try { await api.auth.logout() } catch { /* cookie expira sozinho mesmo se a chamada falhar */ }
+    logout()
+  }
   const { notifications, unreadCount, setNotifications, markRead, markAllRead } = useNotifStore()
   const { settings } = useSettingsStore()
   const { dark, toggle: toggleDark } = useThemeStore()
@@ -185,7 +190,7 @@ export default function AppLayout() {
               </div>
             </div>
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-white/12 px-4 py-3 text-sm font-semibold text-[#f7efe3] hover:bg-white/10"
             >
               <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>logout</span>

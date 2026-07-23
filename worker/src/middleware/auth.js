@@ -1,23 +1,35 @@
-// ── Gera token JWT ────────────────────────────────────────────
-export async function signToken(payload, secret) {
+export const ACCESS_TOKEN_TTL_SECONDS  = 15 * 60          // 15 min
+export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60  // 7 dias
+
+// ── Gera token JWT de acesso (curta duracao) ──────────────────
+export async function signAccessToken(payload, secret) {
+  return signJwtWithTtl(payload, secret, ACCESS_TOKEN_TTL_SECONDS)
+}
+
+// ── Gera token JWT de refresh (usado so em /auth/refresh) ─────
+export async function signRefreshToken(payload, secret) {
+  return signJwtWithTtl({ ...payload, type: 'refresh' }, secret, REFRESH_TOKEN_TTL_SECONDS)
+}
+
+async function signJwtWithTtl(payload, secret, ttlSeconds) {
   const now = Math.floor(Date.now() / 1000)
   const header = { alg: 'HS256', typ: 'JWT' }
-  const claims = {
-    ...payload,
-    iat: now,
-    exp: now + 8 * 60 * 60,
-  }
-
+  const claims = { ...payload, iat: now, exp: now + ttlSeconds }
   return signJwtParts(header, claims, secret)
 }
 
 // ── Middleware: valida JWT em rotas protegidas ────────────────
+// Le o token do cookie httpOnly (fluxo normal do front) e cai para o
+// header Authorization como fallback (scripts/testes que ainda mandam Bearer).
 export async function authMiddleware(c, next) {
-  const header = c.req.header('Authorization')
-  if (!header?.startsWith('Bearer ')) {
+  const cookieToken = readCookie(c.req.header('Cookie'), 'access_token')
+  const authHeader = c.req.header('Authorization')
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const token = cookieToken ?? bearerToken
+
+  if (!token) {
     return c.json({ error: 'Não autenticado' }, 401)
   }
-  const token = header.slice(7)
   try {
     const payload = await verifyToken(token, c.env.JWT_SECRET)
     c.set('agent', payload)
@@ -25,6 +37,19 @@ export async function authMiddleware(c, next) {
   } catch {
     return c.json({ error: 'Token inválido ou expirado' }, 401)
   }
+}
+
+// ── Le um cookie especifico de um header `Cookie` cru ─────────
+export function readCookie(cookieHeader, name) {
+  if (!cookieHeader) return null
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) continue
+    if (part.slice(0, eq).trim() === name) {
+      return decodeURIComponent(part.slice(eq + 1).trim())
+    }
+  }
+  return null
 }
 
 // ── Middleware: apenas admins ─────────────────────────────────
@@ -36,7 +61,7 @@ export async function adminOnly(c, next) {
   await next()
 }
 
-async function verifyToken(token, secret) {
+export async function verifyToken(token, secret) {
   const parts = token.split('.')
   if (parts.length !== 3) throw new Error('Malformed token')
 

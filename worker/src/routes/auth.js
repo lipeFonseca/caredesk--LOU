@@ -1,7 +1,30 @@
 import { Hono } from 'hono'
-import { signToken, authMiddleware } from '../middleware/auth.js'
+import { setCookie, deleteCookie } from 'hono/cookie'
+import {
+  authMiddleware,
+  signAccessToken,
+  signRefreshToken,
+  verifyToken,
+  readCookie,
+  ACCESS_TOKEN_TTL_SECONDS,
+  REFRESH_TOKEN_TTL_SECONDS,
+} from '../middleware/auth.js'
 
 const auth = new Hono()
+
+// path '/api/auth/refresh' porque o app monta estas rotas em /api/auth
+const REFRESH_COOKIE_PATH = '/api/auth/refresh'
+
+function setSessionCookies(c, access, refresh) {
+  setCookie(c, 'access_token', access, {
+    httpOnly: true, secure: true, sameSite: 'None',
+    path: '/', maxAge: ACCESS_TOKEN_TTL_SECONDS,
+  })
+  setCookie(c, 'refresh_token', refresh, {
+    httpOnly: true, secure: true, sameSite: 'None',
+    path: REFRESH_COOKIE_PATH, maxAge: REFRESH_TOKEN_TTL_SECONDS,
+  })
+}
 
 const RATE_LIMIT_MAX      = 5   // tentativas antes do bloqueio
 const RATE_LIMIT_MINUTES  = 15  // minutos de bloqueio
@@ -76,21 +99,66 @@ auth.post('/login', async (c) => {
     c.env.DB.prepare('DELETE FROM login_rate_limit WHERE key = ?').bind(emailKey).run(),
   ])
 
-  let token
+  let access, refresh
   try {
-    token = await signToken(
+    access = await signAccessToken(
       { sub: agent.id, email: agent.email, role: agent.role, name: agent.name },
       c.env.JWT_SECRET
     )
+    refresh = await signRefreshToken({ sub: agent.id }, c.env.JWT_REFRESH_SECRET)
   } catch (err) {
     console.error('[auth/login] token generation failed', err)
     return c.json({ error: 'Falha ao gerar sessão' }, 500)
   }
 
+  setSessionCookies(c, access, refresh)
+
   return c.json({
-    token,
     agent: { id: agent.id, name: agent.name, email: agent.email, role: agent.role, avatar_url: agent.avatar_url || null }
   })
+})
+
+// ── POST /api/auth/refresh ────────────────────────────────────
+// Renova o access token a partir do refresh token (cookie escopado
+// so a esta rota). Le o agente de novo no banco pra refletir
+// mudanca de role/desativacao sem esperar o refresh token expirar.
+auth.post('/refresh', async (c) => {
+  const refreshToken = readCookie(c.req.header('Cookie'), 'refresh_token')
+  if (!refreshToken) return c.json({ error: 'Sessão expirada' }, 401)
+
+  let payload
+  try {
+    payload = await verifyToken(refreshToken, c.env.JWT_REFRESH_SECRET)
+  } catch {
+    return c.json({ error: 'Sessão expirada' }, 401)
+  }
+  if (payload.type !== 'refresh') return c.json({ error: 'Sessão expirada' }, 401)
+
+  const agent = await c.env.DB.prepare(
+    'SELECT id, name, email, role, avatar_url, is_active FROM agents WHERE id = ?'
+  ).bind(payload.sub).first()
+
+  if (!agent || !agent.is_active) return c.json({ error: 'Sessão expirada' }, 401)
+
+  const access = await signAccessToken(
+    { sub: agent.id, email: agent.email, role: agent.role, name: agent.name },
+    c.env.JWT_SECRET
+  )
+  setCookie(c, 'access_token', access, {
+    httpOnly: true, secure: true, sameSite: 'None',
+    path: '/', maxAge: ACCESS_TOKEN_TTL_SECONDS,
+  })
+
+  return c.json({
+    agent: { id: agent.id, name: agent.name, email: agent.email, role: agent.role, avatar_url: agent.avatar_url || null }
+  })
+})
+
+// ── POST /api/auth/logout ─────────────────────────────────────
+auth.post('/logout', async (c) => {
+  deleteCookie(c, 'access_token', { path: '/' })
+  deleteCookie(c, 'refresh_token', { path: REFRESH_COOKIE_PATH })
+  return c.json({ success: true })
 })
 
 // ── GET /api/auth/me ──────────────────────────────────────────

@@ -1,14 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { signToken, authMiddleware, adminOnly } from '../src/middleware/auth.js'
+import { signAccessToken, authMiddleware, adminOnly, readCookie } from '../src/middleware/auth.js'
 
 const SECRET = 'test-secret'
 
-function makeContext(authHeader) {
+function makeContext(authHeader, cookieHeader) {
   const store = {}
   return {
-    req: { header: (name) => (name === 'Authorization' ? authHeader : undefined) },
+    req: { header: (name) => {
+      if (name === 'Authorization') return authHeader
+      if (name === 'Cookie') return cookieHeader
+      return undefined
+    } },
     env: { JWT_SECRET: SECRET },
     set: (key, value) => { store[key] = value },
     get: (key) => store[key],
@@ -22,21 +26,37 @@ async function callMiddleware(middleware, c) {
   return { result, nextCalled }
 }
 
-// ── signToken / authMiddleware round-trip ──────────────────────
+// ── signAccessToken / authMiddleware round-trip ────────────────
 
-test('signToken produces a 3-part JWT with the expected claims', async () => {
-  const token = await signToken({ sub: 'agent-1', role: 'admin' }, SECRET)
+test('signAccessToken produces a 3-part JWT with the expected claims', async () => {
+  const token = await signAccessToken({ sub: 'agent-1', role: 'admin' }, SECRET)
   const parts = token.split('.')
   assert.equal(parts.length, 3)
 
   const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString())
   assert.equal(payload.sub, 'agent-1')
   assert.equal(payload.role, 'admin')
-  assert.equal(payload.exp - payload.iat, 8 * 60 * 60)
+  assert.equal(payload.exp - payload.iat, 15 * 60)
+})
+
+test('authMiddleware accepts a valid token via the access_token cookie', async () => {
+  const token = await signAccessToken({ sub: 'agent-1', role: 'agent' }, SECRET)
+  const c = makeContext(undefined, `access_token=${token}; other=1`)
+
+  const { nextCalled } = await callMiddleware(authMiddleware, c)
+
+  assert.equal(nextCalled, true)
+  assert.equal(c.get('agent').sub, 'agent-1')
+})
+
+test('readCookie extracts a named cookie from a raw Cookie header', () => {
+  assert.equal(readCookie('a=1; access_token=abc; b=2', 'access_token'), 'abc')
+  assert.equal(readCookie(undefined, 'access_token'), null)
+  assert.equal(readCookie('a=1', 'access_token'), null)
 })
 
 test('authMiddleware accepts a valid token and exposes the payload via c.get("agent")', async () => {
-  const token = await signToken({ sub: 'agent-1', role: 'agent' }, SECRET)
+  const token = await signAccessToken({ sub: 'agent-1', role: 'agent' }, SECRET)
   const c = makeContext(`Bearer ${token}`)
 
   const { nextCalled } = await callMiddleware(authMiddleware, c)
@@ -70,7 +90,7 @@ test('authMiddleware rejects a malformed token', async () => {
 })
 
 test('authMiddleware rejects a token signed with a different secret', async () => {
-  const token = await signToken({ sub: 'agent-1' }, 'wrong-secret')
+  const token = await signAccessToken({ sub: 'agent-1' }, 'wrong-secret')
   const c = makeContext(`Bearer ${token}`)
   const { result, nextCalled } = await callMiddleware(authMiddleware, c)
 
@@ -79,7 +99,7 @@ test('authMiddleware rejects a token signed with a different secret', async () =
 })
 
 test('authMiddleware rejects a token with a tampered signature', async () => {
-  const token = await signToken({ sub: 'agent-1' }, SECRET)
+  const token = await signAccessToken({ sub: 'agent-1' }, SECRET)
   const [header, payload, signature] = token.split('.')
   const tamperedSignature = signature.slice(0, -1) + (signature.at(-1) === 'A' ? 'B' : 'A')
   const c = makeContext(`Bearer ${header}.${payload}.${tamperedSignature}`)

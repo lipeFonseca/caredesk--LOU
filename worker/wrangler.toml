@@ -19,6 +19,7 @@ APP_ENV      = "production"
 
 # Secrets (definir via: wrangler secret put NOME)
 # JWT_SECRET
+# JWT_REFRESH_SECRET
 
 [triggers]
 crons = ["0 11 * * *"]

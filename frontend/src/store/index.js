@@ -20,23 +20,24 @@ import {
 export const useAuthStore = create(
   persist(
     (set, get) => ({
-      token: null,
       agent: null,
 
-      login: (token, agent) => set({ token, agent }),
+      login: (agent) => set({ agent }),
       updateAgent: (partial) => set((state) => ({
         agent: state.agent ? { ...state.agent, ...partial } : state.agent,
       })),
 
+      // Limpa so o estado local. A sessao (cookie httpOnly) precisa ser
+      // invalidada no servidor separadamente — ver api.auth.logout().
       logout: () => {
-        set({ token: null, agent: null })
+        set({ agent: null })
         window.location.href = '/login'
       },
 
       isAdmin: () => get().agent?.role === 'admin',
-      isAuthenticated: () => !!get().token,
+      isAuthenticated: () => !!get().agent,
     }),
-    { name: 'caredesk-auth', partialize: (s) => ({ token: s.token, agent: s.agent }) }
+    { name: 'caredesk-auth', partialize: (s) => ({ agent: s.agent }) }
   )
 )
 

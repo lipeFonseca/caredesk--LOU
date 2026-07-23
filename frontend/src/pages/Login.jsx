@@ -38,7 +38,7 @@ export default function Login() {
     setLoading(true)
     try {
       const data = await api.auth.login(form)
-      login(data.token, data.agent)
+      login(data.agent)
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message || 'Credenciais invalidas')

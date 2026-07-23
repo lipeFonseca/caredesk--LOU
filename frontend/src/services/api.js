@@ -18,27 +18,43 @@ function normalizeBase(value) {
   return value.trim().replace(/\/+$/, '')
 }
 
-async function request(path, options = {}) {
-  const token = useAuthStore.getState().token
+// Sessao agora vive em cookie httpOnly (nao acessivel via JS) — o fetch so
+// precisa mandar `credentials: 'include'`. Em qualquer 401 fora do proprio
+// login/refresh, tenta renovar o access token uma vez antes de deslogar.
+let refreshInFlight = null
+
+function requestRefresh() {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => { refreshInFlight = null })
+  }
+  return refreshInFlight
+}
+
+async function request(path, options = {}, isRetry = false) {
   const isFormData = options.body instanceof FormData
   const headers = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   }
 
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers,
+    credentials: 'include',
   })
 
-  const data = await res.json().catch(() => ({}))
-
-  if (res.status === 401) {
-    const { token, logout } = useAuthStore.getState()
-    if (token) logout()
-    throw new Error(data.error || 'Não autorizado')
+  const isAuthEndpoint = path.startsWith('/auth/login') || path.startsWith('/auth/refresh')
+  if (res.status === 401 && !isAuthEndpoint && !isRetry) {
+    const refreshed = await requestRefresh()
+    if (refreshed) return request(path, options, true)
+    useAuthStore.getState().logout()
+    throw new Error('Sessão expirada')
   }
+
+  const data = await res.json().catch(() => ({}))
 
   if (!res.ok) {
     throw new Error(data.error || `Erro ${res.status}`)
@@ -51,6 +67,7 @@ async function request(path, options = {}) {
 export const api = {
   auth: {
     login:          (body) => request('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+    logout:         ()     => request('/auth/logout', { method: 'POST' }),
     me:             ()     => request('/auth/me'),
     changePassword: (body) => request('/auth/change-password', { method: 'POST', body: JSON.stringify(body) }),
   },
