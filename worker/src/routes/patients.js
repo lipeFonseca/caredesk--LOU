@@ -147,12 +147,19 @@ patients.get('/:id', async (c) => {
   if (!patient) return c.json({ error: 'Paciente não encontrado' }, 404)
 
   const [{ results: logs }, clinicSetting] = await Promise.all([
+    // COALESCE: enquanto o agente existe, o nome atual (reflete correcao de
+    // digitacao); quando ele e excluido, o snapshot gravado no contato assume.
+    // `agent_removed` deixa a UI distinguir "feito por quem nao esta mais aqui"
+    // de "feito pelo sistema" — sem isso, contato humano virava automatico.
     c.env.DB.prepare(`
-      SELECT fl.*, a.name AS agent_name
+      SELECT
+        fl.*,
+        COALESCE(a.name, fl.agent_name_snapshot) AS agent_name,
+        (fl.agent_id IS NULL AND fl.agent_name_snapshot IS NOT NULL) AS agent_removed
       FROM followup_logs fl
       LEFT JOIN agents a ON fl.agent_id = a.id
       WHERE fl.patient_id = ?
-      ORDER BY fl.contact_date DESC
+      ORDER BY fl.contact_date DESC, fl.created_at DESC
     `).bind(patient.id).all(),
     c.env.DB.prepare(`
       SELECT value
@@ -219,11 +226,12 @@ patients.post('/', async (c) => {
     const assigned_agent_id = await resolveWritableAgentId(c.env.DB, body.assigned_agent_id)
     const resolvedProtocolId = await resolveWritableProtocolId(c.env.DB, body.protocol_id)
     const id = crypto.randomUUID()
-    const createdBy = c.get('agent')?.sub || null
+    const autor = c.get('agent')
+    const createdBy = autor?.sub || null
 
     await c.env.DB.prepare(`
-      INSERT INTO patients (id, name, phone, phone_digits, email, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO patients (id, name, phone, phone_digits, email, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by, created_by_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, name,
       phone,
@@ -234,7 +242,8 @@ patients.post('/', async (c) => {
       assigned_agent_id,
       resolvedProtocolId,
       notes,
-      createdBy
+      createdBy,
+      autor?.name ?? null
     ).run()
 
     await recalcularProximoMarco(c.env.DB, id)

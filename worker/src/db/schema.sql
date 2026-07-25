@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS patients (
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'discharged')),
   notes           TEXT,
   created_by      TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  created_by_name TEXT,  -- snapshot, mesma razao do agent_name_snapshot
   -- NULL = em acompanhamento. Preenchida pelo cron aos 6 meses da cirurgia.
   -- E o predicado dos indices parciais abaixo: e o que mantem o indice do
   -- tamanho da janela ativa, nao do historico inteiro da base.
@@ -51,6 +52,10 @@ CREATE TABLE IF NOT EXISTS followup_logs (
   id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   patient_id      TEXT NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   agent_id        TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  -- Nome de quem registrou, gravado no momento do contato. `agent_id` some ao
+  -- excluir o agente (SET NULL), mas ficha clinica nao pode perder a autoria:
+  -- sem isso o contato passava a aparecer como "Sistema Automático".
+  agent_name_snapshot TEXT,
   contact_date    TEXT NOT NULL DEFAULT (date('now')),
   contact_type    TEXT NOT NULL DEFAULT 'call' CHECK (contact_type IN ('call', 'email', 'whatsapp', 'in_person')),
   outcome         TEXT NOT NULL DEFAULT 'reached' CHECK (outcome IN ('reached', 'no_answer', 'callback_scheduled')),

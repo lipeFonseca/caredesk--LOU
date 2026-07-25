@@ -185,10 +185,14 @@ Feito por `ON DELETE CASCADE` (as foreign keys estão ativas no D1, verificado) 
 pelos triggers do FTS. A tela de confirmação lista o que será perdido.
 
 **Agente** — apaga a conta, o avatar no R2 e os códigos de acesso. **Os contatos
-que ele registrou permanecem**, com o autor em branco: são histórico clínico do
-paciente, e removê-los faria o protocolo retroceder, como se o contato nunca
-tivesse acontecido. O backend recusa excluir a própria conta ou o último
-administrador ativo.
+que ele registrou permanecem, e continuam creditados a ele pelo nome**: cada
+contato guarda `agent_name_snapshot`, gravado no momento em que aconteceu, e a
+leitura usa `COALESCE(nome_atual, snapshot)`. Remover os contatos faria o
+protocolo do paciente retroceder, como se a ligação nunca tivesse ocorrido; e
+deixá-los sem autor faria a ficha clínica creditar uma pessoa como "Sistema
+Automático". A interface marca esses registros como *(fora da equipe)*.
+
+O backend recusa excluir a própria conta ou o último administrador ativo.
 
 ### Domínios
 

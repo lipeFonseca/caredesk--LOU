@@ -1009,11 +1009,20 @@ function LogItem({ log }) {
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{oc.icon}</span>
             {oc.label}
           </span>
+          {/* Autoria preservada: agente excluído continua creditado pelo nome
+              gravado no contato. Só é "Sistema Automático" quando de fato não
+              houve pessoa — antes, agente removido caía nesse rótulo e o
+              registro clínico mentia sobre quem ligou. */}
           <span className="text-label-sm font-label-sm text-on-surface-variant flex items-center gap-1">
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
               {log.agent_name ? 'person' : 'smart_toy'}
             </span>
             {log.agent_name ?? 'Sistema Automático'}
+            {log.agent_removed ? (
+              <span className="text-outline" title="Este agente não faz mais parte da equipe">
+                (fora da equipe)
+              </span>
+            ) : null}
           </span>
         </div>
         {log.next_followup_date && (
