@@ -177,6 +177,10 @@ CREATE INDEX IF NOT EXISTS idx_document_templates_category ON document_templates
 CREATE INDEX IF NOT EXISTS idx_patient_documents_patient   ON patient_documents(patient_id);
 CREATE INDEX IF NOT EXISTS idx_patient_documents_template  ON patient_documents(document_template_id);
 CREATE INDEX IF NOT EXISTS idx_error_logs_occurred ON error_logs(occurred_at DESC);
+-- Compostos: entregam as linhas ja na ordem/recorte que a rota pede, evitando
+-- a arvore temporaria que os indices de coluna unica deixavam acontecer.
+CREATE INDEX IF NOT EXISTS idx_patients_status_surgery ON patients(status, surgery_date DESC);
+CREATE INDEX IF NOT EXISTS idx_followups_agent_date    ON followup_logs(agent_id, contact_date);
 CREATE INDEX IF NOT EXISTS idx_password_reset_agent ON password_reset_codes(agent_id, created_at DESC);
 
 -- ============================================================
