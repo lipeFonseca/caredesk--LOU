@@ -9,22 +9,28 @@
 // Trocar de transporte (Resend, Gmail API) e reescrever sendEmail(); o fluxo de
 // reset nao precisa saber quem entrega.
 
+import { resolveEmailConfig } from '../utils/messagingSettings.js'
+
 // LIMITACAO: conta Gmail gratuita entrega ~100 destinatarios/dia. O uso previsto
 // e reset de senha (poucos por dia), entao a cota nao foi tratada em codigo.
 export async function sendEmail(env, { to, subject, html }) {
-  const url = env.EMAIL_RELAY_URL
-  const token = env.EMAIL_RELAY_TOKEN
+  const config = await resolveEmailConfig(env)
 
-  if (!url || !token) {
-    throw new Error('Envio de e-mail nao configurado (EMAIL_RELAY_URL / EMAIL_RELAY_TOKEN ausentes)')
+  if (!config.enabled) {
+    throw new Error('Envio de e-mail desativado nas configuracoes de mensageria')
   }
+  if (!config.url || !config.token) {
+    throw new Error('Envio de e-mail nao configurado (URL do relay ou token ausente)')
+  }
+
+  const { url, token } = config
 
   const resposta = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // O token vai no corpo, nao em header: o Apps Script redireciona a chamada
     // internamente e headers customizados se perdem no redirect.
-    body: JSON.stringify({ token, to, subject, html }),
+    body: JSON.stringify({ token, to, subject, html, fromName: config.fromName }),
   })
 
   // Apps Script responde 200 com corpo de erro em varias falhas — status sozinho

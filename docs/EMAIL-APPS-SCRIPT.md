@@ -31,7 +31,20 @@ O caminho é: Worker → `POST` HTTP → Apps Script → `MailApp.sendEmail()` �
 > `RELAY_TOKEN` é o que impede que alguém com a URL use sua conta como relay de
 > spam. Trate a URL e o token como credenciais.
 
-## Configuração no Worker
+## Configuração no CareDesk
+
+No painel: **Configurações → Mensageria**. Cole a URL `/exec` e o `RELAY_TOKEN`,
+salve e use **Enviar e-mail de teste** para confirmar antes de depender do fluxo
+de redefinição de senha.
+
+O token é gravado em `app_settings` e **nunca volta em claro** — a tela mostra
+só os últimos 4 caracteres. Deixar o campo mascarado como está preserva o valor
+salvo; para trocar, digite o token novo por cima.
+
+### Alternativa por variável de ambiente
+
+Ainda funciona, como fallback para quem configurou antes da aba existir. O que
+está em `app_settings` tem prioridade:
 
 ```powershell
 cd worker
