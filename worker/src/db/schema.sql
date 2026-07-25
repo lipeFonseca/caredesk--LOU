@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS patients (
   id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   name            TEXT NOT NULL,
   phone           TEXT,
+  -- Derivada de `phone`, so digitos: permite buscar telefone por trecho varrendo
+  -- um indice estreito em vez da tabela. Mantida em sincronia pelas rotas.
+  phone_digits    TEXT,
   email           TEXT,
   procedure       TEXT NOT NULL,
   surgery_date    TEXT NOT NULL,
@@ -29,6 +32,10 @@ CREATE TABLE IF NOT EXISTS patients (
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'discharged')),
   notes           TEXT,
   created_by      TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  -- NULL = em acompanhamento. Preenchida pelo cron aos 6 meses da cirurgia.
+  -- E o predicado dos indices parciais abaixo: e o que mantem o indice do
+  -- tamanho da janela ativa, nao do historico inteiro da base.
+  archived_at     TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -163,8 +170,21 @@ CREATE TABLE IF NOT EXISTS email_templates (
 -- Índices de performance
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_patients_agent    ON patients(assigned_agent_id);
-CREATE INDEX IF NOT EXISTS idx_patients_status   ON patients(status);
 CREATE INDEX IF NOT EXISTS idx_patients_surgery_date ON patients(surgery_date);
+
+-- Indices do dia a dia: PARCIAIS em archived_at IS NULL, pra cobrirem so a
+-- janela de acompanhamento. `id` no fim serve o desempate da paginacao por
+-- cursor — surgery_date nao e unico, e sem desempate a pagina seguinte repete
+-- ou pula registro.
+CREATE INDEX IF NOT EXISTS idx_patients_ativos_ordem
+  ON patients(surgery_date DESC, id) WHERE archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_patients_ativos_status
+  ON patients(status, surgery_date DESC, id) WHERE archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_patients_ativos_agente
+  ON patients(assigned_agent_id, surgery_date DESC, id) WHERE archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_patients_ativos_telefone
+  ON patients(phone_digits) WHERE archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_patients_archived ON patients(archived_at);
 CREATE INDEX IF NOT EXISTS idx_patients_protocol ON patients(protocol_id);
 CREATE INDEX IF NOT EXISTS idx_followups_patient ON followup_logs(patient_id);
 CREATE INDEX IF NOT EXISTS idx_followups_patient_date ON followup_logs(patient_id, contact_date DESC);
@@ -179,8 +199,37 @@ CREATE INDEX IF NOT EXISTS idx_patient_documents_template  ON patient_documents(
 CREATE INDEX IF NOT EXISTS idx_error_logs_occurred ON error_logs(occurred_at DESC);
 -- Compostos: entregam as linhas ja na ordem/recorte que a rota pede, evitando
 -- a arvore temporaria que os indices de coluna unica deixavam acontecer.
-CREATE INDEX IF NOT EXISTS idx_patients_status_surgery ON patients(status, surgery_date DESC);
 CREATE INDEX IF NOT EXISTS idx_followups_agent_date    ON followup_logs(agent_id, contact_date);
+
+-- ============================================================
+-- Busca textual (FTS5)
+-- ============================================================
+-- `content='patients'`: indice externo, sem copiar o texto.
+-- `remove_diacritics 2`: "joao" encontra "João".
+-- Os triggers sao obrigatorios — indice externo nao se atualiza sozinho, e sem
+-- eles a busca congela no estado do backfill e passa a mentir em silencio.
+CREATE VIRTUAL TABLE IF NOT EXISTS patients_fts USING fts5(
+  name, procedure, email,
+  content='patients', content_rowid='rowid',
+  tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS patients_fts_insert AFTER INSERT ON patients BEGIN
+  INSERT INTO patients_fts(rowid, name, procedure, email)
+  VALUES (new.rowid, new.name, new.procedure, new.email);
+END;
+
+CREATE TRIGGER IF NOT EXISTS patients_fts_delete AFTER DELETE ON patients BEGIN
+  INSERT INTO patients_fts(patients_fts, rowid, name, procedure, email)
+  VALUES ('delete', old.rowid, old.name, old.procedure, old.email);
+END;
+
+CREATE TRIGGER IF NOT EXISTS patients_fts_update AFTER UPDATE ON patients BEGIN
+  INSERT INTO patients_fts(patients_fts, rowid, name, procedure, email)
+  VALUES ('delete', old.rowid, old.name, old.procedure, old.email);
+  INSERT INTO patients_fts(rowid, name, procedure, email)
+  VALUES (new.rowid, new.name, new.procedure, new.email);
+END;
 CREATE INDEX IF NOT EXISTS idx_password_reset_agent ON password_reset_codes(agent_id, created_at DESC);
 
 -- ============================================================
