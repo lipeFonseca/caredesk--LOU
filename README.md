@@ -154,6 +154,30 @@ triggers** a mantêm em dia — índice externo não se atualiza sozinho, e sem 
 a busca congela e passa a mentir em silêncio. Telefone tem caminho próprio
 (`phone_digits`).
 
+### Custo de consulta: a métrica que importa é `rows_read`
+
+O D1 no plano free dá **5 milhões de linhas lidas por dia** e **500 MB por
+banco**. A cota de leitura estoura muito antes do espaço, e quem a consome não
+é o volume de dados — são consultas que varrem a base.
+
+**Regra prática ao escrever qualquer consulta nova:** ela pode ler um número de
+linhas proporcional ao *resultado*, nunca proporcional à *base*.
+
+Duas armadilhas concretas, ambas já corrigidas e fáceis de reintroduzir:
+
+**1. Função sobre a coluna mata o índice.**
+`date(surgery_date,'+6 months') <= date('now','+30 days')` varre todos os
+ativos. O equivalente `surgery_date <= date('now','-6 months','+30 days')` usa
+o índice e lê só o que casa. Confirmado por `EXPLAIN QUERY PLAN`: o primeiro dá
+`(status=?)`, o segundo `(status=? AND surgery_date<?)`.
+
+**2. `COUNT(*)` para exibir totais.**
+O Histórico contava pacientes + contatos a cada página: com a base cheia seriam
+~1,8 milhão de linhas por carregamento, e três visitas esgotariam o dia. Hoje
+pedimos uma linha a mais que o limite e devolvemos `has_more`. Onde o total é
+realmente necessário — pacientes ativos —, ele vive em `system_counters`,
+mantido pelas rotas e reconciliado à noite.
+
 ### Armadilha de data já resolvida, fácil de reintroduzir
 
 Colunas gravadas pelo JS guardam ISO (`2026-07-25T06:50:31.514Z`); as gravadas

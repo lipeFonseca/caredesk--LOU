@@ -177,6 +177,15 @@ CREATE TABLE IF NOT EXISTS email_templates (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Contadores materializados. O D1 free cobra por LINHA LIDA (5 milhões/dia), e
+-- um COUNT(*) sobre a base ativa lê uma entrada de índice por paciente. Só o
+-- que exigiria varrer tudo mora aqui; o resto virou range indexado.
+CREATE TABLE IF NOT EXISTS system_counters (
+  key        TEXT PRIMARY KEY,
+  value      INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ============================================================
 -- Índices de performance
 -- ============================================================

@@ -7,6 +7,7 @@
 
 import { sendEmail } from './email.js'
 import { escaparHtml } from '../utils/emailTemplates.js'
+import { ajustarContador, CONTADOR_PACIENTES_ATIVOS } from '../utils/contadores.js'
 
 // 6 meses apos a cirurgia, conforme regra clinica passada pelo usuario.
 export const JANELA_DE_ACOMPANHAMENTO_MESES = 6
@@ -20,7 +21,7 @@ export async function runArquivamento(env) {
   console.log('[Arquivamento] Iniciando —', new Date().toISOString())
 
   const { results: aArquivar } = await env.DB.prepare(`
-    SELECT id, name, procedure, surgery_date, phone, email
+    SELECT id, name, procedure, surgery_date, phone, email, status
     FROM patients
     WHERE archived_at IS NULL
       AND surgery_date < date('now', ?)
@@ -38,6 +39,10 @@ export async function runArquivamento(env) {
     UPDATE patients SET archived_at = datetime('now')
     WHERE id IN (${ids.map(() => '?').join(',')})
   `).bind(...ids).run()
+
+  // Arquivar tira o paciente da contagem de ativos.
+  const ativosArquivados = aArquivar.filter((paciente) => paciente.status === 'active').length
+  await ajustarContador(env.DB, CONTADOR_PACIENTES_ATIVOS, -ativosArquivados)
 
   console.log(`[Arquivamento] ${ids.length} paciente(s) arquivado(s).`)
 

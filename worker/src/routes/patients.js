@@ -20,6 +20,7 @@ import {
   AVISO_ENCERRAMENTO_DIAS,
 } from '../utils/patientQuery.js'
 import { recalcularProximoMarco } from '../utils/proximoMarco.js'
+import { ajustarContador, contaComoAtivo, CONTADOR_PACIENTES_ATIVOS } from '../utils/contadores.js'
 
 const patients = new Hono()
 patients.use('*', authMiddleware)
@@ -247,6 +248,8 @@ patients.post('/', async (c) => {
     ).run()
 
     await recalcularProximoMarco(c.env.DB, id)
+    // Paciente nasce 'active' e nao arquivado.
+    await ajustarContador(c.env.DB, CONTADOR_PACIENTES_ATIVOS, 1)
 
     return c.json({
       id, name,
@@ -286,6 +289,12 @@ patients.patch('/:id', async (c) => {
     if (fields.includes('status') && !isValidPatientStatus(body.status)) {
       return c.json({ error: 'Status inválido' }, 400)
     }
+
+    // Só interessa quando o status muda: sair de 'active' ou voltar pra ele
+    // move o contador de pacientes ativos.
+    const statusAnterior = fields.includes('status')
+      ? (await c.env.DB.prepare('SELECT status, archived_at FROM patients WHERE id = ?').bind(id).first())
+      : null
 
     // phone_digits acompanha phone sempre: e coluna derivada, nao entra em
     // `allowed` (o cliente nunca a envia) mas precisa ser reescrita junto, senao
@@ -327,6 +336,14 @@ patients.patch('/:id', async (c) => {
     // sempre e mais barato que errar: e uma consulta indexada por id.
     await recalcularProximoMarco(c.env.DB, id)
 
+    if (statusAnterior) {
+      const eraAtivo = contaComoAtivo(statusAnterior)
+      const ficouAtivo = contaComoAtivo({ status: body.status, archived_at: statusAnterior.archived_at })
+      if (eraAtivo !== ficouAtivo) {
+        await ajustarContador(c.env.DB, CONTADOR_PACIENTES_ATIVOS, ficouAtivo ? 1 : -1)
+      }
+    }
+
     const updated = await c.env.DB.prepare('SELECT * FROM patients WHERE id = ?').bind(id).first()
     return c.json(updated)
   } catch (error) {
@@ -340,7 +357,7 @@ patients.delete('/:id', adminOnly, async (c) => {
 
   // Verificar se paciente tem protocolo customizado (is_custom=1) para limpar depois
   const row = await c.env.DB.prepare(
-    `SELECT p.protocol_id, cp.is_custom
+    `SELECT p.protocol_id, p.status, p.archived_at, cp.is_custom
      FROM patients p
      LEFT JOIN contact_protocols cp ON p.protocol_id = cp.id
      WHERE p.id = ?`
@@ -348,6 +365,10 @@ patients.delete('/:id', adminOnly, async (c) => {
 
   // Deletar paciente — cascades: followup_logs, notifications
   await c.env.DB.prepare('DELETE FROM patients WHERE id = ?').bind(id).run()
+
+  if (contaComoAtivo(row)) {
+    await ajustarContador(c.env.DB, CONTADOR_PACIENTES_ATIVOS, -1)
+  }
 
   // Limpar protocolo customizado orphan (só existe para esse paciente)
   if (row?.protocol_id && row?.is_custom === 1) {
