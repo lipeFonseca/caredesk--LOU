@@ -161,6 +161,19 @@ por `datetime('now')` guardam `2026-07-25 18:03:49`. Comparar as duas como texto
 **falha em silêncio** — `T` vem depois do espaço, então "vencido" é lido como
 "futuro". Sempre envolva a coluna ISO em `datetime()` antes de comparar.
 
+### O que acontece ao excluir
+
+**Paciente** — apaga tudo: contatos registrados, documentos atribuídos,
+notificações, entrada do índice de busca e protocolo customizado exclusivo dele.
+Feito por `ON DELETE CASCADE` (as foreign keys estão ativas no D1, verificado) e
+pelos triggers do FTS. A tela de confirmação lista o que será perdido.
+
+**Agente** — apaga a conta, o avatar no R2 e os códigos de acesso. **Os contatos
+que ele registrou permanecem**, com o autor em branco: são histórico clínico do
+paciente, e removê-los faria o protocolo retroceder, como se o contato nunca
+tivesse acontecido. O backend recusa excluir a própria conta ou o último
+administrador ativo.
+
 ### Domínios
 
 - `patients.status`: `active` · `paused` · `discharged`

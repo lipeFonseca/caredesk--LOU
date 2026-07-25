@@ -90,6 +90,49 @@ agents.patch('/:id', adminOnly, async (c) => {
   return c.json({ success: true })
 })
 
+// ── DELETE /api/agents/:id (admin only) ──────────────────────
+// Remove a conta e o que pertence a ela: avatar no R2 e códigos de acesso
+// (estes por CASCADE no schema).
+//
+// O QUE NAO E APAGADO, DE PROPOSITO: os `followup_logs` que o agente registrou.
+// Eles sao historico clinico DO PACIENTE — o contato aconteceu de fato. Apagar
+// faria `total_followups` diminuir, o protocolo do paciente retroceder e o
+// proximo marco ser recalculado pra tras. O schema resolve com ON DELETE SET
+// NULL: o registro fica, sem autor.
+agents.delete('/:id', adminOnly, async (c) => {
+  const id = c.req.param('id')
+  const solicitante = c.get('agent')
+
+  if (id === solicitante.sub) {
+    return c.json({ error: 'Você não pode excluir a própria conta' }, 400)
+  }
+
+  const alvo = await c.env.DB.prepare(
+    'SELECT id, role, avatar_storage_key FROM agents WHERE id = ?'
+  ).bind(id).first()
+  if (!alvo) return c.json({ error: 'Agente não encontrado' }, 404)
+
+  // Sem admin ativo ninguem configura mais nada, e nao ha como recriar pela
+  // interface — /api/setup fica bloqueado em producao.
+  if (alvo.role === 'admin') {
+    const { total } = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS total FROM agents WHERE role = 'admin' AND is_active = 1 AND id <> ?"
+    ).bind(id).first()
+
+    if (!total) {
+      return c.json({ error: 'Não é possível excluir o último administrador ativo' }, 409)
+    }
+  }
+
+  // Binario no R2 nao tem FK: se nao for removido aqui, fica ocupando espaco
+  // sem nada que o referencie.
+  await deleteAssetIfPresent(c.env.LOGO_BUCKET, alvo.avatar_storage_key)
+
+  await c.env.DB.prepare('DELETE FROM agents WHERE id = ?').bind(id).run()
+
+  return c.json({ success: true })
+})
+
 agents.post('/:id/avatar', adminOnly, async (c) => {
   const id = c.req.param('id')
 

@@ -455,12 +455,31 @@ function AgentsTab() {
   const [loading, setLoading]       = useState(true)
   const [modalType, setModalType]   = useState(null)
   const [selected, setSelected]     = useState(null)
+  const [excluindoId, setExcluindoId] = useState(null)
+  const [erro, setErro]             = useState('')
+  const agenteLogado = useAuthStore((state) => state.agent)
 
   async function loadAgents() {
     setLoading(true)
     api.agents.list().then(d => setAgents(d ?? [])).catch(() => {}).finally(() => setLoading(false))
   }
   useEffect(() => { loadAgents() }, [])
+
+  // Sem modal de confirmação, por decisão do usuário. O clique já é deliberado
+  // (ícone próprio, cor de perigo) e o backend recusa os casos irreversíveis:
+  // excluir a si mesmo ou o último admin ativo.
+  async function excluirAgente(agente) {
+    setExcluindoId(agente.id)
+    setErro('')
+    try {
+      await api.agents.delete(agente.id)
+      loadAgents()
+    } catch (err) {
+      setErro(err.message || 'Não foi possível excluir o agente.')
+    } finally {
+      setExcluindoId(null)
+    }
+  }
 
   return (
     <>
@@ -521,10 +540,26 @@ function AgentsTab() {
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>edit</span>
                 </button>
+                {a.id !== agenteLogado?.id && (
+                  <button
+                    onClick={() => excluirAgente(a)}
+                    disabled={excluindoId === a.id}
+                    className="p-1.5 text-outline hover:text-error rounded hover:bg-error-container/20 transition-colors disabled:opacity-50"
+                    title="Excluir agente"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+                      {excluindoId === a.id ? 'hourglass_empty' : 'delete'}
+                    </span>
+                  </button>
+                )}
               </div>
             </li>
           ))}
         </ul>
+      )}
+
+      {erro && (
+        <p className="mt-3 rounded-xl bg-error-container/20 text-error px-4 py-3 text-body-md">{erro}</p>
       )}
 
       {modalType === 'create' && <AgentModal onClose={() => setModalType(null)} onSaved={loadAgents} />}

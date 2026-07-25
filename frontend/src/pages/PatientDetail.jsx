@@ -938,14 +938,38 @@ export default function PatientDetail() {
       </Modal>
 
       {/* ── Modal: Confirmar Exclusão ────────────────────────────── */}
-      <Modal open={delConfirm} onClose={() => setDelConfirm(false)} title="Excluir Paciente">
-        <p className="text-body-md text-on-surface-variant mb-5">
-          Tem certeza que deseja excluir <strong className="text-on-surface">{patient.name}</strong>? Esta ação não pode ser desfeita.
+      <Modal open={delConfirm} onClose={() => setDelConfirm(false)} title="Excluir paciente">
+        <div className="flex items-start gap-3 rounded-xl bg-error-container/20 border border-error/30 p-4 mb-5">
+          <span className="material-symbols-outlined text-error shrink-0" style={{ fontSize: '22px' }}>warning</span>
+          <div>
+            <p className="text-body-md text-on-surface">
+              Excluir <strong>{patient.name}</strong> apaga <strong>todos os dados do paciente</strong>, permanentemente.
+            </p>
+            <p className="text-label-md font-label-md text-error mt-2">Esta ação é irreversível.</p>
+          </div>
+        </div>
+
+        <p className="text-label-sm font-label-sm text-on-surface-variant mb-2 uppercase tracking-wider">
+          Será apagado junto:
         </p>
+        <ul className="text-body-md text-on-surface-variant mb-5 space-y-1.5">
+          {[
+            [patient.followup_logs?.length ?? 0, 'contato(s) registrado(s) no histórico'],
+            [null, 'Documentos atribuídos e seu checklist'],
+            [null, 'Notificações e o registro no Histórico do sistema'],
+            [null, 'Cadastro, dados de contato e anotações'],
+          ].map(([contagem, texto]) => (
+            <li key={texto} className="flex items-start gap-2">
+              <span className="material-symbols-outlined text-error/70 shrink-0" style={{ fontSize: '16px', marginTop: '3px' }}>close</span>
+              <span>{contagem !== null ? <><strong className="text-on-surface">{contagem}</strong> {texto}</> : texto}</span>
+            </li>
+          ))}
+        </ul>
+
         <div className="flex gap-2">
           <button onClick={() => setDelConfirm(false)} className="btn-ghost flex-1">Cancelar</button>
           <button onClick={handleDelete} className="btn-danger flex-1" disabled={saving}>
-            {saving ? <Spinner /> : 'Excluir'}
+            {saving ? <Spinner /> : 'Excluir permanentemente'}
           </button>
         </div>
       </Modal>
