@@ -140,24 +140,26 @@ patients.get('/:id', async (c) => {
 
   if (!patient) return c.json({ error: 'Paciente não encontrado' }, 404)
 
-  const { results: logs } = await c.env.DB.prepare(`
-    SELECT fl.*, a.name AS agent_name
-    FROM followup_logs fl
-    LEFT JOIN agents a ON fl.agent_id = a.id
-    WHERE fl.patient_id = ?
-    ORDER BY fl.contact_date DESC
-  `).bind(patient.id).all()
+  const [{ results: logs }, clinicSetting] = await Promise.all([
+    c.env.DB.prepare(`
+      SELECT fl.*, a.name AS agent_name
+      FROM followup_logs fl
+      LEFT JOIN agents a ON fl.agent_id = a.id
+      WHERE fl.patient_id = ?
+      ORDER BY fl.contact_date DESC
+    `).bind(patient.id).all(),
+    c.env.DB.prepare(`
+      SELECT value
+      FROM app_settings
+      WHERE key = 'clinic_name'
+      LIMIT 1
+    `).first(),
+  ])
 
   const resolution = resolvePatientProtocol(patient)
   const patientOut = attachResolvedProtocol(patient, resolution)
   const today = new Date().toISOString().split('T')[0]
   const completedCount = logs.filter((log) => !log.is_extra_contact).length
-  const clinicSetting = await c.env.DB.prepare(`
-    SELECT value
-    FROM app_settings
-    WHERE key = 'clinic_name'
-    LIMIT 1
-  `).first()
   const suggestedMessage = await resolveSuggestedMessageTemplate(
     c.env.DB,
     patientOut,
