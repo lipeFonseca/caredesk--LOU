@@ -7,6 +7,7 @@ import {
 } from '../utils/protocols.js'
 import { resolveSuggestedMessageTemplate } from '../utils/messageTemplates.js'
 import { isValidDocumentStatus } from '../utils/documentTemplates.js'
+import { sanitizeOptionalPhone, sanitizeOptionalEmail } from '../utils/contactFields.js'
 
 const patients = new Hono()
 patients.use('*', authMiddleware)
@@ -28,9 +29,9 @@ patients.get('/', async (c) => {
   if (from)     { whereSql += ' AND p.surgery_date >= ?';     binds.push(from) }
   if (to)       { whereSql += ' AND p.surgery_date <= ?';     binds.push(to) }
   if (search)   {
-    whereSql += ' AND (p.name LIKE ? OR p.phone LIKE ?)'
+    whereSql += ' AND (p.name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)'
     const like = `%${search}%`
-    binds.push(like, like)
+    binds.push(like, like, like)
   }
 
   const countRow = await c.env.DB.prepare(`
@@ -148,12 +149,18 @@ patients.post('/', async (c) => {
     const name      = stripHtml(body.name).slice(0, 120)
     const procedure = stripHtml(body.procedure).slice(0, 120)
     const notes     = body.notes != null ? stripHtml(body.notes).slice(0, 2000) : null
-    const phone     = body.phone != null ? String(body.phone).replace(/[^\d+()\s-]/g, '').slice(0, 20) : null
+    const phone     = sanitizeOptionalPhone(body.phone)
     const surgery_date = /^\d{4}-\d{2}-\d{2}$/.test(body.surgery_date) ? body.surgery_date : null
 
     if (!name || !procedure || !surgery_date) {
       return c.json({ error: 'Nome, procedimento e data da cirurgia são obrigatórios' }, 400)
     }
+
+    const emailSanitizado = sanitizeOptionalEmail(body.email)
+    if (!emailSanitizado.ok) {
+      return c.json({ error: 'E-mail inválido' }, 400)
+    }
+    const email = emailSanitizado.value
 
     const assigned_agent_id = await resolveWritableAgentId(c.env.DB, body.assigned_agent_id)
     const resolvedProtocolId = await resolveWritableProtocolId(c.env.DB, body.protocol_id)
@@ -161,11 +168,12 @@ patients.post('/', async (c) => {
     const createdBy = c.get('agent')?.sub || null
 
     await c.env.DB.prepare(`
-      INSERT INTO patients (id, name, phone, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO patients (id, name, phone, email, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, name,
-      phone || null,
+      phone,
+      email,
       procedure,
       surgery_date,
       assigned_agent_id,
@@ -176,7 +184,8 @@ patients.post('/', async (c) => {
 
     return c.json({
       id, name,
-      phone:             phone || null,
+      phone,
+      email,
       procedure,
       surgery_date,
       assigned_agent_id,
@@ -198,19 +207,22 @@ patients.patch('/:id', async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
 
-    const allowed = ['name','phone','procedure','surgery_date','assigned_agent_id','protocol_id','status','notes']
+    const allowed = ['name','phone','email','procedure','surgery_date','assigned_agent_id','protocol_id','status','notes']
     const fields = Object.keys(body).filter(k => allowed.includes(k))
     if (!fields.length) return c.json({ error: 'Nenhum campo válido enviado' }, 400)
 
     if (fields.includes('surgery_date') && !/^\d{4}-\d{2}-\d{2}$/.test(body.surgery_date)) {
       return c.json({ error: 'Data da cirurgia inválida' }, 400)
     }
+    if (fields.includes('email') && !sanitizeOptionalEmail(body.email).ok) {
+      return c.json({ error: 'E-mail inválido' }, 400)
+    }
     if (fields.includes('status') && !['active', 'inactive', 'done'].includes(body.status)) {
       return c.json({ error: 'Status inválido' }, 400)
     }
 
     const sets = fields.map(f => `${f} = ?`).join(', ')
-    const nullable = ['phone', 'assigned_agent_id', 'protocol_id', 'notes']
+    const nullable = ['phone', 'email', 'assigned_agent_id', 'protocol_id', 'notes']
     const values = await Promise.all(fields.map(async (field) => {
       if (field === 'protocol_id') {
         return resolveWritableProtocolId(c.env.DB, body[field])
@@ -225,7 +237,10 @@ patients.patch('/:id', async (c) => {
         return body[field] === '' ? null : stripHtml(body[field]).slice(0, 2000)
       }
       if (field === 'phone') {
-        return body[field] === '' ? null : String(body[field]).replace(/[^\d+()\s-]/g, '').slice(0, 20)
+        return sanitizeOptionalPhone(body[field])
+      }
+      if (field === 'email') {
+        return sanitizeOptionalEmail(body[field]).value
       }
 
       if (nullable.includes(field) && body[field] === '') return null
