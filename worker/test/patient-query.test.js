@@ -8,8 +8,11 @@ import {
   decodeCursor,
   normalizePageSize,
   buildPatientFilters,
+  normalizeArchivedFilter,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
+  JANELA_MESES,
+  AVISO_ENCERRAMENTO_DIAS,
 } from '../src/utils/patientQuery.js'
 
 // ── Classificacao da busca ───────────────────────────────────
@@ -81,9 +84,31 @@ test('buildPatientFilters exclui arquivados por padrao', () => {
   assert.deepEqual(binds, [])
 })
 
-test('buildPatientFilters inclui arquivados quando pedido', () => {
-  const { sql } = buildPatientFilters({ includeArchived: true })
+test('buildPatientFilters com archived=all remove o recorte de arquivamento', () => {
+  const { sql } = buildPatientFilters({ archived: 'all' })
   assert.ok(!sql.includes('archived_at'))
+})
+
+test('buildPatientFilters com archived=only traz apenas arquivados', () => {
+  const { sql } = buildPatientFilters({ archived: 'only' })
+  assert.match(sql, /p\.archived_at IS NOT NULL/)
+})
+
+test('normalizeArchivedFilter cai no padrao seguro pra valor desconhecido', () => {
+  // Query string vem do cliente: valor inesperado nao pode abrir a base inteira.
+  assert.equal(normalizeArchivedFilter('only'), 'only')
+  assert.equal(normalizeArchivedFilter('all'), 'all')
+  assert.equal(normalizeArchivedFilter('qualquer-coisa'), 'none')
+  assert.equal(normalizeArchivedFilter(undefined), 'none')
+})
+
+test('buildPatientFilters com endingSoon filtra pela janela de aviso', () => {
+  const { sql } = buildPatientFilters({ endingSoon: true })
+
+  assert.match(sql, new RegExp(`\\+${JANELA_MESES} months`))
+  assert.match(sql, new RegExp(`\\+${AVISO_ENCERRAMENTO_DIAS} days`))
+  // Encerrando é sobre quem ainda está em acompanhamento.
+  assert.match(sql, /p\.archived_at IS NULL/)
 })
 
 test('buildPatientFilters acumula filtros na ordem dos binds', () => {

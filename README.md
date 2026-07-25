@@ -161,6 +161,22 @@ por `datetime('now')` guardam `2026-07-25 18:03:49`. Comparar as duas como texto
 **falha em silêncio** — `T` vem depois do espaço, então "vencido" é lido como
 "futuro". Sempre envolva a coluna ISO em `datetime()` antes de comparar.
 
+### Ciclo de vida do paciente
+
+Paciente **não é apagado pelo tempo** — aos 6 meses da cirurgia ele é
+**arquivado**: sai das listagens e buscas do dia a dia, com os dados intactos.
+Apagar de vez só por ação explícita de um admin.
+
+A lista de Pacientes tem três visões: **Em acompanhamento** (padrão),
+**Encerrando** (arquivam nos próximos 30 dias) e **Arquivados**. O aviso de
+proximidade aparece também no nome do paciente na lista e num alerta no
+Dashboard — sem isso, o paciente sumiria de um dia para o outro sem ninguém ver
+chegando.
+
+Na API: `archived=none|only|all` e `ending_soon=1`. O campo
+`days_until_archive` vem calculado em toda listagem (negativo = já passou da
+janela e só falta o cron rodar).
+
 ### O que acontece ao excluir
 
 **Paciente** — apaga tudo: contatos registrados, documentos atribuídos,

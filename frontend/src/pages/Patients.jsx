@@ -7,6 +7,19 @@ import PatientPanel from '@/components/PatientPanel'
 
 const PAGE_SIZE = 20
 
+// Espelha AVISO_ENCERRAMENTO_DIAS do worker (utils/patientQuery.js). Aqui é só
+// texto; quem filtra de fato é o backend.
+const AVISO_ENCERRAMENTO_DIAS = 30
+
+// Visões da lista. Separadas do filtro de status porque respondem outra
+// pergunta: status é a situação clínica, isto é a permanência do paciente no
+// acompanhamento.
+const VISOES = [
+  { id: 'ativos',     label: 'Em acompanhamento', icon: 'groups',       params: {} },
+  { id: 'encerrando', label: 'Encerrando',        icon: 'hourglass_bottom', params: { ending_soon: '1' } },
+  { id: 'arquivados', label: 'Arquivados',        icon: 'inventory_2',  params: { archived: 'only' } },
+]
+
 const DATE_RANGES = [
   { value: '',   label: 'Todos os períodos' },
   { value: '7',  label: 'Últimos 7 dias' },
@@ -73,21 +86,30 @@ export default function Patients() {
   const [dateRange,        setDateRange]        = useState('')
   const [nextCursor,       setNextCursor]       = useState(null)
   const [loadingMore,      setLoadingMore]      = useState(false)
+  const [visao,            setVisao]            = useState('ativos')
+  const [totalEncerrando,  setTotalEncerrando]  = useState(0)
   const [selectedPatientId, setSelectedPatientId] = useState(null)
+
+  // Badge da aba "Encerrando" — mesma contagem que o Dashboard exibe.
+  useEffect(() => {
+    api.dashboard.get()
+      .then((data) => setTotalEncerrando(data.stats?.ending_soon ?? 0))
+      .catch(() => {})
+  }, [patients])
 
   useEffect(() => {
     api.agents.list().then(data => setAgents(data ?? [])).catch(() => {})
   }, [])
 
   const buildParams = useCallback((cursor) => {
-    const params = { limit: PAGE_SIZE }
+    const params = { limit: PAGE_SIZE, ...(VISOES.find(v => v.id === visao)?.params ?? {}) }
     if (cursor)        params.cursor   = cursor
     if (status)        params.status   = status
     if (search.trim()) params.search   = search.trim()
     if (agentId)       params.agent_id = agentId
     if (dateRange)     params.from     = format(subDays(new Date(), parseInt(dateRange)), 'yyyy-MM-dd')
     return params
-  }, [search, status, agentId, dateRange])
+  }, [search, status, agentId, dateRange, visao])
 
   // Sem cursor = recomeçar do topo (filtro mudou). Com cursor = anexar à lista.
   const fetchPage = useCallback((cursor) => {
@@ -112,7 +134,7 @@ export default function Patients() {
     const t = setTimeout(() => fetchPage(null), 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, agentId, dateRange])
+  }, [search, status, agentId, dateRange, visao])
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
@@ -129,7 +151,11 @@ export default function Patients() {
             )}
           </div>
           <p className="text-body-md font-body-md text-on-surface-variant mt-1">
-            Gerencie os pacientes, acompanhamentos e status de recuperação.
+            {visao === 'arquivados'
+              ? 'Pacientes que completaram o acompanhamento. Os dados seguem preservados.'
+              : visao === 'encerrando'
+                ? `Saem do acompanhamento nos próximos ${AVISO_ENCERRAMENTO_DIAS} dias.`
+                : 'Gerencie os pacientes, acompanhamentos e status de recuperação.'}
           </p>
         </div>
         <Link
@@ -139,6 +165,29 @@ export default function Patients() {
           <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
           Novo Paciente
         </Link>
+      </div>
+
+      {/* ── Visões ──────────────────────────────────────────── */}
+      <div className="flex gap-1 bg-surface-container-low p-1 rounded-xl w-fit border border-outline-variant">
+        {VISOES.map(({ id, label, icon }) => (
+          <button
+            key={id}
+            onClick={() => setVisao(id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-label-md font-label-md transition-all ${
+              visao === id
+                ? 'bg-surface text-on-surface ambient-shadow-lvl1'
+                : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
+            }`}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>{icon}</span>
+            {label}
+            {id === 'encerrando' && totalEncerrando > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-[#fff8e1] text-[#f57f17] text-label-sm leading-none">
+                {totalEncerrando}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* ── Filter Bar ──────────────────────────────────────── */}
@@ -247,6 +296,20 @@ export default function Patients() {
                             <Link to={`/patients/${p.id}`} className="font-label-md text-on-surface hover:text-primary transition-colors hover:underline">
                               {p.name}
                             </Link>
+                            {/* Só aparece quando é informação nova: na aba de
+                                arquivados o estado já é o próprio contexto. */}
+                            {visao !== 'arquivados' && p.days_until_archive != null && p.days_until_archive <= AVISO_ENCERRAMENTO_DIAS && (
+                              <span className="block mt-0.5 text-label-sm text-[#f57f17]">
+                                {p.days_until_archive > 0
+                                  ? `arquiva em ${p.days_until_archive} dia${p.days_until_archive === 1 ? '' : 's'}`
+                                  : 'arquiva na próxima madrugada'}
+                              </span>
+                            )}
+                            {visao === 'arquivados' && p.archived_at && (
+                              <span className="block mt-0.5 text-label-sm text-outline">
+                                arquivado em {format(parseISO(p.archived_at.replace(' ', 'T')), 'dd MMM yyyy', { locale: ptBR })}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
