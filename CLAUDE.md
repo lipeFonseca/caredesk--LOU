@@ -58,11 +58,12 @@ O usuário valida UI e navegador. Claude fica com backend, config, teste automat
 
 ## Contexto do projeto (onde olhar, não duplicar aqui)
 
-- `Status.md` — linha do tempo cronológica estrita do que já foi decidido e entregue. Estado de hoje de qualquer assunto = entrada mais recente daquele assunto. Atualização nova sempre vira entrada no fim, na data do dia.
-- `ARQUITETURA.md` — mapa arquivo-por-arquivo: responsabilidade, rotas, dependências. Pode estar defasado; confirmar contra o código antes de agir.
-- `README.md` — visão operacional.
+São **dois** arquivos, com papéis que não se sobrepõem:
 
-Ambos devem ser atualizados a cada mudança estrutural — regra do projeto.
+- `README.md` — **estado atual**: stack, mapa de arquivos, rotas, banco, crons, como rodar e publicar. Responde "o que existe e onde fica". Atualizar a cada mudança estrutural.
+- `Status.md` — **linha do tempo**: por que cada coisa é como é, decisões, incidentes, alternativas descartadas. Ordem cronológica estrita; atualização nova sempre vira entrada no fim, na data do dia. Nunca criar seção "estado atual" aqui — isso já foi tentado duas vezes e falhou.
+
+`ARQUITETURA.md` não existe mais (absorvido pelo README em 2026-07-25). Confirmar contra o código antes de agir: doc pode defasar.
 
 ## Regras duras herdadas de incidente real
 

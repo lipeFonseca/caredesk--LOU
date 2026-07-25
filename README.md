@@ -1,663 +1,203 @@
 # CareDesk
 
-Sistema interno de acompanhamento pos-operatorio para clinica, focado nesta fase em cadastro, protocolo, notificacoes internas e registro manual de contatos.
+Sistema interno de acompanhamento pós-operatório de uma clínica. Um agente
+cadastra o paciente, vincula um protocolo de contato, e o sistema calcula os
+marcos de acompanhamento e avisa quando cada um vence.
 
-## Coracao do projeto
+> **Este arquivo descreve o estado atual do sistema.** Para saber *por que* algo
+> é como é — decisões, incidentes, alternativas descartadas — veja
+> [`Status.md`](Status.md), que é a linha do tempo do projeto.
 
-Estado atual:
-- frontend em `frontend/` com React 18 + Vite + Tailwind + Framer Motion
-- backend em `worker/` com Cloudflare Workers + Hono
-- banco em Cloudflare D1
-- autenticacao com JWT + PBKDF2
-- scheduler diario para notificacoes internas de follow-up
+---
 
-Direcao atual do produto:
-- acompanhamento operacional por painel interno
-- protocolo de contato como regra central
-- mensagem protocolar manual vinculada aos marcos do protocolo
-- ligacao como principal acao operacional externa
-- modulo de mensagens pausado por decisao de produto
-- boot autenticado do frontend agora espera as configuracoes remotas antes do primeiro paint principal, evitando flash de branding antigo
-- tela publica de login agora tambem consome branding remoto sanitizado antes do acesso, sem depender de sessao autenticada
-- ambiente publicado validado em 11 jul 2026 nas rotas principais e sem canais de mensagem expostos
-- pagina de login agora suporta uma imagem de fundo dedicada para a pagina inteira, distinta da imagem institucional do painel esquerdo, salva no R2 (12 jul 2026)
+## Escala e papéis
 
-Ambientes conhecidos:
-- frontend publicado: `https://caredesk-lou.pages.dev`
-- worker publicado: `https://caredesk-worker.faugusto-thecoral.workers.dev`
-- frontend local: `http://localhost:5173`
-- worker local: `http://localhost:8787`
+Uma clínica, dois papéis fixos:
 
-Ultima validacao publicada conhecida:
-- data: `2026-07-11`
-- dashboard publicado abriu com branding atual e sem flash do tema antigo
-- lista de pacientes, detalhe do paciente e admin carregaram sem erros visiveis
-- a rota `/patients` ainda mostra `Carregando ambiente...` por alguns instantes antes da tela estabilizar, mas conclui normalmente
-- a UI validada nao exibiu mais termos ou acoes de WhatsApp, Telegram ou mensagens
-- worker respondeu `200` em `/health`
-- rotas antigas de mensagem retornaram `404`: `/api/whatsapp` e `/api/telegram`
+- **`agent`** — cadastro, contato, checklist de documentos
+- **`admin`** — tudo isso, mais protocolos, equipe, identidade visual, mensageria e logs
 
-Ajuste recente no CI:
-- o workflow de deploy do GitHub agora valida explicitamente `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`
-- o job de frontend tambem instala o `wrangler` antes do `pages deploy`, evitando falha por CLI ausente no ambiente
+Multi-clínica foi avaliado e descartado.
 
-Ajuste recente de favicon:
-- o frontend agora publica um favicon base ja no `index.html`, evitando que o navegador reutilize um icone residual antes do app hidratar
-- em runtime, o app atualiza simultaneamente `rel="icon"`, `rel="shortcut icon"` e `rel="apple-touch-icon"`
-- esse caminho e mais confiavel que atualizar apenas um unico `link[rel='icon']`, porque reduz cache agressivo e comportamento inconsistente entre navegadores
+**Alvo de volume:** centenas de milhares de pacientes, 100 a 300 cadastros/dia.
+Paciente sai do acompanhamento ativo 6 meses após a cirurgia.
 
-## Diretriz de storage
+## Stack
 
-Direcao recomendada para a proxima fase:
-- usar Cloudflare R2 apenas para arquivos pesados e binarios
-- manter D1 como fonte principal dos dados operacionais e metadados
+| Camada | Tecnologia |
+|---|---|
+| Frontend | React 18, Vite, Tailwind (tokens MD3), Framer Motion, Zustand, date-fns |
+| Backend | Cloudflare Workers + Hono |
+| Banco | Cloudflare D1 (SQLite) |
+| Arquivos | Cloudflare R2 (binários) — metadados sempre no D1 |
+| Sessão | JWT hand-rolled (Web Crypto) em cookie `HttpOnly` |
+| E-mail | Google Apps Script como ponte para o Gmail da clínica |
 
-Arquivos que fazem sentido no storage:
-- logo
-- imagem de fundo
-- imagem exclusiva da pagina de login
-- favicon
-- imagem de usuario, se essa feature existir
-- anexos visuais de pacientes, como fotos e documentos escaneados
+## Ambientes
 
-Arquivos que nao devem virar fonte principal no storage:
-- cadastro de pacientes
-- protocolos
-- historico de contatos
-- configuracoes operacionais
+- Frontend: <https://caredesk-lou.pages.dev>
+- Worker: <https://caredesk-worker.faugusto-thecoral.workers.dev>
+- Local: frontend `:5173` (proxy `/api` → `:8787`), worker `:8787`
 
-Regra pratica:
-- arquivo grande vai para `R2`
-- referencia, permissao, dono, tipo e contexto do arquivo ficam no `D1`
+> **D1 local e D1 remoto são bancos separados.** Dado, credencial e migration
+> aplicada em um não existem no outro.
 
-Decisao arquitetural atual:
-- a intencao do projeto e usar storage principalmente para imagens e outros binarios pesados
-- esse caminho e mais indicado do que salvar blobs grandes diretamente no banco
+---
 
-### Estrutura recomendada no R2
+## Rodando local
 
-Namespaces recomendados:
-- `branding/logos/`
-- `branding/backgrounds/`
-- `branding/login-images/`
-- `branding/favicons/`
-- `avatars/agents/`
-- `avatars/patients/`
-- `attachments/patients/`
-
-Regras de uso:
-- `branding/*`: assets globais da clinica usados no login, sidebar, dashboard e favicon
-- `branding/login-images/*`: imagem exclusiva da lateral institucional da tela de login
-- `avatars/agents/*`: foto de agentes e administrador
-- `avatars/patients/*`: imagem de perfil do paciente, se essa feature entrar
-- `attachments/patients/*`: imagens clinicas e anexos visuais relacionados ao paciente
-
-Padrao de chave recomendado:
-- usar UUID no nome final do arquivo
-- manter prefixo por contexto
-- nao depender do nome original como identificador
-
-Exemplos:
-- `branding/logos/550e8400-e29b-41d4-a716-446655440000.png`
-- `avatars/patients/550e8400-e29b-41d4-a716-446655440000.webp`
-- `attachments/patients/8f6c.../550e8400-e29b-41d4-a716-446655440000.jpg`
-
-### Fluxo operacional recomendado
-
-Fluxo de upload:
-1. frontend envia arquivo para o worker
-2. worker valida tipo, tamanho e contexto
-3. worker grava binario no `R2`
-4. worker salva no `D1` a referencia do arquivo e seus metadados
-5. frontend passa a consumir a URL devolvida pelo worker
-
-Fluxo de leitura:
-1. frontend recebe a URL do asset a partir da API
-2. worker busca o objeto no `R2`
-3. worker devolve o arquivo com `content-type`, `etag` e politica de cache adequada
-
-Fluxo de substituicao:
-1. novo arquivo sobe para uma nova chave
-2. referencia no `D1` aponta para o novo arquivo
-3. arquivo antigo pode ser removido pelo worker depois da troca
-
-Fluxo de remocao:
-1. frontend solicita remocao
-2. worker remove o objeto do `R2`
-3. worker limpa a referencia no `D1`
-
-### Metadados que devem ficar no D1
-
-Mesmo quando o arquivo estiver no `R2`, o `D1` deve guardar:
-- `owner_type`
-- `owner_id`
-- `storage_key`
-- `public_url` ou URL servida pelo worker
-- `mime_type`
-- `file_size`
-- `category`
-- `uploaded_by`
-- `created_at`
-- `updated_at`
-
-Para branding simples, como hoje:
-- `logo_url`
-- `background_image_url`
-- `favicon_url`
-- chaves internas de storage correspondentes
-
-### Ordem recomendada de implementacao
-
-Para sustentar melhor os ajustes visuais:
-1. consolidar branding atual em `branding/logos`, `branding/backgrounds` e `branding/favicons`
-2. padronizar o fluxo de upload para um unico contrato de assets
-3. criar suporte a `avatars/agents`
-4. depois expandir para `avatars/patients`
-5. so depois abrir `attachments/patients`
-
-### Criterio de design para a proxima fase
-
-Regra simples para nao desorganizar o frontend:
-- se o arquivo aparece na interface mas nao e dado de negocio, ele tende a ir para `R2`
-- se o valor participa de filtro, regra, relacao, historico ou auditoria, ele tende a ficar no `D1`
-
-### Estado implementado nesta rodada
-
-Ja entrou no codigo:
-- branding e `avatars/agents` agora compartilham o mesmo nucleo de storage no backend
-- branding agora suporta uma imagem dedicada apenas para a pagina de login
-- `agents` passou a ter `avatar_url` e `avatar_storage_key`
-- o admin ja permite upload e remocao de avatar na edicao de agentes
-- a shell principal e a lista da equipe ja renderizam avatar real com fallback por iniciais
-
-Regra da tela de login:
-- `login_image_url` usa asset proprio no `R2`
-- se a imagem exclusiva do login estiver vazia, a tela permanece sem imagem
-- a aba de identidade visual agora exibe preview especifico da tela de login
-
-### Especificacao proposta para borda pulsante no login
-
-Objetivo:
-- adicionar uma borda animada ao card de login da direita, com linguagem premium e controlada
-- manter a imagem institucional da esquerda utilizavel, sem competir visualmente com o efeito
-
-Escopo visual recomendado:
-- aplicar o efeito no container principal inteiro da tela de login
-- nao aplicar o shader sobre a area da imagem institucional
-- deixar o glass transparente restrito a coluna direita, sem transformar a area institucional em glass
-
-Motivo da restricao:
-- a imagem de login precisa continuar legivel e elegante
-- o glow pode envolver o container inteiro, mas a leitura premium vem do contraste entre esquerda institucional e direita em glass
-
-Configuracoes recomendadas na aba de identidade visual:
-- `login_border_effect_enabled`
-- `login_border_preset`
-- `login_border_color_1`
-- `login_border_color_2`
-- `login_border_color_3`
-- `login_border_color_back`
-- `login_border_intensity`
-- `login_border_speed`
-- `login_border_thickness`
-- `login_border_bloom`
-
-Controles que nao valem expor nesta fase:
-- `spots`
-- `spotSize`
-- `smoke`
-- `smokeSize`
-- `scale`
-- `rotation`
-- `offsetX`
-- `offsetY`
-- `aspectRatio`
-
-Razao:
-- esses parametros aumentam complexidade demais para um painel administrativo que hoje precisa continuar simples e operacional
-
-Comportamento esperado:
-- quando desativado, o card continua com a borda estatica atual
-- quando ativado, a borda pulsante envolve o card principal inteiro do login, e nao apenas o bloco de credenciais
-- as cores do efeito devem ser definidas pela aba de identidade visual
-- o efeito deve respeitar `prefers-reduced-motion` ou cair automaticamente para uma versao suavizada/estatica
-
-Aprendizado aplicado em 11 jul 2026:
-- nao basta salvar branding no `app_settings`; a tela publica precisa de uma rota publica sanitizada
-- o worker agora deve expor apenas os campos visuais necessarios ao login e ao shell publico, sem abrir o mapa inteiro de configuracoes
-- a miniatura da aba de identidade visual precisa reproduzir a composicao completa da tela de login, e nao apenas a faixa institucional
-- a borda pulsante precisa de area visivel real no card; deixar apenas `1.5px` de faixa torna o efeito imperceptivel mesmo com parametros altos
-- a aba de identidade visual nao deve manter uma segunda previa redundante do card de login; a referencia correta e uma unica composicao completa
-- o `/login` nao deve pintar defaults antes do branding remoto publico carregar, ou a experiencia contradiz a identidade visual configurada
-
-Refino visual consolidado em 12 jul 2026:
-- o glow pulsante deve envolver o container principal do login inteiro
-- o efeito glass deve ficar restrito apenas a coluna direita de acesso
-- a area institucional da esquerda nao deve virar glass, para nao enfraquecer a imagem e o bloco editorial
-- a previa administrativa precisa espelhar exatamente essa divisao: esquerda editorial solida e direita translúcida
-- a atmosfera externa da pagina de login agora segue a direcao `Luxo Clinico`: base azul-petroleo profunda, halos frios suaves e fundo escuro menos chapado
-
-Correcao adicional confirmada:
-- nao basta o preset existir; o `LoginPulsingBorder` precisa envolver o card principal inteiro do login
-- se o wrapper ficar apenas na coluna direita, o resultado visual volta para um estado incorreto e contradiz a especificacao
-- a coluna direita nao deve ter um container estrutural redundante em volta do bloco de conteudo; o visual correto deixa o conteudo respirar dentro da faixa glass
-- as bordas internas da coluna direita tambem devem ser minimizadas; o formulario nao precisa de caixa-moldura separada quando a propria faixa glass ja organiza o bloco
-- o efeito glass suave deve existir apenas na coluna direita, com translucidez, blur e brilho interno discretos, sem reduzir contraste tipografico
-- a miniatura da aba `Identidade Visual` nao pode ter markup proprio para o card de login; ela deve reutilizar a mesma estrutura-base da tela publica
-- a forma correta de evitar regressao e centralizar a composicao em um componente compartilhado, deixando login publicado e preview administrativa presos a mesma fonte estrutural
-- o shader nao pode usar cantos fixos se o card real muda de raio entre login publico e miniatura; a geometria da borda precisa herdar o mesmo `radius` do card que ela envolve
-- o raio interno do wrapper pulsante tambem precisa ser derivado do `inset` ativo; se o inner wrapper mantiver um `rounded` fixo, algumas quinas ficam com “ponta” visual mesmo quando o restante parece arredondado
-- mesmo com `radius` sincronizado, alguns presets ainda deixam a curva do shader “reta demais” nas quinas; por isso o `roundness` efetivo tambem precisa respeitar um piso derivado do raio do card
-- no CareDesk, preset visual nao pode ter prioridade sobre a silhueta do card; a assinatura premium depende de o glow seguir a forma do container antes de qualquer variacao cosmetica
-- a coluna direita com `backdrop-blur` nao pode depender apenas do clipping do pai; ela precisa receber explicitamente os cantos direitos do `inner radius`, senao o blur e o fundo escuro continuam sugerindo “ponta” mesmo com o shader corrigido
-- o selo textual `Acesso institucional` foi removido da coluna esquerda do login; a composicao ficou mais limpa e a hierarquia agora deve comecar direto no `heroTitle`
-- o fundo da pagina de login nao deve depender de classes soltas entre preview e pagina publica; a composicao externa precisa sair de um helper compartilhado para evitar regressao visual entre admin e tela real
-- quando o modal de `Registrar Contato` cresce com blocos de protocolo e mensagem sugerida, ele nao deve herdar a largura estreita dos modais simples; esse fluxo precisa de largura dedicada para leitura operacional confortavel
-- a largura de modais no CareDesk nao depende mais apenas de `max-width`; os modais passaram a ter largura explicita baseada em viewport, com teto muito mais aberto, para que o ganho horizontal fique visivel de fato
-- modais animados com `framer-motion` nao devem usar centralizacao por `left-1/2` + `translate-x`; como o proprio Motion controla `transform`, a centralizacao precisa acontecer num wrapper `flex justify-center` para evitar deslocamento lateral
-- quando a escala ampla passa do ponto, o modal deve voltar para uma largura intermediaria e surgir centralizado no viewport, nao colado ao topo; o equilibrio visual importa tanto quanto a leitura
-- a listagem de pacientes ja entrou em trilha de paginacao server-side: o backend aceita `page` e `limit`, devolve `{ patients, total }`, o dashboard continua pedindo a base ativa sem paginacao e a tela de pacientes passa a navegar por paginas reais; junto disso, indices em `surgery_date`, `protocol_id` e `followup_logs(patient_id, contact_date DESC)` deixam essa consulta escalar melhor
-- validacao real em producao em `2026-07-14`: a API paginada respondeu corretamente, mas a base atual publicada tem apenas `2` pacientes totais; por isso a UI nao mostra varias paginas com `PAGE_SIZE=20` ainda, embora o endpoint ja troque de pagina corretamente quando forcado com `limit=1`
-
-Fallbacks obrigatorios:
-- se a lib/shader falhar, o card deve manter uma borda estatica normal
-- se houver imagem de login configurada, o efeito nao deve prejudicar leitura e contraste
-- no mobile, o efeito deve poder ser simplificado ou reduzido
-
-Validacao tecnica ja confirmada:
-- a dependencia `@paper-design/shaders-react` instala no frontend atual com React 18
-- o componente `PulsingBorder` existe de fato no pacote publicado
-- os presets publicados encontrados sao:
-  - `Default`
-  - `Circle`
-  - `Northern lights`
-  - `Solid line`
-
-Props reais confirmadas como base do shader:
-- `colors`
-- `colorBack`
-- `roundness`
-- `thickness`
-- `softness`
-- `aspectRatio`
-- `intensity`
-- `bloom`
-- `spots`
-- `spotSize`
-- `pulse`
-- `smoke`
-- `smokeSize`
-- `speed`
-- `scale`
-
-Leitura consolidada:
-- a integracao e viavel tecnicamente
-- o melhor caminho continua sendo criar um wrapper local do CareDesk em vez de espalhar uso direto da lib na tela
-
-Estado implementado desta frente:
-- dependencia `@paper-design/shaders-react` instalada no frontend
-- wrapper local criado em `frontend/src/components/ui/LoginPulsingBorder.jsx`
-- o shader foi ligado apenas ao card de login
-- a aba de identidade visual agora controla:
-  - ativacao do efeito
-  - preset
-  - `color1`
-  - `color2`
-  - `color3`
-  - `colorBack`
-  - intensidade
-  - velocidade
-  - espessura
-  - bloom
-
-Otimizacao aplicada:
-- o wrapper local agora usa import estatico para reduzir risco de nao renderizacao no login publico e na miniatura administrativa
-- isso simplifica a renderizacao do efeito, mas elevou o bundle principal acima do alerta de `500 kB` no build atual
-
-Rotas relevantes:
-- `GET /api/agents`
-- `POST /api/agents/:id/avatar`
-- `DELETE /api/agents/:id/avatar`
-- `GET /api/agents/avatar/:key`
-
-Arquivos relevantes desta frente:
-- `worker/migrations/0002_agent-avatars.sql`
-- `worker/src/routes/agents.js`
-- `worker/src/utils/storage.js`
-- `frontend/src/components/common/Avatar.jsx`
-- `frontend/src/pages/Admin.jsx`
-- `frontend/src/components/layout/AppLayout.jsx`
-
-### Imagem de fundo dedicada para a pagina de login (12 jul 2026)
-
-Escopo entregue:
-- a tela de login agora suporta uma imagem de fundo propria, aplicada na pagina inteira, atras do card de acesso com o efeito de borda pulsante
-- esse asset e distinto da imagem institucional (`login_image_url`, que cobre apenas o painel esquerdo institucional) — os dois podem ser configurados de forma independente
-- segue a mesma diretriz oficial de storage: binario grande no `R2`, referencia e metadados no `D1`
-- se `login_background_image_url` ficar vazio, a pagina de login permanece sem imagem de fundo, sem herdar nenhuma outra imagem do sistema
-
-Contrato consolidado:
-- chave de configuracao: `login_background_image_url`
-- chave interna de storage: `login_background_image_storage_key`
-- namespace no storage: `branding/login-backgrounds/`
-
-Rotas relevantes:
-- `POST /api/settings/assets/login_background`
-- `DELETE /api/settings/assets/login_background`
-- `GET /api/settings/logo/:key` (leitura, endpoint compartilhado de todos os assets de branding)
-- `GET /api/settings/public` (expoe `login_background_image_url` para a tela publica de login)
-
-Arquivos principais desta frente:
-- `worker/migrations/0005_login-background.sql`
-- `worker/src/db/schema.sql`
-- `worker/src/routes/notifications.js`
-- `frontend/src/theme/branding.js`
-- `frontend/src/store/index.js`
-- `frontend/src/components/admin/BrandingSettingsTab.jsx`
-- `frontend/src/pages/Login.jsx`
-
-Pendencia de publicacao:
-- a migration `0005_login-background.sql` ainda precisa ser aplicada no D1 remoto antes do proximo deploy oficial
-
-## Estrutura principal
-
-```text
-caredesk-sprint/
-├── frontend/
-├── worker/
-├── scripts/
-├── backups/
-├── README.md
-└── Status.md
+```bash
+cd worker   && npm install && npm run db:migrate && npx wrangler dev
+cd frontend && npm install && npm run dev
 ```
 
-Arquivos-chave:
-- `README.md`: visao operacional e caminho recomendado
-- `Status.md`: espelho do estado real do projeto
-- `worker/src/utils/protocols.js`: regra central de resolucao de protocolo
-- `worker/src/utils/messageTemplates.js`: renderizacao das mensagens ligadas aos marcos do protocolo
-- `worker/src/utils/storage.js`: nucleo compartilhado dos assets em `R2`
-- `worker/src/routes/patients.js`: contrato principal de pacientes
-- `worker/src/services/scheduler.js`: geracao diaria de notificacoes internas
+Secrets locais ficam em `worker/.dev.vars` (ignorado pelo git): `JWT_SECRET`,
+`JWT_REFRESH_SECRET`.
 
-Higiene recente do repositório:
-- arquivos de suporte local em `.codex/runtime/` foram removidos do workspace e agora ficam ignorados via `.gitignore`
-- utilitarios nao integrados ao fluxo atual, como `worker/reset-admin-password.mjs` e `worker/wrangler.toml.example`, foram retirados para reduzir ruído
+## Publicando
 
-## Ambiente local com multiplas ferramentas de IA
+O caminho oficial é o **GitHub Actions** (`Deploy CareDesk`), disparado por push
+na `main`. O workflow detecta o escopo e publica só o lado que mudou.
 
-Este workspace e usado tanto pelo Codex quanto pelo Claude Code, que rodam sob identidades diferentes do Windows nesta maquina (`CodexSandboxOffline` e o usuario interativo). Isso pode deixar arquivos ou pastas especificas sem permissao de escrita para uma das duas ferramentas, mesmo com o resto do repositorio normal.
+**Migration vai sempre antes do deploy do worker**, senão o código novo procura
+tabela que ainda não existe:
 
-Regra pratica se isso acontecer:
-- comparar a ACL do caminho com erro contra a de uma pasta irma via `icacls` antes de qualquer correcao
-- corrigir com `takeown /F <caminho> /R /D Y` seguido de `icacls <caminho> /reset /T`, sempre no caminho especifico com problema
-- nunca rodar `icacls /reset` na raiz do projeto (`caredesk-sprint`) — a permissao de escrita compartilhada pelas duas ferramentas e uma entrada explicita definida exatamente ali; resetar a raiz apaga essa entrada e derruba o acesso de uma das ferramentas
-
-## Setup local recomendado
-
-### Instalar dependencias
-
-```powershell
-cd worker
-npm install
-
-cd ..\frontend
-npm install
+```bash
+cd worker && npm run db:migrate:remote
+git push origin main
 ```
 
-### Inicializar D1 local
+> **Depois de qualquer migration remota multi-instrução, confirme o resultado
+> real via `sqlite_master`.** Nunca confie só no código de saída — já houve
+> migration aplicada pela metade sem erro reportado.
 
-```powershell
-cd worker
-npm run db:init
-```
+---
 
-### Subir worker local
+## Backend — `worker/src/`
 
-Comando mais confiavel validado:
+### Rotas (`routes/`)
 
-```powershell
-cd worker
-npx wrangler dev --local --var JWT_SECRET:dev-caredesk-local-secret-2026 --var APP_ENV:development
-```
+| Rota | Arquivo | O que faz |
+|---|---|---|
+| `/api/auth` | `auth.js` | Login, refresh, logout, troca e redefinição de senha |
+| `/api/patients` | `patients.js` | CRUD, busca, paginação por cursor, documentos do paciente |
+| `/api/followups` | `followups.js` | Registro de contatos realizados |
+| `/api/agents` | `agents.js` | Equipe, avatares, reset de senha por admin |
+| `/api/dashboard` | `dashboard.js` | Indicadores agregados e fila do dia |
+| `/api/activity` | `activity.js` | Feed do Histórico, paginado |
+| `/api/logs` | `logs.js` | Erros de servidor (admin) |
+| `/api/notifications` | `notifications.js` | Notificações internas |
+| `/api/settings` | `notifications.js` | Branding, mensageria, templates de e-mail |
+| `/api/protocols` | `protocols.js` | Protocolos de contato |
+| `/api/message-protocols` | `message-protocols.js` | Modelos de mensagem por marco |
+| `/api/document-templates` | `document-templates.js` | Catálogo de documentos |
+| `/api/setup` | `setup.js` | Criação do admin inicial (bloqueado em produção) |
 
-### Subir frontend local
+> `settings.js` é só um re-export: as rotas de settings moram em
+> `notifications.js`. É a única surpresa de organização no backend.
 
-```powershell
-cd frontend
-npm run dev
-```
+### Serviços (`services/`)
 
-### Criar admin local
+- **`scheduler.js`** — as rotinas dos crons: follow-ups do dia e a faxina noturna
+- **`daily-digest.js`** — resumo das 20h por agente (desempenho do dia + agenda de amanhã)
+- **`arquivamento.js`** — marca `archived_at` aos 6 meses e avisa os admins
+- **`email.js`** — único ponto de saída de e-mail do sistema
+- **`error-log.js`** — grava e expira os erros que alimentam a aba de Logs
 
-```powershell
-cd worker
-node scripts/create-admin.js admin CareDesk2026! Administrador
-```
+### Regras (`utils/`)
 
-Credenciais locais validadas:
-- usuario: `admin`
-- senha: `CareDesk2026!`
+- **`protocols.js`** — resolução de protocolo e cálculo de marcos. **Fonte única da regra**
+- **`proximoMarco.js`** — mantém `next_followup_date` e a expressão SQL de urgência
+- **`patientQuery.js`** — busca, cursor, filtros e os status válidos de paciente
+- **`contactFields.js`**, **`emailTemplates.js`**, **`messagingSettings.js`**, **`passwordReset.js`**, **`storage.js`**
 
-## Fluxo local recomendado
+## Frontend — `frontend/src/`
 
-1. subir frontend e worker localmente
-2. validar login e rotas principais
-3. fazer o bloco principal de alteracoes no `localhost`
-4. testar antes de publicar
-5. so no fim rodar build, versionamento e deploy
+**Páginas:** `Dashboard`, `Patients`, `PatientDetail`, `NewPatient`, `Historico`,
+`Logs` (admin), `Admin` (admin), `Login`, `EsqueciSenha`.
 
-Sempre validar antes de considerar o ambiente pronto:
-- frontend respondendo
-- worker respondendo
-- login funcionando
+**Componentes de nota:**
 
-## Regra oficial de protocolos
+- `components/LoginPageShell.jsx` — casca das telas públicas (login e redefinição)
+- `components/login/LoginCardLayout.jsx` — layout interno do card
+- `components/admin/` — abas de Configurações, incluindo `MessagingTab` e `EmailTemplateEditor`
 
-Desde `2026-07-20`, o backend so resolve protocolo em duas origens, sem nenhum fallback automatico:
-1. `LINKED` — paciente tem `protocol_id` valido, apontando pra um `contact_protocols` existente (`contact_protocols.days`)
-2. `EMPTY` — sem protocolo vinculado; nenhum marco/urgencia e calculado
+> `LoginPageShell.jsx` deveria estar em `components/login/`, mas essa pasta está
+> com a ACL do Windows quebrada e a correção exige shell elevado.
 
-O protocolo marcado `is_default` continua existindo, mas hoje so serve pra **pre-selecionar** a escolha no formulario de cadastro de paciente — se o paciente for criado sem protocolo explicito, o backend grava o `id` do protocolo `is_default` diretamente nele (atribuicao unica na criacao). Não existe mais leitura de fallback global (`app_settings.contact_protocol_days`) nem da antiga coluna `patients.protocol_days` — ambos foram removidos.
+---
 
-Campos principais retornados pelo backend:
-- `protocol_days_parsed`
-- `protocol_days_source`
-- `resolved_protocol_id`
-- `resolved_protocol_name`
-- `resolved_protocol_color`
+## Banco
 
-Camada adicional desta fase:
-- `protocol_message_templates` guarda uma mensagem por `protocol_id + day_offset`
-- o detalhe do paciente resolve o proximo marco pendente e tenta achar a mensagem correspondente
-- quando existir template, a API devolve a mensagem ja renderizada com os dados reais do paciente
+**Tabelas:** `agents`, `patients`, `followup_logs`, `notifications`,
+`contact_protocols`, `protocol_message_templates`, `document_templates`,
+`patient_documents`, `app_settings`, `email_templates`, `login_rate_limit`,
+`password_reset_codes`, `error_logs`, `patients_fts`.
 
-Placeholders suportados nas mensagens:
-- `{{patient_name}}`
-- `{{patient_phone}}`
-- `{{procedure}}`
-- `{{surgery_date}}`
-- `{{assigned_agent_name}}`
-- `{{clinic_name}}`
-- `{{protocol_name}}`
-- `{{milestone_label}}`
-- `{{milestone_date}}`
-- `{{contact_date}}`
+### Três decisões de modelagem que valem entender antes de mexer
 
-Implicacoes praticas:
-- scheduler e rotas de pacientes usam a mesma resolucao
-- o protocolo vinculado prevalece sobre snapshots legados
-- criacao e edicao de paciente tentam preservar `protocol_id` valido quando existe protocolo default
+**1. Índices operacionais são parciais (`WHERE archived_at IS NULL`).**
+O que impede a degradação com o tempo não é "ter índice", é o índice cobrir só a
+janela ativa (~54k linhas) em vez da base histórica inteira.
 
-## D1: scripts oficiais
+**2. `next_followup_date` é materializada; urgência, não.**
+Urgência é função de *(próximo marco × hoje)* e mudaria sozinha todo dia,
+exigindo um cron varrendo a base. A **data** só muda por evento real, então é
+barata de manter — e a urgência sai em SQL na consulta, sem nunca desatualizar.
+Toda escrita que afete o marco precisa chamar `recalcularProximoMarco()`; a
+faxina reconcilia um lote por noite como rede de segurança.
 
-Em `worker/package.json`:
+**3. Busca é FTS5, não `LIKE`.**
+`LIKE '%termo%'` não usa índice por construção. `patients_fts` indexa nome,
+procedimento e e-mail com remoção de acento ("joao" acha "João"), e **três
+triggers** a mantêm em dia — índice externo não se atualiza sozinho, e sem eles
+a busca congela e passa a mentir em silêncio. Telefone tem caminho próprio
+(`phone_digits`).
 
-```powershell
-npm run db:init
-npm run db:init:remote
-npm run db:backfill
-npm run db:backfill:remote
-npm run db:cleanup
-npm run db:cleanup:remote
-npm test
-```
+### Armadilha de data já resolvida, fácil de reintroduzir
 
-Migrations relevantes:
-- `worker/migrations/0000_protocol-backfill.sql`
-- `worker/migrations/0001_contact-cleanup.sql`
+Colunas gravadas pelo JS guardam ISO (`2026-07-25T06:50:31.514Z`); as gravadas
+por `datetime('now')` guardam `2026-07-25 18:03:49`. Comparar as duas como texto
+**falha em silêncio** — `T` vem depois do espaço, então "vencido" é lido como
+"futuro". Sempre envolva a coluna ISO em `datetime()` antes de comparar.
 
-## Fluxo remoto do D1
+### Domínios
 
-### Carregar credenciais Cloudflare
+- `patients.status`: `active` · `paused` · `discharged`
+- `followup_logs.contact_type`: `call` · `whatsapp` · `email` · `in_person`
+- `followup_logs.outcome`: `reached` · `no_answer` · `callback_scheduled`
+- urgência (derivada): `overdue` · `due` · `soon` · `ok` · `none`
 
-```powershell
-cd worker
-. .\scripts\load-cloudflare-env.ps1
-```
+---
 
-### Sequencia de saneamento usada com sucesso
+## Automação (crons)
 
-```powershell
-npm run db:backfill:remote
-npm run db:cleanup:remote
-```
+Horários em UTC no `wrangler.toml`; Fortaleza é UTC-3 o ano inteiro.
 
-Aprendizados importantes:
-- comandos remotos precisam de `--remote`
-- imports SQL remotos pelo Wrangler nao devem usar `BEGIN TRANSACTION` e `COMMIT`
-- quando necessario, complementar validacoes com queries diretas usando `wrangler d1 execute ... --command`
+| Cron | Local | Rotina |
+|---|---|---|
+| `0 11 * * *` | 08h | Follow-ups do dia → notificações internas |
+| `0 23 * * *` | 20h | Resumo diário por agente, por e-mail |
+| `0 3 * * *` | 00h | Faxina: logs, códigos, rate limit, arquivamento, reconciliação, `ANALYZE` |
 
-## Estado do produto nesta fase
+## Segurança
 
-O CareDesk esta hoje centrado em:
-- pacientes
-- protocolos
-- dashboard
-- notificacoes internas
-- registro manual de contatos
+- Sessão em cookie `HttpOnly` + `Secure` + `SameSite=None` (front e worker são domínios diferentes)
+- Access token 15min, refresh 7 dias
+- PBKDF2 100k iterações, verificação timing-safe
+- Rate limit por IP **e** por e-mail: 5 tentativas, 15 min de bloqueio, com `Retry-After`
+- Respostas genéricas no fluxo de senha, para não permitir enumerar contas
+- Token do relay de e-mail nunca sai em claro da API, e some inteiro para não-admin
 
-O modulo de mensagens foi retirado desta fase.
+## Mensageria
 
-## Deploy
+E-mail sai pelo Gmail da clínica via Apps Script — o Workers não abre conexão
+SMTP, então **senha de app do Gmail não serve aqui**. Configuração e modelos
+ficam em **Configurações → Mensageria**. Publicação do script:
+[`docs/EMAIL-APPS-SCRIPT.md`](docs/EMAIL-APPS-SCRIPT.md).
 
-Scripts da raiz:
+---
 
-```powershell
-npm run deploy:worker
-npm run deploy:frontend
-npm run deploy
-```
+## Prioridade do projeto
 
-Aliases explicitos para deploy manual:
-
-```powershell
-npm run deploy:manual:worker
-npm run deploy:manual:frontend
-npm run deploy:manual
-```
-
-Scripts dedicados:
-- `scripts/deploy-worker.ps1`
-- `scripts/deploy-frontend.ps1`
-- `scripts/deploy-all.ps1`
-
-Regra operacional importante:
-- deploy manual por script local publica no Cloudflare, mas nao cria historico no GitHub Actions
-- o GitHub Actions so lista execucoes do workflow em `.github/workflows/deploy.yml`
-- por isso, commits locais nao enviados e deploys feitos direto com Wrangler nao aparecem na aba `Actions`
-
-## Trilha oficial de publicacao
-
-Fluxo oficial daqui para frente:
-1. validar localmente
-2. versionar no GitHub
-3. deixar o deploy oficial acontecer via `GitHub Actions`
-4. usar deploy manual apenas para validacao emergencial ou contingencia
-
-Regras praticas:
-- `GitHub Actions` e a trilha oficial de historico da evolucao
-- `Cloudflare Pages` e `Workers` continuam recebendo a versao final publicada
-- scripts locais existem para operacao manual, nao para substituir o historico do GitHub
-- o job de frontend do workflow oficial nao pode depender de `deploy-worker` em `needs`, porque um worker fora do escopo pode deixar o frontend `skipped` mesmo quando o deploy do Pages foi solicitado
-
-## Ajuste do workflow de deploy
-
-O workflow oficial agora foi alinhado para acompanhamento melhor da evolucao:
-- nome do workflow: `Deploy CareDesk`
-- `run-name` passa a refletir melhor a origem da publicacao
-- `concurrency` continua serializando por branch, mas sem cancelar deploy anterior em andamento
-- `Deploy Frontend` agora depende apenas da deteccao de escopo (`changes`), evitando que publicacoes de frontend puro fiquem presas a um job opcional do worker
-- com `cancel-in-progress: false`, novos runs nao apagam a leitura da evolucao recente no `Actions`
-- `workflow_dispatch` agora aceita `target` (`all`, `worker`, `frontend`) e `reason`
-- em `push` para `main`, o workflow detecta o escopo alterado e publica apenas o que realmente mudou
-- mudanca so em `frontend/` nao precisa redeployar o worker
-- mudanca so em `worker/` nao precisa republicar o frontend
-
-Efeito esperado:
-- o `Actions` passa a preservar melhor a sequencia de publicacoes
-- a aba deixa de dar a sensacao de que um deploy substituiu o outro no proprio historico do GitHub
-- continua existindo apenas um dominio principal publicado, mas com runs mais legiveis e rastreaveis
-- o historico fica mais honesto, porque cada run passa a refletir melhor o pacote real publicado
-
-### Atualizacao de actions para Node 24 (12 jul 2026)
-
-Contexto:
-- o GitHub deprecou o runtime `node20` das actions publicadas, com desligamento definitivo em `16 set 2026`
-- `actions/checkout@v4` e `actions/setup-node@v4` ainda declaravam `using: node20` no proprio `action.yml`
-
-Verificacao feita antes de aplicar:
-- confirmado que `actions/checkout@v5` e `actions/setup-node@v5` sao releases GA (nao pre-release), ja migrados para `node24`
-- changelog de `checkout` v5.0.0/v5.0.1: unica mudanca e o runtime, sem alteracao de input ou comportamento
-- changelog de `setup-node` v5.0.0: unica mudanca de comportamento real e cache automatico quando existe campo `packageManager` no `package.json` — nenhum dos dois `package.json` do projeto tem esse campo, entao o comportamento fica identico ao v4
-- runners hospedados (`ubuntu-latest`) ja atendem o requisito minimo de versao (`v2.327.1+`) automaticamente
-
-Mudanca aplicada:
-- `actions/checkout@v4` → `actions/checkout@v5` (3 ocorrencias no workflow)
-- `actions/setup-node@v4` → `actions/setup-node@v5` (2 ocorrencias no workflow)
-
-Escopo mantido deliberadamente minimo:
-- nao subimos para `checkout@v7` nem `setup-node@v6` (majors mais novos existem, mas trazem mudancas nao relacionadas ao problema resolvido) — mesma logica de manter o Wrangler travado em `@4`, alinhado ao que ja foi validado (`4.104.0` no deploy manual), em vez de saltar para a versao mais recente sem necessidade
-
-## Regra dura de consistencia entre GitHub e Cloudflare
-
-Aprendizado operacional consolidado em `2026-07-12`:
-- se uma mudanca visual existir apenas em deploy manual local, ela nao esta protegida
-- no proximo `push`, o GitHub Actions publica o estado versionado do repositorio e pode sobrescrever a producao com um estado mais antigo
-
-Conclusao obrigatoria:
-- mudanca de interface que precisa sobreviver ao deploy oficial deve estar commitada e publicada no GitHub
-- deploy manual serve para validar rapido, nao para definir sozinho o estado canonico do produto
-
-Aplicacao pratica para o login:
-- tela de login premium
-- branding publico
-- imagem exclusiva do login
-- borda pulsante
-- preview da aba de identidade visual
-
-Tudo isso precisa existir no repositorio, no worker e no frontend ao mesmo tempo.
-
-## Regra de revisionamento compativel
-
-Padrao adotado a partir desta consolidacao:
-- se o workspace local evoluir em uma frente estrutural relevante, o GitHub precisa ser atualizado na mesma rodada
-- backend, frontend, migracoes e testes relacionados devem subir juntos quando formarem um pacote funcional unico
-- nao deixar backlog grande de mudancas locais sem commit, porque isso distorce o estado real do produto
-
-Objetivo pratico:
-- repositorio e workspace devem continuar compatíveis
-- o deploy oficial deve refletir o produto real
-- o historico do Git deve explicar a evolucao do CareDesk em blocos legiveis
-
-## Disciplina de documentacao
-
-`README.md` e `Status.md` devem permanecer como memoria viva do projeto.
-
-Sempre registrar:
-- mudancas estruturais reais
-- regras de negocio consolidadas
-- comandos e fluxos que funcionaram de verdade
-- armadilhas encontradas
-- diferencas entre estado local, remoto e publicado
-- limpeza de arquivos orfaos e artefatos temporarios quando ela alterar a forma correta de operar o projeto
+**segurança > saúde do banco > fluidez**
