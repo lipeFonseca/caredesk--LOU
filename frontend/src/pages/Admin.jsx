@@ -499,7 +499,10 @@ function AgentsTab() {
                     </span>
                   )}
                 </div>
-                <p className="text-body-md text-outline truncate">{a.email}</p>
+                <p className="text-body-md text-outline truncate">
+                  {a.email}
+                  {a.phone && <span className="text-outline"> · {a.phone}</span>}
+                </p>
               </div>
               <div className="flex gap-1.5 shrink-0">
                 <button
@@ -535,6 +538,7 @@ function AgentModal({ agent, onClose, onSaved }) {
   const [form, setForm] = useState({
     name:             agent?.name ?? '',
     email:            agent?.email ?? '',
+    phone:            agent?.phone ?? '',
     password:         '',
     role:             agent?.role ?? 'agent',
     is_active:        agent?.is_active ?? 1,
@@ -584,7 +588,7 @@ function AgentModal({ agent, onClose, onSaved }) {
     setSaving(true)
     try {
       if (isEdit) {
-        const payload = { name: form.name, email: form.email, role: form.role, is_active: Number(form.is_active) }
+        const payload = { name: form.name, email: form.email, phone: form.phone, role: form.role, is_active: Number(form.is_active) }
         await api.agents.update(agent.id, payload)
       } else {
         await api.agents.create(form)
@@ -635,6 +639,7 @@ function AgentModal({ agent, onClose, onSaved }) {
         )}
         <div><label className="label">Nome</label><input className="input" value={form.name} onChange={set('name')} required disabled={saving} /></div>
         <div><label className="label">E-mail</label><input type="email" className="input" value={form.email} onChange={set('email')} required disabled={saving} /></div>
+        <div><label className="label">Celular</label><input className="input" placeholder="(85) 99999-9999 (opcional)" value={form.phone} onChange={set('phone')} disabled={saving} /></div>
         {!isEdit && (
           <div>
             <label className="label">Senha</label>

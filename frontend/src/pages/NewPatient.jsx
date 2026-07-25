@@ -10,6 +10,7 @@ export default function NewPatient() {
   const [form, setForm] = useState({
     name:              '',
     phone:             '',
+    email:             '',
     procedure:         '',
     surgery_date:      new Date().toISOString().split('T')[0],
     assigned_agent_id: '',
@@ -108,6 +109,17 @@ export default function NewPatient() {
                   placeholder="(85) 99999-9999"
                   value={form.phone}
                   onChange={set('phone')}
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="label">E-mail</label>
+                <input
+                  type="email"
+                  className="input"
+                  placeholder="paciente@exemplo.com (opcional)"
+                  value={form.email}
+                  onChange={set('email')}
                   disabled={loading}
                 />
               </div>

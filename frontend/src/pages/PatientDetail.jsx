@@ -70,6 +70,7 @@ export default function PatientDetail() {
       setEditForm({
         name:              data.name,
         phone:             data.phone || '',
+        email:             data.email || '',
         procedure:         data.procedure,
         surgery_date:      data.surgery_date,
         status:            data.status,
@@ -283,6 +284,16 @@ export default function PatientDetail() {
                 <p className="text-body-md font-body-md text-on-surface flex items-center gap-2">
                   <span className="material-symbols-outlined text-outline" style={{ fontSize: '16px' }}>call</span>
                   {patient.phone || <span className="text-outline">Não informado</span>}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-label-sm font-label-sm text-on-surface-variant mb-1 uppercase tracking-wider">E-mail</p>
+                <p className="text-body-md font-body-md text-on-surface flex items-center gap-2">
+                  <span className="material-symbols-outlined text-outline" style={{ fontSize: '16px' }}>mail</span>
+                  {patient.email
+                    ? <a href={`mailto:${patient.email}`} className="hover:text-primary hover:underline truncate">{patient.email}</a>
+                    : <span className="text-outline">Não informado</span>}
                 </p>
               </div>
 
@@ -876,6 +887,11 @@ export default function PatientDetail() {
               <label className="label">Telefone</label>
               <input className="input" value={editForm.phone}
                 onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">E-mail</label>
+              <input type="email" className="input" placeholder="opcional" value={editForm.email}
+                onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
             </div>
             <div className="sm:col-span-2">
               <label className="label">Procedimento</label>

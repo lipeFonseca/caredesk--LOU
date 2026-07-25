@@ -7,6 +7,7 @@ import {
   putImageAsset,
   sanitizeScopedAssetKey,
 } from '../utils/storage.js'
+import { sanitizeOptionalPhone } from '../utils/contactFields.js'
 
 const agents = new Hono()
 
@@ -28,14 +29,14 @@ agents.use('*', authMiddleware)
 // ── GET /api/agents ───────────────────────────────────────────
 agents.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT id, name, email, role, is_active, avatar_url, created_at FROM agents ORDER BY name'
+    'SELECT id, name, email, phone, role, is_active, avatar_url, created_at FROM agents ORDER BY name'
   ).all()
   return c.json(results)
 })
 
 // ── POST /api/agents (admin only) ────────────────────────────
 agents.post('/', adminOnly, async (c) => {
-  const { name, email, password, role } = await c.req.json()
+  const { name, email, password, role, phone } = await c.req.json()
 
   if (!name || !email || !password) {
     return c.json({ error: 'Nome, email e senha são obrigatórios' }, 400)
@@ -43,6 +44,10 @@ agents.post('/', adminOnly, async (c) => {
   if (password.length < 8) {
     return c.json({ error: 'Senha deve ter ao menos 8 caracteres' }, 400)
   }
+
+  // Celular e opcional; o e-mail acima nao passa por aqui porque e credencial de
+  // login, com regra propria (unicidade + lowercase).
+  const celular = sanitizeOptionalPhone(phone)
 
   const existing = await c.env.DB.prepare(
     'SELECT id FROM agents WHERE email = ?'
@@ -53,16 +58,17 @@ agents.post('/', adminOnly, async (c) => {
   const hash = await hashPassword(password)
 
   await c.env.DB.prepare(`
-    INSERT INTO agents (id, name, email, password_hash, role)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO agents (id, name, email, phone, password_hash, role)
+    VALUES (?, ?, ?, ?, ?, ?)
   `).bind(
     id, name, email.toLowerCase(),
+    celular,
     hash,
     role || 'agent'
   ).run()
 
   return c.json({
-    id, name, email: email.toLowerCase(), role: role || 'agent', avatar_url: null
+    id, name, email: email.toLowerCase(), phone: celular, role: role || 'agent', avatar_url: null
   }, 201)
 })
 
@@ -71,14 +77,15 @@ agents.patch('/:id', adminOnly, async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json()
 
-  const allowed = ['name','email','role','is_active']
+  const allowed = ['name','email','phone','role','is_active']
   const fields = Object.keys(body).filter(k => allowed.includes(k))
   if (!fields.length) return c.json({ error: 'Nenhum campo válido' }, 400)
 
   const sets = fields.map(f => `${f} = ?`).join(', ')
+  const values = fields.map((f) => (f === 'phone' ? sanitizeOptionalPhone(body[f]) : body[f]))
   await c.env.DB.prepare(
     `UPDATE agents SET ${sets} WHERE id = ?`
-  ).bind(...fields.map(f => body[f]), id).run()
+  ).bind(...values, id).run()
 
   return c.json({ success: true })
 })
