@@ -35,7 +35,8 @@ function doPost(e) {
       to: corpo.to,
       subject: corpo.subject,
       htmlBody: corpo.html,
-      name: 'CareDesk',
+      // Nome de exibicao do remetente, configuravel na aba Mensageria do painel.
+      name: corpo.fromName || 'CareDesk',
     });
 
     // Cota restante do dia — util pra diagnosticar entrega que parou de sair.

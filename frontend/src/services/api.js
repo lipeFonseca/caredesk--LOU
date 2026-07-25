@@ -173,5 +173,8 @@ export const api = {
       return request(`/settings/assets/${type}`, { method: 'POST', body: form })
     },
     removeAsset:   (type) => request(`/settings/assets/${type}`, { method: 'DELETE' }),
+
+    // Mensageria: dispara um e-mail de teste pro admin logado.
+    testEmail:     ()     => request('/settings/email/test', { method: 'POST' }),
   },
 }

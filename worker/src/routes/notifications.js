@@ -6,6 +6,13 @@ import {
   putImageAsset,
   sanitizeScopedAssetKey,
 } from '../utils/storage.js'
+import {
+  MESSAGING_SETTING_KEYS,
+  SECRET_SETTING_KEYS,
+  isMaskedValue,
+  redactSettings,
+} from '../utils/messagingSettings.js'
+import { sendEmail } from '../services/email.js'
 
 const notifications = new Hono()
 notifications.use('*', authMiddleware)
@@ -75,7 +82,9 @@ settings.use('*', authMiddleware)
 
 settings.get('/', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT key, value FROM app_settings').all()
-  return c.json(Object.fromEntries(results.map((row) => [row.key, row.value])))
+  // redactSettings mascara o token do relay de e-mail. Esta rota vale pra
+  // qualquer agente autenticado, nao so admin — credencial nao pode sair daqui.
+  return c.json(redactSettings(Object.fromEntries(results.map((row) => [row.key, row.value]))))
 })
 
 settings.patch('/', adminOnly, async (c) => {
@@ -102,14 +111,51 @@ settings.patch('/', adminOnly, async (c) => {
     'login_border_thickness',
     'login_border_bloom',
     'timezone',
+    ...MESSAGING_SETTING_KEYS,
   ]
 
   for (const [key, value] of Object.entries(body)) {
     if (!allowed.includes(key)) continue
+    // O formulario devolve o segredo mascarado quando ninguem mexeu no campo;
+    // gravar isso apagaria a credencial real.
+    if (SECRET_SETTING_KEYS.includes(key) && isMaskedValue(value)) continue
     await upsertSetting(c.env.DB, key, value)
   }
 
   return c.json({ success: true })
+})
+
+// ── POST /api/settings/email/test ────────────────────────────
+// Envia um e-mail de teste pro proprio admin logado. Existe porque erro de
+// configuracao de relay so aparece quando alguem precisa de verdade do reset de
+// senha — e essa e a pior hora pra descobrir.
+settings.post('/email/test', adminOnly, async (c) => {
+  const { sub } = c.get('agent')
+  const agent = await c.env.DB.prepare('SELECT name, email FROM agents WHERE id = ?').bind(sub).first()
+
+  if (!agent?.email?.includes('@')) {
+    return c.json({ error: 'Sua conta não tem um e-mail válido cadastrado para receber o teste' }, 400)
+  }
+
+  try {
+    const resultado = await sendEmail(c.env, {
+      to: agent.email,
+      subject: 'CareDesk — teste de envio',
+      html: `
+        <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #1c1b1f; line-height: 1.6;">
+          <p>Olá, ${agent.name || 'equipe'}.</p>
+          <p>Este é um teste de envio do CareDesk. Se você recebeu esta mensagem, a mensageria está configurada corretamente e o fluxo de redefinição de senha vai funcionar.</p>
+        </div>
+      `.trim(),
+    })
+
+    return c.json({ success: true, sentTo: agent.email, remainingQuota: resultado?.remainingQuota ?? null })
+  } catch (falhaNoEnvio) {
+    // Mensagem real do relay volta pro admin de proposito: sem ela, diagnosticar
+    // token errado x URL errada x cota estourada vira adivinhacao. Rota e
+    // adminOnly, entao nao expoe nada a mais do que quem configurou ja sabe.
+    return c.json({ error: falhaNoEnvio.message || 'Falha ao enviar o e-mail de teste' }, 502)
+  }
 })
 
 settings.post('/logo', adminOnly, async (c) => uploadBrandAsset(c, 'logo'))
