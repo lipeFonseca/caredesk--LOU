@@ -33,8 +33,22 @@ export function isMaskedValue(valor) {
   return typeof valor === 'string' && valor.startsWith(MASK_PREFIX)
 }
 
-export function redactSettings(settingsMap = {}) {
+// Prepara o mapa de settings pra sair numa resposta.
+//
+// Agente comum nao recebe NENHUMA chave de mensageria: a URL do relay nao envia
+// nada sozinha (o script exige o token), mas e endereco de infraestrutura e nao
+// tem por que circular pra quem nunca vai configurar isso.
+//
+// Admin recebe as chaves, com o segredo mascarado — ele precisa ver o que esta
+// configurado, nunca o valor do token.
+export function redactSettings(settingsMap = {}, { isAdmin = false } = {}) {
   const copia = { ...settingsMap }
+
+  if (!isAdmin) {
+    for (const chave of MESSAGING_SETTING_KEYS) delete copia[chave]
+    return copia
+  }
+
   for (const chave of SECRET_SETTING_KEYS) {
     if (chave in copia) copia[chave] = maskSecret(copia[chave])
   }

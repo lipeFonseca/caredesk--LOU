@@ -43,17 +43,37 @@ test('isMaskedValue reconhece o valor devolvido pelo formulario sem edicao', () 
   assert.equal(isMaskedValue(undefined), false)
 })
 
-test('redactSettings mascara o token e preserva o resto', () => {
-  const redigido = redactSettings({
-    clinic_name: 'Clinica X',
-    email_relay_url: 'https://script.google.com/exec',
-    email_relay_token: 'token-super-secreto-1234',
-  })
+const SETTINGS_DE_EXEMPLO = {
+  clinic_name: 'Clinica X',
+  email_enabled: '1',
+  email_relay_url: 'https://script.google.com/exec',
+  email_relay_token: 'token-super-secreto-1234',
+  email_from_name: 'Clinica X',
+}
+
+test('redactSettings mascara o token pro admin e preserva o resto', () => {
+  const redigido = redactSettings(SETTINGS_DE_EXEMPLO, { isAdmin: true })
 
   assert.equal(redigido.clinic_name, 'Clinica X')
   assert.equal(redigido.email_relay_url, 'https://script.google.com/exec')
   assert.ok(!redigido.email_relay_token.includes('secreto'))
   assert.equal(SECRET_SETTING_KEYS.includes('email_relay_token'), true)
+})
+
+test('redactSettings esconde toda a mensageria de agente nao-admin', () => {
+  const redigido = redactSettings(SETTINGS_DE_EXEMPLO, { isAdmin: false })
+
+  assert.equal(redigido.clinic_name, 'Clinica X')
+  for (const chave of ['email_enabled', 'email_relay_url', 'email_relay_token', 'email_from_name']) {
+    assert.equal(chave in redigido, false, `${chave} nao pode chegar em agente comum`)
+  }
+})
+
+test('redactSettings sem opcoes trata como nao-admin', () => {
+  // Default seguro: quem esquecer de passar o papel nao vaza mensageria.
+  const redigido = redactSettings(SETTINGS_DE_EXEMPLO)
+
+  assert.equal('email_relay_url' in redigido, false)
 })
 
 test('resolveEmailConfig da prioridade ao que foi salvo no painel', async () => {
