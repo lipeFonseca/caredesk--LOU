@@ -85,10 +85,6 @@ export default function PatientDetail() {
     }
   }
 
-  useEffect(() => {
-    api.protocols.list().then(ps => setProtocols(ps ?? [])).catch(() => {})
-  }, [])
-
   useEffect(() => { load() }, [id])
 
   function calcAutoNextDate(isExtra = false) {
