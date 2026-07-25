@@ -175,6 +175,11 @@ export const api = {
     removeAsset:   (type) => request(`/settings/assets/${type}`, { method: 'DELETE' }),
 
     // Mensageria: dispara um e-mail de teste pro admin logado.
-    testEmail:     ()     => request('/settings/email/test', { method: 'POST' }),
+    testEmail:      ()     => request('/settings/email/test', { method: 'POST' }),
+    testDigest:     ()     => request('/settings/email/test-digest', { method: 'POST' }),
+
+    // Templates de e-mail editáveis
+    getEmailTemplates: ()            => request('/settings/email-templates'),
+    saveEmailTemplate: (tipo, body)  => request(`/settings/email-templates/${tipo}`, { method: 'PUT', body: JSON.stringify(body) }),
   },
 }

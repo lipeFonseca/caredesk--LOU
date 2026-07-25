@@ -16,6 +16,7 @@ import documentTemplateRoutes from './routes/document-templates.js'
 import activityRoutes  from './routes/activity.js'
 import logRoutes       from './routes/logs.js'
 import { runScheduler, runNightlyCleanup } from './services/scheduler.js'
+import { runDailyDigest } from './services/daily-digest.js'
 import { recordServerError } from './services/error-log.js'
 
 const app = new Hono()
@@ -83,11 +84,16 @@ app.onError((err, c) => {
 export default {
   fetch: app.fetch,
 
-  // Dois crons no wrangler.toml, roteados pelo horário UTC que disparou:
-  //   0 3  UTC = 00:00 Fortaleza — faxina noturna
-  //   0 11 UTC = 08:00 Fortaleza — verificação de follow-ups
+  // Três crons no wrangler.toml, roteados pelo horário UTC que disparou.
+  // Cron desconhecido cai no scheduler de follow-ups, que era a rotina única
+  // antes das outras existirem.
   async scheduled(event, env, ctx) {
-    const rotina = event.cron === '0 3 * * *' ? runNightlyCleanup : runScheduler
-    ctx.waitUntil(rotina(env))
+    const rotinaPorCron = {
+      '0 3 * * *':  runNightlyCleanup, // 00:00 Fortaleza
+      '0 11 * * *': runScheduler,      // 08:00 Fortaleza
+      '0 23 * * *': runDailyDigest,    // 20:00 Fortaleza
+    }
+
+    ctx.waitUntil((rotinaPorCron[event.cron] ?? runScheduler)(env))
   },
 }
