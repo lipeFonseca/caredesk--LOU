@@ -2,6 +2,7 @@ import {
   getNextPendingMilestone,
   resolvePatientProtocol,
 } from '../utils/protocols.js'
+import { purgeOldErrorLogs, RETENTION_DAYS } from './error-log.js'
 
 // ── Entry point chamado pelo cron trigger ────────────────────
 export async function runScheduler(env) {
@@ -30,8 +31,17 @@ export async function runScheduler(env) {
     if (result) notified++
   }
 
-  console.log(`[Scheduler] Concluído. ${notified} de ${patients.length} pacientes notificados.`)
-  return { total: patients.length, notified }
+  // Carona no unico cron do projeto: limpar log velho nao justifica um trigger
+  // proprio. Falha aqui nao pode invalidar as notificacoes ja criadas acima.
+  let purged = 0
+  try {
+    purged = await purgeOldErrorLogs(env)
+  } catch (falhaNaLimpeza) {
+    console.error('[Scheduler] falha ao limpar error_logs', falhaNaLimpeza)
+  }
+
+  console.log(`[Scheduler] Concluído. ${notified} de ${patients.length} pacientes notificados. ${purged} log(s) além de ${RETENTION_DAYS} dias removido(s).`)
+  return { total: patients.length, notified, purged }
 }
 
 async function processPatient(patient, today, env) {

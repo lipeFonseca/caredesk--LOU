@@ -4,17 +4,9 @@ import { api } from '@/services/api'
 import { format, parseISO, formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { CONTACT_TYPE_CONFIG, OUTCOME_CONFIG, getInitials } from '@/utils/contactDisplay'
+import { parseSqliteTimestamp } from '@/utils/sqliteDate'
 
 const PAGE_SIZE = 20
-
-function parseTs(ts) {
-  if (!ts) return null
-  // SQLite datetime('now') = 'YYYY-MM-DD HH:MM:SS' (UTC, sem timezone).
-  // created_at de paciente pode vir ISO; normalizamos ambos.
-  const normalized = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z'
-  const d = new Date(normalized)
-  return Number.isNaN(d.getTime()) ? null : d
-}
 
 function itemVisual(item) {
   if (item.kind === 'patient_created') {
@@ -91,7 +83,7 @@ export default function Historico() {
           <ul className="divide-y divide-outline-variant/50">
             {items.map((item, idx) => {
               const visual  = itemVisual(item)
-              const date    = parseTs(item.ts)
+              const date    = parseSqliteTimestamp(item.ts)
               const outcome = item.kind === 'contact' ? OUTCOME_CONFIG[item.outcome] : null
               return (
                 <li key={`${item.kind}-${item.patient_id}-${item.ts}-${idx}`} className="flex items-start gap-4 px-6 py-4 hover:bg-surface-container-low transition-colors">

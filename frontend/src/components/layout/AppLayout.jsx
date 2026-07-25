@@ -14,6 +14,22 @@ const NAV_ITEMS = [
   { to: '/historico', icon: 'history', label: 'Historico', end: false },
 ]
 
+// Itens visiveis so pra admin — mesma restricao aplicada nas rotas (router) e
+// na API (adminOnly).
+const ADMIN_NAV_ITEMS = [
+  { to: '/logs', icon: 'bug_report', label: 'Logs', end: false },
+  { to: '/admin', icon: 'settings', label: 'Configuracoes', end: false },
+]
+
+function navLinkClass({ isActive }) {
+  return `
+    flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all
+    ${isActive
+      ? 'bg-[#f6ebd9] text-[#18352d] shadow-card'
+      : 'text-[#f3e6d2]/86 hover:bg-white/10 hover:text-white'}
+  `
+}
+
 function greeting(name) {
   const hour = new Date().getHours()
   const salute = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
@@ -126,18 +142,13 @@ export default function AppLayout() {
           <div className="mt-6 rounded-[28px] border border-white/8 bg-black/10 p-3 backdrop-blur-sm">
             <p className="px-3 pb-2 text-[11px] uppercase tracking-[0.26em] text-[#d5c2a3]">Navegacao</p>
             <ul className="space-y-1.5">
-              {NAV_ITEMS.map(({ to, icon, label, end }) => (
+              {[...NAV_ITEMS, ...(isAdmin() ? ADMIN_NAV_ITEMS : [])].map(({ to, icon, label, end }) => (
                 <li key={to}>
                   <NavLink
                     to={to}
                     end={end}
                     onClick={() => setSidebarOpen(false)}
-                    className={({ isActive }) => `
-                      flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all
-                      ${isActive
-                        ? 'bg-[#f6ebd9] text-[#18352d] shadow-card'
-                        : 'text-[#f3e6d2]/86 hover:bg-white/10 hover:text-white'}
-                    `}
+                    className={navLinkClass}
                   >
                     {({ isActive }) => (
                       <>
@@ -148,28 +159,6 @@ export default function AppLayout() {
                   </NavLink>
                 </li>
               ))}
-
-              {isAdmin() && (
-                <li>
-                  <NavLink
-                    to="/admin"
-                    onClick={() => setSidebarOpen(false)}
-                    className={({ isActive }) => `
-                      flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all
-                      ${isActive
-                        ? 'bg-[#f6ebd9] text-[#18352d] shadow-card'
-                        : 'text-[#f3e6d2]/86 hover:bg-white/10 hover:text-white'}
-                    `}
-                  >
-                    {({ isActive }) => (
-                      <>
-                        <span className={`material-symbols-outlined ${isActive ? 'fill-icon' : ''}`}>settings</span>
-                        <span className="font-semibold">Configuracoes</span>
-                      </>
-                    )}
-                  </NavLink>
-                </li>
-              )}
             </ul>
           </div>
 

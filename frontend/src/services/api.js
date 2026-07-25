@@ -100,6 +100,11 @@ export const api = {
     list: (params = {}) => request('/activity?' + new URLSearchParams(params)),
   },
 
+  // ── Logs de erro do servidor (admin) ────────────────────────
+  logs: {
+    list: (params = {}) => request('/logs?' + new URLSearchParams(params)),
+  },
+
   // ── Follow-ups ──────────────────────────────────────────────
   followups: {
     list:   (patient_id) => request(`/followups?patient_id=${patient_id}`),

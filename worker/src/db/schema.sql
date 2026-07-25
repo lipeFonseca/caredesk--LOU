@@ -118,6 +118,21 @@ CREATE TABLE IF NOT EXISTS login_rate_limit (
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Erros de servidor (500) gravados pelo app.onError e lidos pela aba de Logs.
+-- agent_id/agent_email sao snapshot sem FK: o log e registro historico e nao
+-- pode perder a autoria quando o agente e removido.
+CREATE TABLE IF NOT EXISTS error_logs (
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  occurred_at TEXT NOT NULL DEFAULT (datetime('now')),
+  method      TEXT,
+  path        TEXT,
+  message     TEXT NOT NULL,
+  stack       TEXT,
+  agent_id    TEXT,
+  agent_email TEXT,
+  ip          TEXT
+);
+
 -- ============================================================
 -- Índices de performance
 -- ============================================================
@@ -135,6 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_message_templates_protocol_day ON protocol_messag
 CREATE INDEX IF NOT EXISTS idx_document_templates_category ON document_templates(category);
 CREATE INDEX IF NOT EXISTS idx_patient_documents_patient   ON patient_documents(patient_id);
 CREATE INDEX IF NOT EXISTS idx_patient_documents_template  ON patient_documents(document_template_id);
+CREATE INDEX IF NOT EXISTS idx_error_logs_occurred ON error_logs(occurred_at DESC);
 
 -- ============================================================
 -- Dados iniciais
