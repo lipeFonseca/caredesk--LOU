@@ -209,7 +209,9 @@ CREATE INDEX IF NOT EXISTS idx_patients_archived ON patients(archived_at);
 CREATE INDEX IF NOT EXISTS idx_patients_proximo_marco
   ON patients(next_followup_date) WHERE archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_patients_protocol ON patients(protocol_id);
-CREATE INDEX IF NOT EXISTS idx_followups_patient ON followup_logs(patient_id);
+-- Sem indice so de (patient_id): seria prefixo do composto abaixo, que ja
+-- atende as mesmas consultas. Indice redundante nao acelera nada e cobra em
+-- espaco e em escrita a cada INSERT.
 CREATE INDEX IF NOT EXISTS idx_followups_patient_date ON followup_logs(patient_id, contact_date DESC);
 CREATE INDEX IF NOT EXISTS idx_followups_created ON followup_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_patients_created  ON patients(created_at DESC);
