@@ -201,12 +201,14 @@ export default function EmailTemplateEditor() {
           <p className="text-label-sm font-label-sm text-on-surface-variant mb-2">
             Prévia (com dados de exemplo):
           </p>
-          {/* sandbox sem allow-scripts: o preview renderiza o HTML mas nunca
-              executa nada — o backend ja recusa <script>, isto e a segunda camada. */}
+          {/* `allow-same-origin` sem `allow-scripts`: sem script, o conteudo nao
+              tem como tocar no documento pai, e a origem deixa de ser opaca — com
+              sandbox vazio o CSP `default-src 'self'` bloqueava a renderizacao e o
+              preview ficava em branco. O CSP declara `frame-src 'self'` por isso. */}
           <iframe
             title="Prévia do e-mail"
-            sandbox=""
-            srcDoc={`<body style="margin:0;padding:16px;background:#fff">${previewHtml}</body>`}
+            sandbox="allow-same-origin"
+            srcDoc={`<body style="margin:0;padding:16px;background:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif">${previewHtml}</body>`}
             className="w-full h-72 rounded-xl border border-outline-variant bg-white"
           />
         </div>
