@@ -71,15 +71,17 @@ export default function Patients() {
   const [status,           setStatus]           = useState('active')
   const [agentId,          setAgentId]          = useState('')
   const [dateRange,        setDateRange]        = useState('')
-  const [page,             setPage]             = useState(1)
+  const [nextCursor,       setNextCursor]       = useState(null)
+  const [loadingMore,      setLoadingMore]      = useState(false)
   const [selectedPatientId, setSelectedPatientId] = useState(null)
 
   useEffect(() => {
     api.agents.list().then(data => setAgents(data ?? [])).catch(() => {})
   }, [])
 
-  const buildParams = useCallback((pageNum) => {
-    const params = { page: pageNum, limit: PAGE_SIZE }
+  const buildParams = useCallback((cursor) => {
+    const params = { limit: PAGE_SIZE }
+    if (cursor)        params.cursor   = cursor
     if (status)        params.status   = status
     if (search.trim()) params.search   = search.trim()
     if (agentId)       params.agent_id = agentId
@@ -87,25 +89,30 @@ export default function Patients() {
     return params
   }, [search, status, agentId, dateRange])
 
-  const fetchPage = useCallback((pageNum) => {
-    setLoading(true)
-    api.patients.list(buildParams(pageNum))
+  // Sem cursor = recomeçar do topo (filtro mudou). Com cursor = anexar à lista.
+  const fetchPage = useCallback((cursor) => {
+    const eContinuacao = Boolean(cursor)
+    if (eContinuacao) setLoadingMore(true); else setLoading(true)
+
+    api.patients.list(buildParams(cursor))
       .then(data => {
-        setPatients(data.patients ?? [])
-        setTotal(data.total ?? 0)
-        setPage(pageNum)
+        const recebidos = data.patients ?? []
+        setPatients(atuais => (eContinuacao ? [...atuais, ...recebidos] : recebidos))
+        setNextCursor(data.next_cursor ?? null)
+        // `total` só vem no modo paginado por número; no cursor a API não conta
+        // de propósito — COUNT(*) em base grande custa quase tanto quanto a
+        // própria listagem. Mostramos quantos já foram carregados.
+        setTotal(data.total ?? null)
       })
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => { setLoading(false); setLoadingMore(false) })
   }, [buildParams])
 
   useEffect(() => {
-    const t = setTimeout(() => fetchPage(1), 300)
+    const t = setTimeout(() => fetchPage(null), 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, status, agentId, dateRange])
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
@@ -117,7 +124,7 @@ export default function Patients() {
             <h2 className="text-display-lg font-display-lg text-on-surface">Pacientes</h2>
             {!loading && (
               <span className="bg-primary/10 text-primary px-3 py-1 rounded-full text-label-sm font-label-sm border border-primary/20">
-                {total} Total
+                {patients.length}{nextCursor ? '+' : ''} {patients.length === 1 ? 'paciente' : 'pacientes'}
               </span>
             )}
           </div>
@@ -307,52 +314,33 @@ export default function Patients() {
           )}
         </div>
 
-        {/* ── Pagination ──────────────────────────────────── */}
+        {/* ── Carregar mais ───────────────────────────────── */}
         {!loading && patients.length > 0 && (
           <div className="px-6 py-4 border-t border-outline-variant bg-surface-container-low flex items-center justify-between flex-wrap gap-3">
             <p className="text-label-sm font-label-sm text-outline">
-              Mostrando{' '}
-              <span className="font-medium text-on-surface">
-                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}
-              </span>
-              {' '}de{' '}
-              <span className="font-medium text-on-surface">{total}</span>
-              {' '}pacientes
+              <span className="font-medium text-on-surface">{patients.length}</span>
+              {' '}paciente{patients.length === 1 ? '' : 's'} carregado{patients.length === 1 ? '' : 's'}
+              {!nextCursor && patients.length > PAGE_SIZE && ' — fim da lista'}
             </p>
-            <div className="flex items-center gap-2">
+            {nextCursor && (
               <button
-                onClick={() => fetchPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="p-1.5 rounded border border-outline-variant text-outline hover:bg-surface hover:text-on-surface transition-colors disabled:opacity-50"
+                onClick={() => fetchPage(nextCursor)}
+                disabled={loadingMore}
+                className="px-4 py-2 rounded-lg border border-outline-variant text-label-md font-label-md text-on-surface hover:bg-surface hover:border-primary hover:text-primary transition-colors disabled:opacity-50 flex items-center gap-2"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>chevron_left</span>
+                {loadingMore ? (
+                  <>
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-outline/40 border-t-primary" />
+                    Carregando...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>expand_more</span>
+                    Carregar mais
+                  </>
+                )}
               </button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                  const n = i + 1
-                  return (
-                    <button
-                      key={n}
-                      onClick={() => fetchPage(n)}
-                      className={`w-7 h-7 rounded text-label-sm font-label-sm flex items-center justify-center transition-colors ${
-                        page === n
-                          ? 'bg-primary text-on-primary'
-                          : 'hover:bg-surface-container-high text-on-surface-variant'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  )
-                })}
-              </div>
-              <button
-                onClick={() => fetchPage(Math.min(totalPages, page + 1))}
-                disabled={page === totalPages}
-                className="p-1.5 rounded border border-outline-variant text-outline hover:bg-surface hover:text-on-surface transition-colors disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>chevron_right</span>
-              </button>
-            </div>
+            )}
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@ import {
 } from '../utils/protocols.js'
 import { purgeOldErrorLogs, RETENTION_DAYS } from './error-log.js'
 import { purgeExpiredResetCodes } from '../utils/passwordReset.js'
+import { runArquivamento } from './arquivamento.js'
 
 // ── Entry point chamado pelo cron trigger ────────────────────
 export async function runScheduler(env) {
@@ -56,7 +57,25 @@ export async function runNightlyCleanup(env) {
     () => purgeStaleRateLimits(env)
   )
 
-  console.log(`[Faxina] Concluída. ${logsRemovidos} log(s) além de ${RETENTION_DAYS} dias, ${codigosRemovidos} código(s) de reset expirado(s) e ${contadoresRemovidos} contador(es) de rate limit vencido(s) removido(s).`)
+  // Arquiva quem passou da janela de acompanhamento. Fica na faxina porque o
+  // efeito e o mesmo: tirar da operacao o que ja nao serve a ela.
+  const arquivados = await limparComTolerancia(
+    'arquivamento',
+    async () => (await runArquivamento(env)).arquivados
+  )
+
+  // Sem estatistica atualizada o planner do SQLite escolhe indice por heuristica
+  // fixa — e com a tabela crescendo 100-300 linhas/dia isso passa a errar. O
+  // ANALYZE e barato e mantem a escolha alinhada ao volume real. Roda por
+  // ultimo, pra ja refletir o que o arquivamento mudou.
+  await limparComTolerancia('ANALYZE', async () => {
+    await env.DB.prepare('ANALYZE').run()
+    return 0
+  })
+
+  console.log(`[Faxina] ${arquivados} paciente(s) arquivado(s).`)
+
+  console.log(`[Faxina] Concluída. ${logsRemovidos} log(s) além de ${RETENTION_DAYS} dias, ${codigosRemovidos} código(s) de reset expirado(s) e ${contadoresRemovidos} contador(es) de rate limit vencido(s) removido(s). Estatísticas do banco atualizadas.`)
   return { logsRemovidos, codigosRemovidos, contadoresRemovidos }
 }
 

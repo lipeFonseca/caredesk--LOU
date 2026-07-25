@@ -14,6 +14,15 @@ export function sanitizeOptionalPhone(valor) {
   return limpo || null
 }
 
+// Versao so-digitos, gravada em `patients.phone_digits`. Existe pra busca por
+// telefone poder usar prefixo (`LIKE '8598%'`), que usa indice — o formato
+// exibido tem pontuacao e mataria essa possibilidade.
+export function phoneDigits(valor) {
+  if (valor == null || valor === '') return null
+  const digitos = String(valor).replace(/\D/g, '')
+  return digitos || null
+}
+
 // Validacao proposital de "formato plausivel", nao de e-mail existente: aqui o
 // e-mail e so contato, nunca credencial nem destino de envio automatico. Regra
 // mais dura rejeitaria endereco valido e daria trabalho a quem cadastra.

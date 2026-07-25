@@ -7,7 +7,14 @@ import {
 } from '../utils/protocols.js'
 import { resolveSuggestedMessageTemplate } from '../utils/messageTemplates.js'
 import { isValidDocumentStatus } from '../utils/documentTemplates.js'
-import { sanitizeOptionalPhone, sanitizeOptionalEmail } from '../utils/contactFields.js'
+import { sanitizeOptionalPhone, sanitizeOptionalEmail, phoneDigits } from '../utils/contactFields.js'
+import {
+  buildPatientFilters,
+  classifySearchTerm,
+  decodeCursor,
+  encodeCursor,
+  normalizePageSize,
+} from '../utils/patientQuery.js'
 
 const patients = new Hono()
 patients.use('*', authMiddleware)
@@ -19,27 +26,64 @@ patients.use('*', authMiddleware)
 // presente, aplica LIMIT/OFFSET e a resposta inclui `total` pra paginacao
 // no frontend.
 patients.get('/', async (c) => {
-  const { status, agent_id, from, to, search, page, limit } = c.req.query()
+  const { status, agent_id, from, to, search, page, limit, cursor, include_archived } = c.req.query()
 
-  let whereSql = ' WHERE 1=1'
-  const binds = []
+  const filtros = buildPatientFilters({
+    status, agent_id, from, to,
+    includeArchived: include_archived === '1',
+  })
 
-  if (status)   { whereSql += ' AND p.status = ?';            binds.push(status) }
-  if (agent_id) { whereSql += ' AND p.assigned_agent_id = ?'; binds.push(agent_id) }
-  if (from)     { whereSql += ' AND p.surgery_date >= ?';     binds.push(from) }
-  if (to)       { whereSql += ' AND p.surgery_date <= ?';     binds.push(to) }
-  if (search)   {
-    whereSql += ' AND (p.name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)'
-    const like = `%${search}%`
-    binds.push(like, like, like)
+  let whereSql = filtros.sql
+  const binds = [...filtros.binds]
+
+  // Busca: FTS pra texto, prefixo indexado pra telefone. O `LIKE '%termo%'`
+  // anterior fazia SCAN da tabela inteira a cada tecla digitada.
+  const termoBuscado = classifySearchTerm(search)
+  if (termoBuscado.kind === 'text' && termoBuscado.query) {
+    whereSql += `${whereSql ? ' AND' : ' WHERE'} p.rowid IN (SELECT rowid FROM patients_fts WHERE patients_fts MATCH ?)`
+    binds.push(termoBuscado.query)
+  } else if (termoBuscado.kind === 'phone') {
+    whereSql += `${whereSql ? ' AND' : ' WHERE'} p.phone_digits LIKE ?`
+    binds.push(`%${termoBuscado.digits}%`)
   }
 
-  const countRow = await c.env.DB.prepare(`
-    SELECT COUNT(*) AS total FROM patients p ${whereSql}
-  `).bind(...binds).first()
-  const total = countRow?.total ?? 0
+  // Cursor e a paginacao padrao (custo constante em qualquer profundidade).
+  // `page` continua aceito porque o Dashboard e telas antigas ainda usam, e
+  // porque OFFSET raso nao incomoda — o problema so aparece paginando fundo.
+  const tamanhoDaPagina = normalizePageSize(limit)
+  const posicao = decodeCursor(cursor)
 
-  let sql = `
+  let paginacaoSql = ''
+  const queryBinds = [...binds]
+
+  if (posicao) {
+    // Comparacao lexicografica de tupla: pega tudo estritamente "depois" da
+    // ultima linha entregue, na ordem (surgery_date DESC, id DESC).
+    whereSql += `${whereSql ? ' AND' : ' WHERE'} (p.surgery_date < ? OR (p.surgery_date = ? AND p.id < ?))`
+    queryBinds.push(posicao.surgery_date, posicao.surgery_date, posicao.id)
+    paginacaoSql = ' LIMIT ?'
+    queryBinds.push(tamanhoDaPagina + 1)
+  } else {
+    const pageNum = parseInt(page, 10)
+    if (Number.isInteger(pageNum) && pageNum > 0) {
+      paginacaoSql = ' LIMIT ? OFFSET ?'
+      queryBinds.push(tamanhoDaPagina, (pageNum - 1) * tamanhoDaPagina)
+    } else if (cursor !== undefined || limit !== undefined) {
+      // Primeira página do modo cursor.
+      paginacaoSql = ' LIMIT ?'
+      queryBinds.push(tamanhoDaPagina + 1)
+    }
+  }
+
+  // COUNT(*) varre o resultado inteiro do filtro; em base grande custa quase
+  // tanto quanto a propria listagem. So e calculado quando alguem usa `page`,
+  // que e o unico modo que precisa saber o total pra montar os numeros.
+  const usaContagem = !posicao && Number.isInteger(parseInt(page, 10))
+  const total = usaContagem
+    ? (await c.env.DB.prepare(`SELECT COUNT(*) AS total FROM patients p ${whereSql}`).bind(...binds).first())?.total ?? 0
+    : null
+
+  const sql = `
     SELECT
       p.*,
       a.name  AS agent_name,
@@ -52,18 +96,18 @@ patients.get('/', async (c) => {
     LEFT JOIN agents a           ON p.assigned_agent_id = a.id
     LEFT JOIN contact_protocols cp ON p.protocol_id = cp.id
     ${whereSql}
-    ORDER BY p.surgery_date DESC
+    ORDER BY p.surgery_date DESC, p.id DESC
+    ${paginacaoSql}
   `
-  const queryBinds = [...binds]
 
-  const pageNum = parseInt(page, 10)
-  if (Number.isInteger(pageNum) && pageNum > 0) {
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20))
-    sql += ' LIMIT ? OFFSET ?'
-    queryBinds.push(limitNum, (pageNum - 1) * limitNum)
-  }
+  const { results: linhas } = await c.env.DB.prepare(sql).bind(...queryBinds).all()
 
-  const { results } = await c.env.DB.prepare(sql).bind(...queryBinds).all()
+  // Pedimos uma linha a mais só pra saber se existe próxima página, sem um
+  // COUNT separado. Ela não vai na resposta.
+  const modoCursor = paginacaoSql === ' LIMIT ?'
+  const temMais = modoCursor && linhas.length > tamanhoDaPagina
+  const results = temMais ? linhas.slice(0, tamanhoDaPagina) : linhas
+  const proximoCursor = temMais ? encodeCursor(results[results.length - 1]) : null
 
   const today = new Date().toISOString().split('T')[0]
   const enriched = results.map(p => {
@@ -76,7 +120,7 @@ patients.get('/', async (c) => {
     }
   })
 
-  return c.json({ patients: enriched, total })
+  return c.json({ patients: enriched, total, next_cursor: proximoCursor })
 })
 
 // ── GET /api/patients/:id ─────────────────────────────────────
@@ -168,11 +212,12 @@ patients.post('/', async (c) => {
     const createdBy = c.get('agent')?.sub || null
 
     await c.env.DB.prepare(`
-      INSERT INTO patients (id, name, phone, email, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO patients (id, name, phone, phone_digits, email, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, name,
       phone,
+      phoneDigits(phone),
       email,
       procedure,
       surgery_date,
@@ -221,7 +266,11 @@ patients.patch('/:id', async (c) => {
       return c.json({ error: 'Status inválido' }, 400)
     }
 
+    // phone_digits acompanha phone sempre: e coluna derivada, nao entra em
+    // `allowed` (o cliente nunca a envia) mas precisa ser reescrita junto, senao
+    // a busca por telefone passa a apontar pro numero antigo.
     const sets = fields.map(f => `${f} = ?`).join(', ')
+      + (fields.includes('phone') ? ', phone_digits = ?' : '')
     const nullable = ['phone', 'email', 'assigned_agent_id', 'protocol_id', 'notes']
     const values = await Promise.all(fields.map(async (field) => {
       if (field === 'protocol_id') {
@@ -246,6 +295,8 @@ patients.patch('/:id', async (c) => {
       if (nullable.includes(field) && body[field] === '') return null
       return body[field]
     }))
+
+    if (fields.includes('phone')) values.push(phoneDigits(body.phone))
 
     await c.env.DB.prepare(
       `UPDATE patients SET ${sets}, updated_at = datetime('now') WHERE id = ?`
