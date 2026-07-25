@@ -136,6 +136,7 @@ export const api = {
     },
     removeAvatar:  (id)       => request(`/agents/${id}/avatar`, { method: 'DELETE' }),
     resetPassword: (id, body) => request(`/agents/${id}/reset-password`, { method: 'POST', body: JSON.stringify(body) }),
+    delete:        (id)       => request(`/agents/${id}`, { method: 'DELETE' }),
   },
 
   // ── Notificações ────────────────────────────────────────────
