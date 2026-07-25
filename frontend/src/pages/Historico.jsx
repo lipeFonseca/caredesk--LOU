@@ -27,16 +27,18 @@ function itemTitle(item) {
 
 export default function Historico() {
   const [items,   setItems]   = useState([])
-  const [total,   setTotal]   = useState(0)
+  const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(true)
   const [page,    setPage]    = useState(1)
 
+  // `total` deixou de existir na API: contá-lo exigia varrer pacientes e
+  // contatos inteiros a cada página. Agora navegamos por "tem próxima?".
   const fetchPage = useCallback((pageNum) => {
     setLoading(true)
     api.activity.list({ page: pageNum, limit: PAGE_SIZE })
       .then(data => {
         setItems(data.items ?? [])
-        setTotal(data.total ?? 0)
+        setHasMore(Boolean(data.has_more))
         setPage(pageNum)
       })
       .catch(() => {})
@@ -45,8 +47,6 @@ export default function Historico() {
 
   useEffect(() => { fetchPage(1) }, [fetchPage])
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
 
@@ -54,9 +54,9 @@ export default function Historico() {
       <div>
         <div className="flex items-center gap-3">
           <h2 className="text-display-lg font-display-lg text-on-surface">Histórico</h2>
-          {!loading && (
+          {!loading && items.length > 0 && (
             <span className="bg-primary/10 text-primary px-3 py-1 rounded-full text-label-sm font-label-sm border border-primary/20">
-              {total} registros
+              página {page}
             </span>
           )}
         </div>
@@ -137,43 +137,24 @@ export default function Historico() {
             <p className="text-label-sm font-label-sm text-outline">
               Mostrando{' '}
               <span className="font-medium text-on-surface">
-                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}
+                {(page - 1) * PAGE_SIZE + 1}–{(page - 1) * PAGE_SIZE + items.length}
               </span>
-              {' '}de{' '}
-              <span className="font-medium text-on-surface">{total}</span>
-              {' '}registros
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => fetchPage(Math.max(1, page - 1))}
                 disabled={page === 1}
-                className="p-1.5 rounded border border-outline-variant text-outline hover:bg-surface hover:text-on-surface transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded border border-outline-variant text-label-sm text-outline hover:bg-surface hover:text-on-surface transition-colors disabled:opacity-50 flex items-center gap-1"
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>chevron_left</span>
+                Anterior
               </button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                  const n = i + 1
-                  return (
-                    <button
-                      key={n}
-                      onClick={() => fetchPage(n)}
-                      className={`w-7 h-7 rounded text-label-sm font-label-sm flex items-center justify-center transition-colors ${
-                        page === n
-                          ? 'bg-primary text-on-primary'
-                          : 'hover:bg-surface-container-high text-on-surface-variant'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  )
-                })}
-              </div>
               <button
-                onClick={() => fetchPage(Math.min(totalPages, page + 1))}
-                disabled={page === totalPages}
-                className="p-1.5 rounded border border-outline-variant text-outline hover:bg-surface hover:text-on-surface transition-colors disabled:opacity-50"
+                onClick={() => fetchPage(page + 1)}
+                disabled={!hasMore}
+                className="px-3 py-1.5 rounded border border-outline-variant text-label-sm text-outline hover:bg-surface hover:text-on-surface transition-colors disabled:opacity-50 flex items-center gap-1"
               >
+                Próxima
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>chevron_right</span>
               </button>
             </div>

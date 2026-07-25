@@ -16,14 +16,17 @@ activity.get('/', async (c) => {
   const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20))
   const offset   = (pageNum - 1) * limitNum
 
-  const countRow = await c.env.DB.prepare(`
-    SELECT
-      (SELECT COUNT(*) FROM patients) +
-      (SELECT COUNT(*) FROM followup_logs) AS total
-  `).first()
-  const total = countRow?.total ?? 0
+  // O total foi REMOVIDO de proposito. Ele era
+  // `COUNT(*) FROM patients + COUNT(*) FROM followup_logs`, ou seja, lia a base
+  // inteira — as duas tabelas, incluindo arquivados — a cada pagina aberta.
+  // Com 300k pacientes e 1,5M contatos seriam ~1,8 MILHAO de linhas lidas por
+  // carregamento, contra uma cota de 5 milhoes/dia no plano free: tres visitas
+  // ao Historico esgotariam o dia.
+  //
+  // No lugar dele, pedimos uma linha a mais que o limite pra saber se existe
+  // proxima pagina. Mesmo padrao ja usado na lista de pacientes.
 
-  const { results } = await c.env.DB.prepare(`
+  const { results: linhas } = await c.env.DB.prepare(`
     SELECT kind, ts, patient_id, patient_name, agent_name, contact_type, outcome
     FROM (
       -- COALESCE com o snapshot: agente excluido nao apaga a autoria do que ele
@@ -55,9 +58,12 @@ activity.get('/', async (c) => {
     )
     ORDER BY ts DESC
     LIMIT ? OFFSET ?
-  `).bind(limitNum, offset).all()
+  `).bind(limitNum + 1, offset).all()
 
-  return c.json({ items: results ?? [], total })
+  const temMais = (linhas?.length ?? 0) > limitNum
+  const items = temMais ? linhas.slice(0, limitNum) : (linhas ?? [])
+
+  return c.json({ items, page: pageNum, has_more: temMais })
 })
 
 export default activity
