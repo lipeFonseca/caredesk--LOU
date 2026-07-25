@@ -35,11 +35,15 @@ followups.post('/', async (c) => {
   if (!patient) return c.json({ error: 'Paciente não encontrado' }, 404)
 
   const id = crypto.randomUUID()
+
+  // Nome gravado junto: se o agente for excluido depois, a ficha do paciente
+  // continua mostrando quem fez o contato. O token carrega o nome, entao isso
+  // nao custa consulta extra.
   await c.env.DB.prepare(`
-    INSERT INTO followup_logs (id, patient_id, agent_id, contact_date, contact_type, outcome, notes, next_followup_date, is_extra_contact)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO followup_logs (id, patient_id, agent_id, agent_name_snapshot, contact_date, contact_type, outcome, notes, next_followup_date, is_extra_contact)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    id, patient_id, agent.sub,
+    id, patient_id, agent.sub, agent.name ?? null,
     contact_date || new Date().toISOString().split('T')[0],
     contact_type || 'call',
     outcome || 'reached',

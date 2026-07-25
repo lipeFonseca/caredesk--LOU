@@ -26,12 +26,14 @@ activity.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(`
     SELECT kind, ts, patient_id, patient_name, agent_name, contact_type, outcome
     FROM (
+      -- COALESCE com o snapshot: agente excluido nao apaga a autoria do que ele
+      -- fez. Sem isso o feed passaria a exibir a acao sem responsavel.
       SELECT
         'patient_created' AS kind,
         p.created_at      AS ts,
         p.id              AS patient_id,
         p.name            AS patient_name,
-        ca.name           AS agent_name,
+        COALESCE(ca.name, p.created_by_name) AS agent_name,
         NULL              AS contact_type,
         NULL              AS outcome
       FROM patients p
@@ -44,7 +46,7 @@ activity.get('/', async (c) => {
         fl.created_at AS ts,
         fl.patient_id AS patient_id,
         p.name        AS patient_name,
-        a.name        AS agent_name,
+        COALESCE(a.name, fl.agent_name_snapshot) AS agent_name,
         fl.contact_type AS contact_type,
         fl.outcome    AS outcome
       FROM followup_logs fl
