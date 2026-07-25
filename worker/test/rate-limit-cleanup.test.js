@@ -28,6 +28,8 @@ test('purgeStaleRateLimits preserva bloqueio em curso e contador recente', async
   await purgeStaleRateLimits({ DB })
 
   const sql = DB.chamadas[0]
-  assert.match(sql, /locked_until IS NULL OR locked_until < datetime\('now'\)/)
+  // locked_until vem do JS em ISO e precisa passar por datetime() pra comparar
+  // com o formato do SQLite; sem isso, bloqueio vencido nunca era limpo.
+  assert.match(sql, /datetime\(locked_until\) < datetime\('now'\)/)
   assert.match(sql, /updated_at < datetime\('now', '-1 day'\)/)
 })
