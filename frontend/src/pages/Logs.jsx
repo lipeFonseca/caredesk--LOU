@@ -3,6 +3,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { api } from '@/services/api'
 import { parseSqliteTimestamp } from '@/utils/sqliteDate'
+import StorageHealth from '@/components/StorageHealth'
 
 const PAGE_SIZE = 20
 
@@ -51,6 +52,8 @@ export default function Logs() {
           {retencao && ` Mantidos por ${retencao} dias e removidos automaticamente depois disso.`}
         </p>
       </div>
+
+      <StorageHealth />
 
       {/* ── Lista ───────────────────────────────────────────── */}
       <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 overflow-hidden flex flex-col">

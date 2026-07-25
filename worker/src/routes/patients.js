@@ -20,7 +20,12 @@ import {
   AVISO_ENCERRAMENTO_DIAS,
 } from '../utils/patientQuery.js'
 import { recalcularProximoMarco } from '../utils/proximoMarco.js'
-import { ajustarContador, contaComoAtivo, CONTADOR_PACIENTES_ATIVOS } from '../utils/contadores.js'
+import {
+  ajustarContador,
+  contaComoAtivo,
+  CONTADOR_PACIENTES_ATIVOS,
+  CONTADOR_PACIENTES_TOTAL,
+} from '../utils/contadores.js'
 
 const patients = new Hono()
 patients.use('*', authMiddleware)
@@ -250,6 +255,7 @@ patients.post('/', async (c) => {
     await recalcularProximoMarco(c.env.DB, id)
     // Paciente nasce 'active' e nao arquivado.
     await ajustarContador(c.env.DB, CONTADOR_PACIENTES_ATIVOS, 1)
+    await ajustarContador(c.env.DB, CONTADOR_PACIENTES_TOTAL, 1)
 
     return c.json({
       id, name,
@@ -369,6 +375,7 @@ patients.delete('/:id', adminOnly, async (c) => {
   if (contaComoAtivo(row)) {
     await ajustarContador(c.env.DB, CONTADOR_PACIENTES_ATIVOS, -1)
   }
+  await ajustarContador(c.env.DB, CONTADOR_PACIENTES_TOTAL, -1)
 
   // Limpar protocolo customizado orphan (só existe para esse paciente)
   if (row?.protocol_id && row?.is_custom === 1) {
