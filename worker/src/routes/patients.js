@@ -15,6 +15,9 @@ import {
   encodeCursor,
   normalizePageSize,
   isValidPatientStatus,
+  normalizeArchivedFilter,
+  SQL_DIAS_ATE_ARQUIVAR,
+  AVISO_ENCERRAMENTO_DIAS,
 } from '../utils/patientQuery.js'
 import { recalcularProximoMarco } from '../utils/proximoMarco.js'
 
@@ -28,11 +31,12 @@ patients.use('*', authMiddleware)
 // presente, aplica LIMIT/OFFSET e a resposta inclui `total` pra paginacao
 // no frontend.
 patients.get('/', async (c) => {
-  const { status, agent_id, from, to, search, page, limit, cursor, include_archived } = c.req.query()
+  const { status, agent_id, from, to, search, page, limit, cursor, archived, ending_soon } = c.req.query()
 
   const filtros = buildPatientFilters({
     status, agent_id, from, to,
-    includeArchived: include_archived === '1',
+    archived: normalizeArchivedFilter(archived),
+    endingSoon: ending_soon === '1',
   })
 
   let whereSql = filtros.sql
@@ -93,7 +97,8 @@ patients.get('/', async (c) => {
       cp.days AS _proto_days,
       cp.color AS protocol_color,
       (SELECT contact_date FROM followup_logs WHERE patient_id = p.id ORDER BY contact_date DESC LIMIT 1) AS last_contact_date,
-      (SELECT COUNT(*) FROM followup_logs WHERE patient_id = p.id AND is_extra_contact = 0) AS total_followups
+      (SELECT COUNT(*) FROM followup_logs WHERE patient_id = p.id AND is_extra_contact = 0) AS total_followups,
+      ${SQL_DIAS_ATE_ARQUIVAR} AS days_until_archive
     FROM patients p
     LEFT JOIN agents a           ON p.assigned_agent_id = a.id
     LEFT JOIN contact_protocols cp ON p.protocol_id = cp.id
@@ -131,7 +136,8 @@ patients.get('/:id', async (c) => {
     SELECT p.*, a.name AS agent_name,
            cp.name AS protocol_name, cp.days AS protocol_days_json,
            cp.color AS protocol_color, cp.description AS protocol_description,
-           cp.is_custom AS protocol_is_custom
+           cp.is_custom AS protocol_is_custom,
+           ${SQL_DIAS_ATE_ARQUIVAR} AS days_until_archive
     FROM patients p
     LEFT JOIN agents a           ON p.assigned_agent_id = a.id
     LEFT JOIN contact_protocols cp ON p.protocol_id = cp.id

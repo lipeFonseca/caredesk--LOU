@@ -42,7 +42,7 @@ const activityConfig = {
   },
 }
 
-const STATS_VAZIO = { total: 0, overdue: 0, due: 0, soon: 0, ok: 0 }
+const STATS_VAZIO = { total: 0, overdue: 0, due: 0, soon: 0, ok: 0, ending_soon: 0 }
 
 export default function Dashboard() {
   const [stats, setStats] = useState(STATS_VAZIO)
@@ -230,6 +230,22 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+
+      {/* Aviso de encerramento: sem ele o paciente sai do acompanhamento de um
+          dia pro outro, sem ninguém ver chegando. */}
+      {!loading && stats.ending_soon > 0 && (
+        <Link
+          to="/patients"
+          className="flex items-center gap-3 rounded-2xl border border-[#f57f17]/30 bg-[#fff8e1] px-5 py-4 transition-colors hover:border-[#f57f17]/60"
+        >
+          <span className="material-symbols-outlined text-[#f57f17]">hourglass_bottom</span>
+          <p className="text-body-md text-[#7a4f00]">
+            <strong>{stats.ending_soon}</strong>{' '}
+            {stats.ending_soon === 1 ? 'paciente sai' : 'pacientes saem'} do acompanhamento nos próximos 30 dias.
+            <span className="ml-1 underline underline-offset-4">Ver quem são</span>
+          </p>
+        </Link>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
         <section className="card">

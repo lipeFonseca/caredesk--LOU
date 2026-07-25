@@ -81,13 +81,32 @@ export function normalizePageSize(limit) {
 
 // ── WHERE compartilhado ──────────────────────────────────────
 // Devolve fragmento + binds na mesma ordem, pra rota so concatenar.
-export function buildPatientFilters({ status, agent_id, from, to, includeArchived }) {
+// Janela de acompanhamento e quanto antes o paciente entra em "encerrando".
+// Precisam bater com JANELA_DE_ACOMPANHAMENTO_MESES de services/arquivamento.js.
+export const JANELA_MESES = 6
+export const AVISO_ENCERRAMENTO_DIAS = 30
+
+// Dias que faltam pro arquivamento automatico. Negativo = ja passou da janela e
+// so nao foi arquivado porque o cron ainda nao rodou.
+export const SQL_DIAS_ATE_ARQUIVAR = `
+  CAST(julianday(date(p.surgery_date, '+${JANELA_MESES} months')) - julianday(date('now')) AS INTEGER)
+`
+
+// `archived`: 'none' (padrao) | 'only' | 'all'
+// `endingSoon`: só os que arquivam dentro da janela de aviso
+export function buildPatientFilters({ status, agent_id, from, to, archived, endingSoon }) {
   const clausulas = []
   const binds = []
 
-  // Arquivado fica fora por padrao: e o predicado que torna os indices parciais
-  // elegiveis, entao remove-lo nao muda so o resultado, muda o plano da query.
-  if (!includeArchived) clausulas.push('p.archived_at IS NULL')
+  // O predicado de arquivamento nao muda so o resultado, muda o PLANO: e ele
+  // que torna os indices parciais elegiveis. Por isso 'all' (que o remove) deve
+  // ser usado so onde realmente se precisa da base inteira.
+  if (archived === 'only')      clausulas.push('p.archived_at IS NOT NULL')
+  else if (archived !== 'all')  clausulas.push('p.archived_at IS NULL')
+
+  if (endingSoon) {
+    clausulas.push(`date(p.surgery_date, '+${JANELA_MESES} months') <= date('now', '+${AVISO_ENCERRAMENTO_DIAS} days')`)
+  }
 
   if (status)   { clausulas.push('p.status = ?');            binds.push(status) }
   if (agent_id) { clausulas.push('p.assigned_agent_id = ?'); binds.push(agent_id) }
@@ -95,4 +114,9 @@ export function buildPatientFilters({ status, agent_id, from, to, includeArchive
   if (to)       { clausulas.push('p.surgery_date <= ?');     binds.push(to) }
 
   return { sql: clausulas.length ? ` WHERE ${clausulas.join(' AND ')}` : '', binds }
+}
+
+// Aceita só os valores conhecidos; qualquer outra coisa cai no padrão seguro.
+export function normalizeArchivedFilter(valor) {
+  return ['only', 'all'].includes(valor) ? valor : 'none'
 }
