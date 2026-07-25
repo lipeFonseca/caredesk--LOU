@@ -148,6 +148,17 @@ CREATE TABLE IF NOT EXISTS password_reset_codes (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Templates de e-mail editaveis pelo admin (aba Mensageria). Tabela propria
+-- porque corpo de e-mail e texto longo; app_settings e chave/valor curto.
+-- Uma linha por tipo: nao ha versionamento nem multiplos templates por tipo.
+CREATE TABLE IF NOT EXISTS email_templates (
+  tipo       TEXT PRIMARY KEY CHECK (tipo IN ('password_reset', 'daily_digest')),
+  subject    TEXT NOT NULL,
+  body_html  TEXT NOT NULL,
+  is_enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ============================================================
 -- Índices de performance
 -- ============================================================

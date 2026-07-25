@@ -282,10 +282,12 @@ auth.post('/forgot-password', async (c) => {
     VALUES (?, ?, ?)
   `).bind(agent.id, codeHash, resetCodeExpiryIso(now)).run()
 
-  const { subject, html } = buildResetCodeEmail({
+  const nomeDaClinica = await lerNomeDaClinica(c.env.DB)
+  const { subject, html } = await buildResetCodeEmail(c.env, {
     nomeDoAgente: agent.name,
     codigo,
     minutosDeValidade: CODE_TTL_MINUTES,
+    nomeDaClinica,
   })
 
   try {
@@ -354,6 +356,11 @@ auth.post('/reset-password', async (c) => {
 
   return c.json({ success: true })
 })
+
+async function lerNomeDaClinica(db) {
+  const linha = await db.prepare("SELECT value FROM app_settings WHERE key = 'clinic_name'").first()
+  return linha?.value || 'CareDesk'
+}
 
 export async function hashPassword(password) {
   const enc = new TextEncoder()

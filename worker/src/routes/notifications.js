@@ -13,6 +13,12 @@ import {
   redactSettings,
 } from '../utils/messagingSettings.js'
 import { sendEmail } from '../services/email.js'
+import {
+  EMAIL_TEMPLATE_PLACEHOLDERS,
+  isValidEmailTemplateType,
+  validateEmailTemplatePayload,
+} from '../utils/emailTemplates.js'
+import { sendDigestToAgent } from '../services/daily-digest.js'
 
 const notifications = new Hono()
 notifications.use('*', authMiddleware)
@@ -125,6 +131,56 @@ settings.patch('/', adminOnly, async (c) => {
   }
 
   return c.json({ success: true })
+})
+
+// ── GET /api/settings/email-templates ────────────────────────
+settings.get('/email-templates', adminOnly, async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT tipo, subject, body_html, is_enabled, updated_at FROM email_templates'
+  ).all()
+
+  return c.json({
+    templates: results ?? [],
+    placeholders: EMAIL_TEMPLATE_PLACEHOLDERS,
+  })
+})
+
+// ── PUT /api/settings/email-templates/:tipo ──────────────────
+settings.put('/email-templates/:tipo', adminOnly, async (c) => {
+  const tipo = c.req.param('tipo')
+  if (!isValidEmailTemplateType(tipo)) {
+    return c.json({ error: 'Tipo de template inválido' }, 400)
+  }
+
+  const body = await c.req.json()
+  const validado = validateEmailTemplatePayload(body)
+  if (validado.error) return c.json({ error: validado.error }, validado.status)
+
+  await c.env.DB.prepare(`
+    UPDATE email_templates
+    SET subject = ?, body_html = ?, is_enabled = ?, updated_at = datetime('now')
+    WHERE tipo = ?
+  `).bind(
+    validado.subject,
+    validado.body_html,
+    body.is_enabled === false || body.is_enabled === 0 ? 0 : 1,
+    tipo
+  ).run()
+
+  return c.json({ success: true })
+})
+
+// ── POST /api/settings/email/test-digest ─────────────────────
+// Manda o resumo noturno real (dados de hoje e de amanhã) pro admin logado.
+settings.post('/email/test-digest', adminOnly, async (c) => {
+  const { sub } = c.get('agent')
+
+  try {
+    const resultado = await sendDigestToAgent(c.env, sub)
+    return c.json({ success: true, ...resultado })
+  } catch (falha) {
+    return c.json({ error: falha.message || 'Falha ao enviar o resumo de teste' }, 502)
+  }
 })
 
 // ── POST /api/settings/email/test ────────────────────────────

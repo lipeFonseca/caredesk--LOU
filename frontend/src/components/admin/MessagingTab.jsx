@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '@/services/api'
+import EmailTemplateEditor from '@/components/admin/EmailTemplateEditor'
 
 // Configuracao do envio de e-mail (hoje usado so pelo fluxo de redefinicao de
 // senha). O passo a passo de publicacao do Apps Script esta em
@@ -181,6 +182,8 @@ export default function MessagingTab() {
           que está gravado, não o que está na tela.
         </p>
       </form>
+
+      <EmailTemplateEditor />
     </div>
   )
 }

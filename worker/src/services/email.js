@@ -10,6 +10,7 @@
 // reset nao precisa saber quem entrega.
 
 import { resolveEmailConfig } from '../utils/messagingSettings.js'
+import { loadEmailTemplate, renderEmailTemplate } from '../utils/emailTemplates.js'
 
 // LIMITACAO: conta Gmail gratuita entrega ~100 destinatarios/dia. O uso previsto
 // e reset de senha (poucos por dia), entao a cota nao foi tratada em codigo.
@@ -51,19 +52,25 @@ export async function sendEmail(env, { to, subject, html }) {
 }
 
 // ── Conteudo do e-mail de reset ───────────────────────────────
-export function buildResetCodeEmail({ nomeDoAgente, codigo, minutosDeValidade, nomeDoSistema = 'CareDesk' }) {
-  const saudacao = nomeDoAgente ? `Olá, ${nomeDoAgente}.` : 'Olá.'
-
-  return {
-    subject: `${nomeDoSistema} — código para redefinir sua senha`,
-    html: `
-      <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #1c1b1f; line-height: 1.6;">
-        <p>${saudacao}</p>
-        <p>Recebemos um pedido para redefinir a senha da sua conta no ${nomeDoSistema}. Use o código abaixo:</p>
-        <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; margin: 24px 0; color: #18352d;">${codigo}</p>
-        <p>O código vale por ${minutosDeValidade} minutos e só pode ser usado uma vez.</p>
-        <p style="color: #6b6b6b;">Se não foi você que pediu, ignore este e-mail — sua senha continua a mesma.</p>
-      </div>
-    `.trim(),
+// Le o template editavel do banco. Se a linha sumir (banco novo antes da
+// migration, por exemplo), cai num texto minimo em vez de deixar alguem sem
+// conseguir recuperar a senha — falhar aqui e pior que enviar sem formatacao.
+export async function buildResetCodeEmail(env, { nomeDoAgente, codigo, minutosDeValidade, nomeDaClinica = 'CareDesk' }) {
+  const contexto = {
+    agent_name: nomeDoAgente || 'equipe',
+    code: codigo,
+    expires_in_minutes: minutosDeValidade,
+    clinic_name: nomeDaClinica,
   }
+
+  const template = await loadEmailTemplate(env.DB, 'password_reset')
+  if (!template) {
+    console.warn('[email] template password_reset ausente; usando fallback minimo')
+    return {
+      subject: `${nomeDaClinica} — código para redefinir sua senha`,
+      html: `<p>Seu código é <strong>${codigo}</strong>. Ele vale por ${minutosDeValidade} minutos.</p>`,
+    }
+  }
+
+  return renderEmailTemplate(template, contexto)
 }
