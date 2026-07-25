@@ -133,6 +133,19 @@ CREATE TABLE IF NOT EXISTS error_logs (
   ip          TEXT
 );
 
+-- Codigos de 6 digitos do fluxo "esqueci minha senha" (enviados por e-mail).
+-- Guarda so o SHA-256 do codigo; validade curta e limite de tentativas por
+-- codigo compensam a entropia baixa de 6 digitos.
+CREATE TABLE IF NOT EXISTS password_reset_codes (
+  id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  code_hash  TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  attempts   INTEGER NOT NULL DEFAULT 0,
+  used_at    TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ============================================================
 -- Índices de performance
 -- ============================================================
@@ -151,6 +164,7 @@ CREATE INDEX IF NOT EXISTS idx_document_templates_category ON document_templates
 CREATE INDEX IF NOT EXISTS idx_patient_documents_patient   ON patient_documents(patient_id);
 CREATE INDEX IF NOT EXISTS idx_patient_documents_template  ON patient_documents(document_template_id);
 CREATE INDEX IF NOT EXISTS idx_error_logs_occurred ON error_logs(occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_password_reset_agent ON password_reset_codes(agent_id, created_at DESC);
 
 -- ============================================================
 -- Dados iniciais

@@ -70,6 +70,11 @@ export const api = {
     logout:         ()     => request('/auth/logout', { method: 'POST' }),
     me:             ()     => request('/auth/me'),
     changePassword: (body) => request('/auth/change-password', { method: 'POST', body: JSON.stringify(body) }),
+
+    // Fluxo "esqueci minha senha": pede o código por e-mail e depois troca a
+    // senha com ele. Ambas públicas, sem sessão.
+    forgotPassword: (body) => request('/auth/forgot-password', { method: 'POST', body: JSON.stringify(body) }),
+    resetPassword:  (body) => request('/auth/reset-password',  { method: 'POST', body: JSON.stringify(body) }),
   },
 
   // ── Pacientes ───────────────────────────────────────────────

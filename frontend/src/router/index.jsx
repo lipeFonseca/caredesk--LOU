@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/store'
 import AppLayout    from '@/components/layout/AppLayout'
 import Login        from '@/pages/Login'
+import EsqueciSenha from '@/pages/EsqueciSenha'
 import Dashboard    from '@/pages/Dashboard'
 import Patients     from '@/pages/Patients'
 import PatientDetail from '@/pages/PatientDetail'
@@ -22,6 +23,7 @@ export default function Router() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/esqueci-senha" element={<EsqueciSenha />} />
 
         <Route path="/" element={
           <PrivateRoute><AppLayout /></PrivateRoute>
