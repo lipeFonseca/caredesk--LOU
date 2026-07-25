@@ -156,9 +156,15 @@ a busca congela e passa a mentir em silêncio. Telefone tem caminho próprio
 
 ### Custo de consulta: a métrica que importa é `rows_read`
 
-O D1 no plano free dá **5 milhões de linhas lidas por dia** e **500 MB por
-banco**. A cota de leitura estoura muito antes do espaço, e quem a consome não
-é o volume de dados — são consultas que varrem a base.
+O D1 no plano free dá **5 milhões de linhas lidas por dia**. A cota de leitura
+estoura muito antes do espaço, e quem a consome não é o volume de dados — são
+consultas que varrem a base.
+
+> **Sobre o limite de espaço, que é fácil de confundir:** o free tem **500 MB
+> por banco** e 5 GB somados na conta inteira (até 10 bancos). O CareDesk usa um
+> banco só, então o teto real é **500 MB** — os 5 GB só valeriam se o sistema
+> fosse dividido em vários bancos. Quando apertar, o caminho é o Workers Paid
+> (10 GB por banco), não particionar.
 
 **Regra prática ao escrever qualquer consulta nova:** ela pode ler um número de
 linhas proporcional ao *resultado*, nunca proporcional à *base*.
