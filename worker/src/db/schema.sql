@@ -36,6 +36,12 @@ CREATE TABLE IF NOT EXISTS patients (
   -- E o predicado dos indices parciais abaixo: e o que mantem o indice do
   -- tamanho da janela ativa, nao do historico inteiro da base.
   archived_at     TEXT,
+  -- Data do proximo marco, materializada. Cache de getNextPendingMilestone(),
+  -- mantido pelas rotas de escrita e reconciliado na faxina noturna. Existe pro
+  -- Dashboard agregar em SQL em vez de carregar a base inteira no navegador.
+  -- So a DATA e materializada: a urgencia deriva dela em tempo de consulta, e
+  -- por isso nunca desatualiza com a virada do dia.
+  next_followup_date TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -185,6 +191,9 @@ CREATE INDEX IF NOT EXISTS idx_patients_ativos_agente
 CREATE INDEX IF NOT EXISTS idx_patients_ativos_telefone
   ON patients(phone_digits) WHERE archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_patients_archived ON patients(archived_at);
+-- Serve as duas consultas do Dashboard: o GROUP BY de urgencia e a fila do dia.
+CREATE INDEX IF NOT EXISTS idx_patients_proximo_marco
+  ON patients(next_followup_date) WHERE archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_patients_protocol ON patients(protocol_id);
 CREATE INDEX IF NOT EXISTS idx_followups_patient ON followup_logs(patient_id);
 CREATE INDEX IF NOT EXISTS idx_followups_patient_date ON followup_logs(patient_id, contact_date DESC);

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -42,8 +42,11 @@ const activityConfig = {
   },
 }
 
+const STATS_VAZIO = { total: 0, overdue: 0, due: 0, soon: 0, ok: 0 }
+
 export default function Dashboard() {
-  const [patients, setPatients] = useState([])
+  const [stats, setStats] = useState(STATS_VAZIO)
+  const [todayContacts, setTodayContacts] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
   const [openedCalls, setOpenedCalls] = useState([])
@@ -54,27 +57,19 @@ export default function Dashboard() {
   const settings = useSettingsStore((state) => state.settings)
   const branding = getBranding(settings)
 
-  useEffect(() => {
-    api.patients.list({ status: 'active' })
-      .then((data) => setPatients(data.patients ?? []))
+  // Contagens e fila do dia vêm agregadas do servidor. O front não recebe mais
+  // a base de pacientes — só os números e os 10 contatos que vai exibir.
+  const carregarDashboard = useCallback(() => {
+    api.dashboard.get()
+      .then((data) => {
+        setStats(data.stats ?? STATS_VAZIO)
+        setTodayContacts(data.today_contacts ?? [])
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
-  const stats = {
-    total: patients.length,
-    overdue: patients.filter((patient) => patient.followup_urgency === 'overdue').length,
-    due: patients.filter((patient) => patient.followup_urgency === 'due').length,
-    ok: patients.filter((patient) => patient.followup_urgency === 'ok').length,
-  }
-
-  const todayContacts = patients
-    .filter((patient) => ['overdue', 'due', 'soon'].includes(patient.followup_urgency))
-    .sort((a, b) => {
-      const order = { overdue: 0, due: 1, soon: 2 }
-      return order[a.followup_urgency] - order[b.followup_urgency]
-    })
-    .slice(0, 10)
+  useEffect(() => { carregarDashboard() }, [carregarDashboard])
 
   const selectedTodayContacts = useMemo(
     () => todayContacts.filter((patient) => selectedIds.includes(patient.id)),
@@ -179,6 +174,9 @@ export default function Dashboard() {
       setSelectedIds((current) => current.filter((id) => !confirmedIds.has(id)))
       setFeedback(`${confirmedItems.length} contato(s) registrado(s) no historico com sucesso.`)
       setError('')
+      // Registrar contato avança o protocolo do paciente, então os indicadores e
+      // a fila do dia mudaram no servidor.
+      carregarDashboard()
       window.setTimeout(() => setFeedback(''), 4000)
     } catch (requestError) {
       setError(requestError.message || 'Nao foi possivel registrar os contatos confirmados.')

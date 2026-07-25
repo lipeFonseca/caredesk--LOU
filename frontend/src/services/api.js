@@ -100,6 +100,13 @@ export const api = {
     delete: (id)          => request(`/document-templates/${id}`, { method: 'DELETE' }),
   },
 
+  // ── Dashboard ───────────────────────────────────────────────
+  // Indicadores agregados no servidor. Antes o front carregava todos os
+  // pacientes ativos e contava em memória — não escalava.
+  dashboard: {
+    get: () => request('/dashboard'),
+  },
+
   // ── Histórico / atividade ───────────────────────────────────
   activity: {
     list: (params = {}) => request('/activity?' + new URLSearchParams(params)),
