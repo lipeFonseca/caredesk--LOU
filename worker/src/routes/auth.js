@@ -270,13 +270,12 @@ auth.post('/forgot-password', async (c) => {
   const codigo = generateResetCode()
   const codeHash = await hashResetCode(codigo)
 
-  // Invalida o que estava vivo antes: pedir um codigo novo deve aposentar o
-  // anterior, senao varios codigos validos convivem e multiplicam as chances
-  // de acerto por adivinhacao.
-  await c.env.DB.prepare(`
-    UPDATE password_reset_codes SET used_at = datetime('now')
-    WHERE agent_id = ? AND used_at IS NULL
-  `).bind(agent.id).run()
+  // Apaga (nao apenas invalida) o que existia antes: pedir um codigo novo
+  // aposenta o anterior, senao varios codigos validos convivem e multiplicam as
+  // chances de acerto por adivinhacao. Como DELETE, a tabela fica com no maximo
+  // uma linha por agente em vez de acumular historico que ninguem consulta.
+  await c.env.DB.prepare('DELETE FROM password_reset_codes WHERE agent_id = ?')
+    .bind(agent.id).run()
 
   await c.env.DB.prepare(`
     INSERT INTO password_reset_codes (agent_id, code_hash, expires_at)
@@ -345,7 +344,8 @@ auth.post('/reset-password', async (c) => {
   const novoHash = await hashPassword(newPassword)
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE agents SET password_hash = ? WHERE id = ?').bind(novoHash, agent.id),
-    c.env.DB.prepare("UPDATE password_reset_codes SET used_at = datetime('now') WHERE id = ?").bind(registro.id),
+    // Codigo cumpriu a funcao: sai do banco em vez de virar linha morta.
+    c.env.DB.prepare('DELETE FROM password_reset_codes WHERE agent_id = ?').bind(agent.id),
     // Sem isso, quem acabou de redefinir a senha ainda pegaria o 429 das
     // tentativas que o fizeram esquecer/errar antes.
     c.env.DB.prepare('DELETE FROM login_rate_limit WHERE key IN (?, ?)')

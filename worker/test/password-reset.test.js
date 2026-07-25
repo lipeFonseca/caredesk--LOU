@@ -8,6 +8,7 @@ import {
   isResetCodeUsable,
   timingSafeEqualHex,
   isStrongEnoughPassword,
+  purgeExpiredResetCodes,
   CODE_LENGTH,
   CODE_TTL_MINUTES,
   MAX_CODE_ATTEMPTS,
@@ -73,4 +74,23 @@ test('isStrongEnoughPassword exige 8 caracteres, mesmo criterio das outras rotas
   assert.equal(isStrongEnoughPassword('1234567'), false)
   assert.equal(isStrongEnoughPassword(''), false)
   assert.equal(isStrongEnoughPassword(undefined), false)
+})
+
+test('purgeExpiredResetCodes apaga so o que ja expirou e devolve o total', async () => {
+  // Um pedido em curso na hora da faxina nao pode ser derrubado.
+  let sqlExecutado = ''
+  const env = {
+    DB: {
+      prepare(sql) {
+        sqlExecutado = sql
+        return { async run() { return { meta: { changes: 3 } } } }
+      },
+    },
+  }
+
+  const removidos = await purgeExpiredResetCodes(env)
+
+  assert.equal(removidos, 3)
+  assert.match(sqlExecutado, /DELETE FROM password_reset_codes/)
+  assert.match(sqlExecutado, /expires_at < datetime\('now'\)/)
 })

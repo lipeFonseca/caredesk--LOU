@@ -22,4 +22,8 @@ APP_ENV      = "production"
 # JWT_REFRESH_SECRET
 
 [triggers]
-crons = ["0 11 * * *"]
+# Cron do Cloudflare e sempre UTC. Fortaleza e UTC-3 o ano inteiro (sem horario
+# de verao), entao:
+#   "0 11" = 08:00 Fortaleza — verificacao diaria de follow-ups
+#   "0 3"  = 00:00 Fortaleza — faxina noturna (codigos de reset e logs antigos)
+crons = ["0 11 * * *", "0 3 * * *"]

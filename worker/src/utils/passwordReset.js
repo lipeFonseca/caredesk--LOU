@@ -59,3 +59,16 @@ export function timingSafeEqualHex(a, b) {
 export function isStrongEnoughPassword(senha) {
   return typeof senha === 'string' && senha.length >= 8
 }
+
+// ── Faxina noturna ────────────────────────────────────────────
+// Roda no cron da meia-noite. O fluxo normal ja apaga o codigo ao usar e ao
+// pedir um novo, entao aqui sobra so o caso de quem pediu codigo e nunca voltou.
+// Codigo vive 15 minutos: na meia-noite, qualquer coisa ainda na tabela ja e
+// lixo — o filtro por expiracao existe pra nunca derrubar um pedido em curso.
+export async function purgeExpiredResetCodes(env) {
+  const { meta } = await env.DB.prepare(
+    "DELETE FROM password_reset_codes WHERE expires_at < datetime('now')"
+  ).run()
+
+  return meta?.changes ?? 0
+}

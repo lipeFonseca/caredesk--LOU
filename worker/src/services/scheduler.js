@@ -3,6 +3,7 @@ import {
   resolvePatientProtocol,
 } from '../utils/protocols.js'
 import { purgeOldErrorLogs, RETENTION_DAYS } from './error-log.js'
+import { purgeExpiredResetCodes } from '../utils/passwordReset.js'
 
 // ── Entry point chamado pelo cron trigger ────────────────────
 export async function runScheduler(env) {
@@ -31,17 +32,37 @@ export async function runScheduler(env) {
     if (result) notified++
   }
 
-  // Carona no unico cron do projeto: limpar log velho nao justifica um trigger
-  // proprio. Falha aqui nao pode invalidar as notificacoes ja criadas acima.
-  let purged = 0
-  try {
-    purged = await purgeOldErrorLogs(env)
-  } catch (falhaNaLimpeza) {
-    console.error('[Scheduler] falha ao limpar error_logs', falhaNaLimpeza)
-  }
+  console.log(`[Scheduler] Concluído. ${notified} de ${patients.length} pacientes notificados.`)
+  return { total: patients.length, notified }
+}
 
-  console.log(`[Scheduler] Concluído. ${notified} de ${patients.length} pacientes notificados. ${purged} log(s) além de ${RETENTION_DAYS} dias removido(s).`)
-  return { total: patients.length, notified, purged }
+// ── Faxina noturna (cron da meia-noite, Fortaleza) ────────────
+// Mantem no banco so o que ainda serve: log dentro da janela de retencao e
+// codigo de reset de pedido em curso. Cada limpeza e isolada da outra — uma
+// falhar nao pode impedir a seguinte de rodar.
+export async function runNightlyCleanup(env) {
+  console.log('[Faxina] Iniciando limpeza noturna —', new Date().toISOString())
+
+  const logsRemovidos = await limparComTolerancia(
+    'error_logs',
+    () => purgeOldErrorLogs(env)
+  )
+  const codigosRemovidos = await limparComTolerancia(
+    'password_reset_codes',
+    () => purgeExpiredResetCodes(env)
+  )
+
+  console.log(`[Faxina] Concluída. ${logsRemovidos} log(s) além de ${RETENTION_DAYS} dias e ${codigosRemovidos} código(s) de reset expirado(s) removido(s).`)
+  return { logsRemovidos, codigosRemovidos }
+}
+
+async function limparComTolerancia(nomeDaTabela, executarLimpeza) {
+  try {
+    return await executarLimpeza()
+  } catch (falha) {
+    console.error(`[Faxina] falha ao limpar ${nomeDaTabela}`, falha)
+    return 0
+  }
 }
 
 async function processPatient(patient, today, env) {

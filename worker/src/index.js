@@ -15,7 +15,7 @@ import messageProtocolRoutes from './routes/message-protocols.js'
 import documentTemplateRoutes from './routes/document-templates.js'
 import activityRoutes  from './routes/activity.js'
 import logRoutes       from './routes/logs.js'
-import { runScheduler } from './services/scheduler.js'
+import { runScheduler, runNightlyCleanup } from './services/scheduler.js'
 import { recordServerError } from './services/error-log.js'
 
 const app = new Hono()
@@ -83,8 +83,11 @@ app.onError((err, c) => {
 export default {
   fetch: app.fetch,
 
-  // Cron trigger do wrangler.toml — roda todo dia às 8h Fortaleza
+  // Dois crons no wrangler.toml, roteados pelo horário UTC que disparou:
+  //   0 3  UTC = 00:00 Fortaleza — faxina noturna
+  //   0 11 UTC = 08:00 Fortaleza — verificação de follow-ups
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runScheduler(env))
+    const rotina = event.cron === '0 3 * * *' ? runNightlyCleanup : runScheduler
+    ctx.waitUntil(rotina(env))
   },
 }
