@@ -97,9 +97,14 @@ export async function runNightlyCleanup(env) {
 // mais de um dia. Contador ativo e bloqueio em curso ficam — apagar um bloqueio
 // vigente seria destravar um ataque em andamento.
 export async function purgeStaleRateLimits(env) {
+  // `datetime(locked_until)` pelo mesmo motivo de purgeExpiredResetCodes:
+  // locked_until vem do JS em ISO, updated_at vem do proprio SQLite. Comparar
+  // texto ISO com texto SQLite falha silenciosamente — linha com bloqueio
+  // gravado nunca era considerada vencida. `updated_at` dispensa a conversao
+  // porque ja e escrito por datetime('now').
   const { meta } = await env.DB.prepare(`
     DELETE FROM login_rate_limit
-    WHERE (locked_until IS NULL OR locked_until < datetime('now'))
+    WHERE (locked_until IS NULL OR datetime(locked_until) < datetime('now'))
       AND updated_at < datetime('now', '-1 day')
   `).run()
 

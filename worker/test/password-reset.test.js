@@ -92,5 +92,8 @@ test('purgeExpiredResetCodes apaga so o que ja expirou e devolve o total', async
 
   assert.equal(removidos, 3)
   assert.match(sqlExecutado, /DELETE FROM password_reset_codes/)
-  assert.match(sqlExecutado, /expires_at < datetime\('now'\)/)
+  // datetime() nos DOIS lados: a coluna e ISO (vinda do JS) e datetime('now') e
+  // formato SQLite. Comparadas como texto cru, vencido virava futuro e a
+  // limpeza nao apagava nada.
+  assert.match(sqlExecutado, /datetime\(expires_at\) < datetime\('now'\)/)
 })

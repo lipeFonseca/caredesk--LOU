@@ -66,8 +66,13 @@ export function isStrongEnoughPassword(senha) {
 // Codigo vive 15 minutos: na meia-noite, qualquer coisa ainda na tabela ja e
 // lixo — o filtro por expiracao existe pra nunca derrubar um pedido em curso.
 export async function purgeExpiredResetCodes(env) {
+  // `datetime(expires_at)` e obrigatorio, nao enfeite: a coluna e gravada pelo
+  // JS em ISO ("2026-07-25T06:50:31.514Z") e datetime('now') devolve o formato
+  // do SQLite ("2026-07-25 18:03:49"). Comparadas como texto, 'T' (0x54) fica
+  // DEPOIS do espaco (0x20), entao um codigo vencido era lido como futuro e a
+  // limpeza nunca apagava nada. datetime() normaliza os dois lados.
   const { meta } = await env.DB.prepare(
-    "DELETE FROM password_reset_codes WHERE expires_at < datetime('now')"
+    "DELETE FROM password_reset_codes WHERE datetime(expires_at) < datetime('now')"
   ).run()
 
   return meta?.changes ?? 0
