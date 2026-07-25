@@ -51,9 +51,30 @@ export async function runNightlyCleanup(env) {
     'password_reset_codes',
     () => purgeExpiredResetCodes(env)
   )
+  const contadoresRemovidos = await limparComTolerancia(
+    'login_rate_limit',
+    () => purgeStaleRateLimits(env)
+  )
 
-  console.log(`[Faxina] Concluída. ${logsRemovidos} log(s) além de ${RETENTION_DAYS} dias e ${codigosRemovidos} código(s) de reset expirado(s) removido(s).`)
-  return { logsRemovidos, codigosRemovidos }
+  console.log(`[Faxina] Concluída. ${logsRemovidos} log(s) além de ${RETENTION_DAYS} dias, ${codigosRemovidos} código(s) de reset expirado(s) e ${contadoresRemovidos} contador(es) de rate limit vencido(s) removido(s).`)
+  return { logsRemovidos, codigosRemovidos, contadoresRemovidos }
+}
+
+// ── Rate limit vencido ───────────────────────────────────────
+// A tabela nunca era limpa: chave de tentativa antiga (inclusive de varredura
+// automatizada, que gera uma linha por e-mail testado) ficava pra sempre.
+//
+// So sai o que ja nao protege mais: bloqueio expirado ou contador parado ha
+// mais de um dia. Contador ativo e bloqueio em curso ficam — apagar um bloqueio
+// vigente seria destravar um ataque em andamento.
+export async function purgeStaleRateLimits(env) {
+  const { meta } = await env.DB.prepare(`
+    DELETE FROM login_rate_limit
+    WHERE (locked_until IS NULL OR locked_until < datetime('now'))
+      AND updated_at < datetime('now', '-1 day')
+  `).run()
+
+  return meta?.changes ?? 0
 }
 
 async function limparComTolerancia(nomeDaTabela, executarLimpeza) {
