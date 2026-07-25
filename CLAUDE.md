@@ -54,7 +54,7 @@ Não comentar tudo. Só o que não se lê no código.
 
 ## Validação
 
-O usuário valida UI e navegador. Claude fica com backend, config, teste automatizado e criação de arquivo — nunca Playwright/browser automation.
+O usuário valida UI e navegador. Claude fica com backend, config, teste automatizado e criação de arquivo — nunca Playwright/browser automation, acessar apenas se o usuário mandar.
 
 ## Contexto do projeto (onde olhar, não duplicar aqui)
 

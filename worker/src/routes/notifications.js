@@ -82,9 +82,11 @@ settings.use('*', authMiddleware)
 
 settings.get('/', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT key, value FROM app_settings').all()
-  // redactSettings mascara o token do relay de e-mail. Esta rota vale pra
-  // qualquer agente autenticado, nao so admin — credencial nao pode sair daqui.
-  return c.json(redactSettings(Object.fromEntries(results.map((row) => [row.key, row.value]))))
+  // Esta rota serve qualquer agente autenticado (o app le branding daqui), nao
+  // so admin — por isso a resposta e filtrada por papel: agente comum nao ve
+  // mensageria nenhuma, admin ve com o token mascarado.
+  const isAdmin = c.get('agent')?.role === 'admin'
+  return c.json(redactSettings(Object.fromEntries(results.map((row) => [row.key, row.value])), { isAdmin }))
 })
 
 settings.patch('/', adminOnly, async (c) => {
