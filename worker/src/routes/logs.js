@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authMiddleware, adminOnly } from '../middleware/auth.js'
 import { RETENTION_DAYS } from '../services/error-log.js'
+import { lerOcupacao } from '../utils/contadores.js'
 
 const logs = new Hono()
 logs.use('*', authMiddleware)
@@ -30,6 +31,13 @@ logs.get('/', adminOnly, async (c) => {
     total: countRow?.total ?? 0,
     retention_days: RETENTION_DAYS,
   })
+})
+
+// ── GET /api/logs/storage ─────────────────────────────────────
+// Ocupação estimada do banco, para o painel de saúde na aba de Logs.
+// Lê contadores materializados — custo fixo, não acompanha o tamanho da base.
+logs.get('/storage', adminOnly, async (c) => {
+  return c.json(await lerOcupacao(c.env.DB))
 })
 
 export default logs

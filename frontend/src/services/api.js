@@ -114,7 +114,8 @@ export const api = {
 
   // ── Logs de erro do servidor (admin) ────────────────────────
   logs: {
-    list: (params = {}) => request('/logs?' + new URLSearchParams(params)),
+    list:    (params = {}) => request('/logs?' + new URLSearchParams(params)),
+    storage: ()            => request('/logs/storage'),
   },
 
   // ── Follow-ups ──────────────────────────────────────────────

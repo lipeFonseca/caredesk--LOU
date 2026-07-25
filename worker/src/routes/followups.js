@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { recalcularProximoMarco } from '../utils/proximoMarco.js'
+import { ajustarContador, CONTADOR_CONTATOS } from '../utils/contadores.js'
 import { authMiddleware } from '../middleware/auth.js'
 
 const followups = new Hono()
@@ -60,6 +61,7 @@ followups.post('/', async (c) => {
 
   // Contato nao-extra avanca o protocolo, entao o proximo marco muda.
   await recalcularProximoMarco(c.env.DB, patient_id)
+  await ajustarContador(c.env.DB, CONTADOR_CONTATOS, 1)
 
   const created = await c.env.DB.prepare(
     'SELECT * FROM followup_logs WHERE id = ?'
