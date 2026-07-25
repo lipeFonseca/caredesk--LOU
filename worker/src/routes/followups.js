@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { recalcularProximoMarco } from '../utils/proximoMarco.js'
 import { authMiddleware } from '../middleware/auth.js'
 
 const followups = new Hono()
@@ -53,6 +54,9 @@ followups.post('/', async (c) => {
     WHERE patient_id = ? AND is_read = 0
   `).bind(patient_id).run()
 
+  // Contato nao-extra avanca o protocolo, entao o proximo marco muda.
+  await recalcularProximoMarco(c.env.DB, patient_id)
+
   const created = await c.env.DB.prepare(
     'SELECT * FROM followup_logs WHERE id = ?'
   ).bind(id).first()
@@ -74,9 +78,13 @@ followups.patch('/:id', async (c) => {
     `UPDATE followup_logs SET ${sets} WHERE id = ?`
   ).bind(...fields.map(f => body[f]), id).run()
 
-  return c.json(await c.env.DB.prepare(
+  const atualizado = await c.env.DB.prepare(
     'SELECT * FROM followup_logs WHERE id = ?'
-  ).bind(id).first())
+  ).bind(id).first()
+
+  if (atualizado) await recalcularProximoMarco(c.env.DB, atualizado.patient_id)
+
+  return c.json(atualizado)
 })
 
 export default followups

@@ -5,6 +5,7 @@ import {
 import { purgeOldErrorLogs, RETENTION_DAYS } from './error-log.js'
 import { purgeExpiredResetCodes } from '../utils/passwordReset.js'
 import { runArquivamento } from './arquivamento.js'
+import { reconciliarProximosMarcos } from '../utils/proximoMarco.js'
 
 // ── Entry point chamado pelo cron trigger ────────────────────
 export async function runScheduler(env) {
@@ -64,6 +65,15 @@ export async function runNightlyCleanup(env) {
     async () => (await runArquivamento(env)).arquivados
   )
 
+  // Rede de seguranca do next_followup_date: cobre o backfill das linhas que
+  // nasceram NULL na migration e conserta qualquer divergencia que um caminho
+  // de escrita venha a deixar passar. Lote fixo por noite, priorizando quem
+  // nunca foi calculado — custo constante independente do tamanho da base.
+  const marcosReconciliados = await limparComTolerancia(
+    'next_followup_date',
+    () => reconciliarProximosMarcos(env.DB)
+  )
+
   // Sem estatistica atualizada o planner do SQLite escolhe indice por heuristica
   // fixa — e com a tabela crescendo 100-300 linhas/dia isso passa a errar. O
   // ANALYZE e barato e mantem a escolha alinhada ao volume real. Roda por
@@ -73,7 +83,7 @@ export async function runNightlyCleanup(env) {
     return 0
   })
 
-  console.log(`[Faxina] ${arquivados} paciente(s) arquivado(s).`)
+  console.log(`[Faxina] ${arquivados} paciente(s) arquivado(s), ${marcosReconciliados} próximo(s) marco(s) reconciliado(s).`)
 
   console.log(`[Faxina] Concluída. ${logsRemovidos} log(s) além de ${RETENTION_DAYS} dias, ${codigosRemovidos} código(s) de reset expirado(s) e ${contadoresRemovidos} contador(es) de rate limit vencido(s) removido(s). Estatísticas do banco atualizadas.`)
   return { logsRemovidos, codigosRemovidos, contadoresRemovidos }

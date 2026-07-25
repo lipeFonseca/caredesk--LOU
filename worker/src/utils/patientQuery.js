@@ -4,6 +4,16 @@
 export const DEFAULT_PAGE_SIZE = 20
 export const MAX_PAGE_SIZE = 100
 
+// Espelha o CHECK de `patients.status` no schema. Vive aqui porque a rota PATCH
+// validava contra ['active','inactive','done'] — valores que o banco nem aceita
+// —, entao Pausado e Alta respondiam 400 e nao havia como mudar o status de um
+// paciente. Duas listas separadas foi o que permitiu a divergencia passar.
+export const PATIENT_STATUSES = Object.freeze(['active', 'paused', 'discharged'])
+
+export function isValidPatientStatus(valor) {
+  return PATIENT_STATUSES.includes(valor)
+}
+
 // ── Busca ────────────────────────────────────────────────────
 // Dois caminhos, escolhidos pelo formato do que foi digitado:
 //

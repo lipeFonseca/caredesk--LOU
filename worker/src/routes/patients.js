@@ -14,7 +14,9 @@ import {
   decodeCursor,
   encodeCursor,
   normalizePageSize,
+  isValidPatientStatus,
 } from '../utils/patientQuery.js'
+import { recalcularProximoMarco } from '../utils/proximoMarco.js'
 
 const patients = new Hono()
 patients.use('*', authMiddleware)
@@ -227,6 +229,8 @@ patients.post('/', async (c) => {
       createdBy
     ).run()
 
+    await recalcularProximoMarco(c.env.DB, id)
+
     return c.json({
       id, name,
       phone,
@@ -262,7 +266,7 @@ patients.patch('/:id', async (c) => {
     if (fields.includes('email') && !sanitizeOptionalEmail(body.email).ok) {
       return c.json({ error: 'E-mail inválido' }, 400)
     }
-    if (fields.includes('status') && !['active', 'inactive', 'done'].includes(body.status)) {
+    if (fields.includes('status') && !isValidPatientStatus(body.status)) {
       return c.json({ error: 'Status inválido' }, 400)
     }
 
@@ -301,6 +305,10 @@ patients.patch('/:id', async (c) => {
     await c.env.DB.prepare(
       `UPDATE patients SET ${sets}, updated_at = datetime('now') WHERE id = ?`
     ).bind(...values, id).run()
+
+    // surgery_date, protocol_id e status mudam o proximo marco. Recalcular
+    // sempre e mais barato que errar: e uma consulta indexada por id.
+    await recalcularProximoMarco(c.env.DB, id)
 
     const updated = await c.env.DB.prepare('SELECT * FROM patients WHERE id = ?').bind(id).first()
     return c.json(updated)

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { recalcularPorProtocolo } from '../utils/proximoMarco.js'
 import { authMiddleware, adminOnly } from '../middleware/auth.js'
 
 const protocols = new Hono()
@@ -95,6 +96,13 @@ protocols.patch('/:id', adminOnly, async (c) => {
     UPDATE contact_protocols SET name = ?, description = ?, days = ?, color = ?, is_default = ?, updated_at = datetime('now')
     WHERE id = ?
   `).bind(name, description, days, color, is_default, id).run()
+
+  // Mudar os dias reposiciona o proximo marco de TODOS os pacientes vinculados.
+  // Unico ponto do sistema onde uma edicao afeta muitas linhas de uma vez — por
+  // isso o recalculo aqui e em lote, nao por paciente.
+  if (Array.isArray(body.days) && days !== existing.days) {
+    await recalcularPorProtocolo(c.env.DB, id)
+  }
 
   return c.json({
     id,

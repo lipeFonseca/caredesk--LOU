@@ -15,6 +15,7 @@ import messageProtocolRoutes from './routes/message-protocols.js'
 import documentTemplateRoutes from './routes/document-templates.js'
 import activityRoutes  from './routes/activity.js'
 import logRoutes       from './routes/logs.js'
+import dashboardRoutes from './routes/dashboard.js'
 import { runScheduler, runNightlyCleanup } from './services/scheduler.js'
 import { runDailyDigest } from './services/daily-digest.js'
 import { recordServerError } from './services/error-log.js'
@@ -59,6 +60,7 @@ app.route('/api/message-protocols', messageProtocolRoutes)
 app.route('/api/document-templates', documentTemplateRoutes)
 app.route('/api/activity',      activityRoutes)
 app.route('/api/logs',          logRoutes)
+app.route('/api/dashboard',     dashboardRoutes)
 
 // ── 404 ──────────────────────────────────────────────────────
 app.notFound((c) => c.json({ error: 'Rota não encontrada' }, 404))
