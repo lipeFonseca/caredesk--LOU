@@ -95,8 +95,12 @@ export default function AppLayout() {
       }
     : undefined
 
+  // `h-screen`, não `min-h-screen`: com altura mínima o shell cresce junto com a
+  // página, a sidebar estica junto e o bloco do agente (ancorado por `mt-auto`)
+  // escorrega para fora da viewport em telas longas. Altura fixa prende a
+  // sidebar na tela; quem rola é o <main>, que já tem overflow próprio.
   return (
-    <div className="relative flex min-h-screen bg-background text-on-surface overflow-hidden">
+    <div className="relative flex h-screen bg-background text-on-surface overflow-hidden">
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
@@ -119,7 +123,7 @@ export default function AppLayout() {
         style={sidebarHeroStyle}
       >
         <div className="flex h-full flex-col bg-[linear-gradient(180deg,rgba(15,22,19,0.14),rgba(15,22,19,0.36))] px-5 pb-6 pt-5 backdrop-blur-[1px]">
-          <div className="rounded-[28px] border border-white/10 bg-white/8 p-5 shadow-card backdrop-blur-sm">
+          <div className="shrink-0 rounded-[28px] border border-white/10 bg-white/8 p-5 shadow-card backdrop-blur-sm">
             <div className="flex items-start gap-4">
               <img
                 src={branding.logoUrl}
@@ -139,7 +143,9 @@ export default function AppLayout() {
             </div>
           </div>
 
-          <div className="mt-6 rounded-[28px] border border-white/8 bg-black/10 p-3 backdrop-blur-sm">
+          {/* `min-h-0` permite este bloco encolher dentro do flex e rolar sozinho
+              em telas baixas — sem ele, o menu empurraria o rodapé para fora. */}
+          <div className="mt-6 min-h-0 overflow-y-auto rounded-[28px] border border-white/8 bg-black/10 p-3 backdrop-blur-sm">
             <p className="px-3 pb-2 text-[11px] uppercase tracking-[0.26em] text-[#d5c2a3]">Navegacao</p>
             <ul className="space-y-1.5">
               {[...NAV_ITEMS, ...(isAdmin() ? ADMIN_NAV_ITEMS : [])].map(({ to, icon, label, end }) => (
@@ -162,7 +168,9 @@ export default function AppLayout() {
             </ul>
           </div>
 
-          <div className="mt-auto rounded-[28px] border border-white/8 bg-black/16 p-4 backdrop-blur-sm">
+          {/* Ancorado no rodapé da sidebar. `shrink-0` impede que ele seja
+              comprimido quando o menu acima cresce. */}
+          <div className="mt-auto shrink-0 rounded-[28px] border border-white/8 bg-black/16 p-4 backdrop-blur-sm">
             <div className="flex items-center gap-3">
               <Avatar
                 name={agent?.name}
