@@ -4,6 +4,7 @@ import { api } from '@/services/api'
 import { format, parseISO, differenceInCalendarDays, subDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import PatientPanel from '@/components/PatientPanel'
+import { useAuthStore } from '@/store'
 
 const PAGE_SIZE = 20
 
@@ -89,6 +90,31 @@ export default function Patients() {
   const [visao,            setVisao]            = useState('ativos')
   const [totalEncerrando,  setTotalEncerrando]  = useState(0)
   const [selectedPatientId, setSelectedPatientId] = useState(null)
+  // Seleção só existe na visão de arquivados, onde há ação em massa.
+  const [marcados,         setMarcados]         = useState([])
+  const [desarquivando,    setDesarquivando]    = useState(false)
+  const { isAdmin } = useAuthStore()
+
+  const podeSelecionar = visao === 'arquivados' && isAdmin()
+
+  function alternarMarcado(id) {
+    setMarcados((atuais) => (
+      atuais.includes(id) ? atuais.filter((m) => m !== id) : [...atuais, id]
+    ))
+  }
+
+  async function desarquivarSelecionados() {
+    setDesarquivando(true)
+    try {
+      await api.patients.unarchiveMany(marcados)
+      setMarcados([])
+      fetchPage(null)
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setDesarquivando(false)
+    }
+  }
 
   // Badge da aba "Encerrando" — mesma contagem que o Dashboard exibe.
   useEffect(() => {
@@ -172,7 +198,7 @@ export default function Patients() {
         {VISOES.map(({ id, label, icon }) => (
           <button
             key={id}
-            onClick={() => setVisao(id)}
+            onClick={() => { setVisao(id); setMarcados([]) }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-label-md font-label-md transition-all ${
               visao === id
                 ? 'bg-surface text-on-surface ambient-shadow-lvl1'
@@ -189,6 +215,24 @@ export default function Patients() {
           </button>
         ))}
       </div>
+
+      {/* ── Ação em massa (só com seleção ativa) ─────────────── */}
+      {podeSelecionar && marcados.length > 0 && (
+        <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-primary/30 bg-primary/5 px-5 py-3">
+          <p className="text-body-md text-on-surface">
+            <strong>{marcados.length}</strong> paciente{marcados.length === 1 ? '' : 's'} selecionado{marcados.length === 1 ? '' : 's'}
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setMarcados([])} className="btn-ghost" disabled={desarquivando}>
+              Limpar seleção
+            </button>
+            <button onClick={desarquivarSelecionados} className="btn-primary" disabled={desarquivando}>
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>unarchive</span>
+              {desarquivando ? 'Devolvendo...' : 'Devolver ao acompanhamento'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Filter Bar ──────────────────────────────────────── */}
       <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-4">
@@ -268,6 +312,16 @@ export default function Patients() {
             <table className="w-full text-left border-collapse clinical-table min-w-[900px]">
               <thead>
                 <tr>
+                  {podeSelecionar && (
+                    <th className="w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="Selecionar todos os arquivados desta página"
+                        checked={marcados.length > 0 && marcados.length === patients.length}
+                        onChange={(e) => setMarcados(e.target.checked ? patients.map((p) => p.id) : [])}
+                      />
+                    </th>
+                  )}
                   <th>Paciente</th>
                   <th>Procedimento</th>
                   <th>Cirurgia</th>
@@ -286,6 +340,17 @@ export default function Patients() {
                       key={p.id}
                       className={`group transition-colors ${isOverdue ? 'overdue-row bg-error-container/10' : ''}`}
                     >
+                      {podeSelecionar && (
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Selecionar ${p.name}`}
+                            checked={marcados.includes(p.id)}
+                            onChange={() => alternarMarcado(p.id)}
+                          />
+                        </td>
+                      )}
+
                       {/* Paciente */}
                       <td>
                         <div className="flex items-center gap-3">

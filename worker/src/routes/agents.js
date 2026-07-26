@@ -7,7 +7,7 @@ import {
   putImageAsset,
   sanitizeScopedAssetKey,
 } from '../utils/storage.js'
-import { sanitizeOptionalPhone } from '../utils/contactFields.js'
+import { sanitizeOptionalPhone, validateAgentEmail } from '../utils/contactFields.js'
 
 const agents = new Hono()
 
@@ -38,12 +38,15 @@ agents.get('/', async (c) => {
 agents.post('/', adminOnly, async (c) => {
   const { name, email, password, role, phone } = await c.req.json()
 
-  if (!name || !email || !password) {
-    return c.json({ error: 'Nome, email e senha são obrigatórios' }, 400)
+  if (!name || !password) {
+    return c.json({ error: 'Nome e senha são obrigatórios' }, 400)
   }
   if (password.length < 8) {
     return c.json({ error: 'Senha deve ter ao menos 8 caracteres' }, 400)
   }
+
+  const emailValidado = validateAgentEmail(email)
+  if (emailValidado.error) return c.json({ error: emailValidado.error }, emailValidado.status)
 
   // Celular e opcional; o e-mail acima nao passa por aqui porque e credencial de
   // login, com regra propria (unicidade + lowercase).
@@ -51,7 +54,7 @@ agents.post('/', adminOnly, async (c) => {
 
   const existing = await c.env.DB.prepare(
     'SELECT id FROM agents WHERE email = ?'
-  ).bind(email.toLowerCase()).first()
+  ).bind(emailValidado.value).first()
   if (existing) return c.json({ error: 'Email já cadastrado' }, 409)
 
   const id = crypto.randomUUID()
@@ -61,14 +64,14 @@ agents.post('/', adminOnly, async (c) => {
     INSERT INTO agents (id, name, email, phone, password_hash, role)
     VALUES (?, ?, ?, ?, ?, ?)
   `).bind(
-    id, name, email.toLowerCase(),
+    id, name, emailValidado.value,
     celular,
     hash,
     role || 'agent'
   ).run()
 
   return c.json({
-    id, name, email: email.toLowerCase(), phone: celular, role: role || 'agent', avatar_url: null
+    id, name, email: emailValidado.value, phone: celular, role: role || 'agent', avatar_url: null
   }, 201)
 })
 
@@ -81,8 +84,25 @@ agents.patch('/:id', adminOnly, async (c) => {
   const fields = Object.keys(body).filter(k => allowed.includes(k))
   if (!fields.length) return c.json({ error: 'Nenhum campo válido' }, 400)
 
+  // Mesma exigência da criação: e-mail de agente é credencial e destino de
+  // envio, então editar não pode degradá-lo para algo sem `@`.
+  let emailEditado = null
+  if (fields.includes('email')) {
+    emailEditado = validateAgentEmail(body.email)
+    if (emailEditado.error) return c.json({ error: emailEditado.error }, emailEditado.status)
+
+    const emUso = await c.env.DB.prepare(
+      'SELECT id FROM agents WHERE email = ? AND id <> ?'
+    ).bind(emailEditado.value, id).first()
+    if (emUso) return c.json({ error: 'Email já cadastrado' }, 409)
+  }
+
   const sets = fields.map(f => `${f} = ?`).join(', ')
-  const values = fields.map((f) => (f === 'phone' ? sanitizeOptionalPhone(body[f]) : body[f]))
+  const values = fields.map((f) => {
+    if (f === 'phone') return sanitizeOptionalPhone(body[f])
+    if (f === 'email') return emailEditado.value
+    return body[f]
+  })
   await c.env.DB.prepare(
     `UPDATE agents SET ${sets} WHERE id = ?`
   ).bind(...values, id).run()

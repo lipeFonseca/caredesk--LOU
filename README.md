@@ -87,14 +87,13 @@ git push origin main
 | `/api/activity` | `activity.js` | Feed do Histórico, paginado |
 | `/api/logs` | `logs.js` | Erros de servidor (admin) |
 | `/api/notifications` | `notifications.js` | Notificações internas |
-| `/api/settings` | `notifications.js` | Branding, mensageria, templates de e-mail |
+| `/api/settings` | `settings.js` | Branding, mensageria, templates de e-mail |
 | `/api/protocols` | `protocols.js` | Protocolos de contato |
 | `/api/message-protocols` | `message-protocols.js` | Modelos de mensagem por marco |
 | `/api/document-templates` | `document-templates.js` | Catálogo de documentos |
 | `/api/setup` | `setup.js` | Criação do admin inicial (bloqueado em produção) |
 
-> `settings.js` é só um re-export: as rotas de settings moram em
-> `notifications.js`. É a única surpresa de organização no backend.
+Cada rota mora no arquivo de mesmo nome — sem indireção.
 
 ### Serviços (`services/`)
 
@@ -196,6 +195,12 @@ por `datetime('now')` guardam `2026-07-25 18:03:49`. Comparar as duas como texto
 Paciente **não é apagado pelo tempo** — aos 6 meses da cirurgia ele é
 **arquivado**: sai das listagens e buscas do dia a dia, com os dados intactos.
 Apagar de vez só por ação explícita de um admin.
+
+**Arquivar é automático; desarquivar é sempre decisão humana** (recidiva, nova
+cirurgia, data de cirurgia digitada errada). Um admin devolve o paciente ao
+acompanhamento pelo botão na ficha, ou vários de uma vez pelas caixas de seleção
+na aba Arquivados. O desarquivamento recalcula o próximo marco — a data ficou
+defasada enquanto o paciente esteve fora.
 
 A lista de Pacientes tem três visões: **Em acompanhamento** (padrão),
 **Encerrando** (arquivam nos próximos 30 dias) e **Arquivados**. O aviso de
