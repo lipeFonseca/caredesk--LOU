@@ -160,10 +160,12 @@ export default function PatientDetail() {
     }
   }
 
-  async function handleUnarchive() {
+  // Arquivar e desarquivar são a mesma ação em sentidos opostos, e nenhuma
+  // perde dado — por isso ambas ficam com o agente, não só com o admin.
+  async function alternarArquivamento() {
     setSaving(true)
     try {
-      await api.patients.unarchive(id)
+      await (patient.archived_at ? api.patients.unarchive(id) : api.patients.archive(id))
       load()
     } catch (err) {
       alert(err.message)
@@ -209,14 +211,19 @@ export default function PatientDetail() {
   const initials     = getInitials(patient.name)
   const urg          = URGENCY_BADGE[patient.followup_urgency] ?? URGENCY_BADGE.none
 
+  // Paciente arquivado ganha a faixa no topo com o botão de devolver, então
+  // aqui a ação de arquivar só aparece para quem ainda está em acompanhamento.
   const quickActions = [
     { icon: 'add',           label: 'Registrar\nContato', action: () => setAddOpen(true) },
     { icon: 'call',          label: 'Fazer\nLigação',      action: patient.phone ? () => window.open(`tel:${patient.phone}`) : null },
     { icon: 'edit',          label: 'Editar\nDados',        action: () => setEditOpen(true) },
+    !patient.archived_at
+      ? { icon: 'inventory_2', label: 'Arquivar\nPaciente', action: alternarArquivamento }
+      : null,
     isAdmin()
       ? { icon: 'delete', label: 'Excluir\nPaciente', action: () => setDelConfirm(true), danger: true }
-      : { icon: 'calendar_add_on', label: 'Reagendar', action: () => setAddOpen(true) },
-  ]
+      : null,
+  ].filter(Boolean)
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -241,15 +248,13 @@ export default function PatientDetail() {
               {' '}— fora das listagens e buscas do dia a dia.
             </span>
           </p>
-          {isAdmin() && (
-            <button
-              onClick={handleUnarchive}
-              disabled={saving}
-              className="btn-primary shrink-0 disabled:opacity-50"
-            >
-              {saving ? <Spinner /> : <><span className="material-symbols-outlined" style={{ fontSize: '18px' }}>unarchive</span> Devolver ao acompanhamento</>}
-            </button>
-          )}
+          <button
+            onClick={alternarArquivamento}
+            disabled={saving}
+            className="btn-primary shrink-0 disabled:opacity-50"
+          >
+            {saving ? <Spinner /> : <><span className="material-symbols-outlined" style={{ fontSize: '18px' }}>unarchive</span> Devolver ao acompanhamento</>}
+          </button>
         </div>
       )}
 

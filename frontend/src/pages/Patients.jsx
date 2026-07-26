@@ -4,7 +4,6 @@ import { api } from '@/services/api'
 import { format, parseISO, differenceInCalendarDays, subDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import PatientPanel from '@/components/PatientPanel'
-import { useAuthStore } from '@/store'
 
 const PAGE_SIZE = 20
 
@@ -90,12 +89,12 @@ export default function Patients() {
   const [visao,            setVisao]            = useState('ativos')
   const [totalEncerrando,  setTotalEncerrando]  = useState(0)
   const [selectedPatientId, setSelectedPatientId] = useState(null)
-  // Seleção só existe na visão de arquivados, onde há ação em massa.
   const [marcados,         setMarcados]         = useState([])
-  const [desarquivando,    setDesarquivando]    = useState(false)
-  const { isAdmin } = useAuthStore()
+  const [processando,      setProcessando]      = useState(false)
 
-  const podeSelecionar = visao === 'arquivados' && isAdmin()
+  // Seleção existe em qualquer visão: nos arquivados para devolver, nas demais
+  // para arquivar. As duas ações são reversíveis e disponíveis para o agente.
+  const arquivandoEmMassa = visao !== 'arquivados'
 
   function alternarMarcado(id) {
     setMarcados((atuais) => (
@@ -103,16 +102,18 @@ export default function Patients() {
     ))
   }
 
-  async function desarquivarSelecionados() {
-    setDesarquivando(true)
+  async function aplicarAcaoEmMassa() {
+    setProcessando(true)
     try {
-      await api.patients.unarchiveMany(marcados)
+      await (arquivandoEmMassa
+        ? api.patients.archiveMany(marcados)
+        : api.patients.unarchiveMany(marcados))
       setMarcados([])
       fetchPage(null)
     } catch (err) {
       alert(err.message)
     } finally {
-      setDesarquivando(false)
+      setProcessando(false)
     }
   }
 
@@ -217,18 +218,22 @@ export default function Patients() {
       </div>
 
       {/* ── Ação em massa (só com seleção ativa) ─────────────── */}
-      {podeSelecionar && marcados.length > 0 && (
+      {marcados.length > 0 && (
         <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-primary/30 bg-primary/5 px-5 py-3">
           <p className="text-body-md text-on-surface">
             <strong>{marcados.length}</strong> paciente{marcados.length === 1 ? '' : 's'} selecionado{marcados.length === 1 ? '' : 's'}
           </p>
           <div className="flex items-center gap-2">
-            <button onClick={() => setMarcados([])} className="btn-ghost" disabled={desarquivando}>
+            <button onClick={() => setMarcados([])} className="btn-ghost" disabled={processando}>
               Limpar seleção
             </button>
-            <button onClick={desarquivarSelecionados} className="btn-primary" disabled={desarquivando}>
-              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>unarchive</span>
-              {desarquivando ? 'Devolvendo...' : 'Devolver ao acompanhamento'}
+            <button onClick={aplicarAcaoEmMassa} className="btn-primary" disabled={processando}>
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                {arquivandoEmMassa ? 'inventory_2' : 'unarchive'}
+              </span>
+              {processando
+                ? 'Aplicando...'
+                : arquivandoEmMassa ? 'Arquivar selecionados' : 'Devolver ao acompanhamento'}
             </button>
           </div>
         </div>
@@ -312,16 +317,14 @@ export default function Patients() {
             <table className="w-full text-left border-collapse clinical-table min-w-[900px]">
               <thead>
                 <tr>
-                  {podeSelecionar && (
-                    <th className="w-10">
-                      <input
-                        type="checkbox"
-                        aria-label="Selecionar todos os arquivados desta página"
-                        checked={marcados.length > 0 && marcados.length === patients.length}
-                        onChange={(e) => setMarcados(e.target.checked ? patients.map((p) => p.id) : [])}
-                      />
-                    </th>
-                  )}
+                  <th className="w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Selecionar todos os pacientes desta página"
+                      checked={marcados.length > 0 && marcados.length === patients.length}
+                      onChange={(e) => setMarcados(e.target.checked ? patients.map((p) => p.id) : [])}
+                    />
+                  </th>
                   <th>Paciente</th>
                   <th>Procedimento</th>
                   <th>Cirurgia</th>
@@ -340,16 +343,14 @@ export default function Patients() {
                       key={p.id}
                       className={`group transition-colors ${isOverdue ? 'overdue-row bg-error-container/10' : ''}`}
                     >
-                      {podeSelecionar && (
-                        <td>
-                          <input
-                            type="checkbox"
-                            aria-label={`Selecionar ${p.name}`}
-                            checked={marcados.includes(p.id)}
-                            onChange={() => alternarMarcado(p.id)}
-                          />
-                        </td>
-                      )}
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Selecionar ${p.name}`}
+                          checked={marcados.includes(p.id)}
+                          onChange={() => alternarMarcado(p.id)}
+                        />
+                      </td>
 
                       {/* Paciente */}
                       <td>
@@ -480,3 +481,4 @@ export default function Patients() {
     </div>
   )
 }
+

@@ -17,6 +17,61 @@ export const JANELA_DE_ACOMPANHAMENTO_MESES = 6
 // O que sobrar entra na noite seguinte.
 const MAX_POR_EXECUCAO = 500
 
+// ── Arquivar / desarquivar (usado pelo cron e pelas rotas) ───
+// A regra de contador mora aqui, num lugar só: arquivar e desarquivar mexem no
+// total de ativos, e duplicar essa aritmética nas rotas seria pedir divergência.
+
+export async function arquivarPacientes(db, ids) {
+  if (!ids?.length) return 0
+  const marcadores = ids.map(() => '?').join(',')
+
+  const { results: alvos } = await db.prepare(
+    `SELECT id, status FROM patients WHERE id IN (${marcadores}) AND archived_at IS NULL`
+  ).bind(...ids).all()
+
+  if (!alvos?.length) return 0
+
+  const idsReais = alvos.map((p) => p.id)
+  await db.prepare(
+    `UPDATE patients SET archived_at = datetime('now'), updated_at = datetime('now')
+     WHERE id IN (${idsReais.map(() => '?').join(',')})`
+  ).bind(...idsReais).run()
+
+  // Só quem estava em 'active' contava como ativo.
+  const saemDoAtivo = alvos.filter((p) => p.status === 'active').length
+  await ajustarContador(db, CONTADOR_PACIENTES_ATIVOS, -saemDoAtivo)
+
+  return idsReais.length
+}
+
+export async function desarquivarPacientes(db, ids, { recalcular } = {}) {
+  if (!ids?.length) return 0
+  const marcadores = ids.map(() => '?').join(',')
+
+  const { results: alvos } = await db.prepare(
+    `SELECT id, status FROM patients WHERE id IN (${marcadores}) AND archived_at IS NOT NULL`
+  ).bind(...ids).all()
+
+  if (!alvos?.length) return 0
+
+  const idsReais = alvos.map((p) => p.id)
+  await db.prepare(
+    `UPDATE patients SET archived_at = NULL, updated_at = datetime('now')
+     WHERE id IN (${idsReais.map(() => '?').join(',')})`
+  ).bind(...idsReais).run()
+
+  // O próximo marco ficou defasado enquanto o paciente esteve fora — devolver
+  // sem recalcular deixaria uma data vencida há meses.
+  if (recalcular) {
+    for (const paciente of alvos) await recalcular(db, paciente.id)
+  }
+
+  const voltamAoAtivo = alvos.filter((p) => p.status === 'active').length
+  await ajustarContador(db, CONTADOR_PACIENTES_ATIVOS, voltamAoAtivo)
+
+  return idsReais.length
+}
+
 export async function runArquivamento(env) {
   console.log('[Arquivamento] Iniciando —', new Date().toISOString())
 
@@ -34,15 +89,10 @@ export async function runArquivamento(env) {
     return { arquivados: 0 }
   }
 
+  // Mesma função que as rotas de arquivamento manual usam: o ajuste do contador
+  // e o filtro de "já arquivado" ficam num lugar só.
   const ids = aArquivar.map((paciente) => paciente.id)
-  await env.DB.prepare(`
-    UPDATE patients SET archived_at = datetime('now')
-    WHERE id IN (${ids.map(() => '?').join(',')})
-  `).bind(...ids).run()
-
-  // Arquivar tira o paciente da contagem de ativos.
-  const ativosArquivados = aArquivar.filter((paciente) => paciente.status === 'active').length
-  await ajustarContador(env.DB, CONTADOR_PACIENTES_ATIVOS, -ativosArquivados)
+  await arquivarPacientes(env.DB, ids)
 
   console.log(`[Arquivamento] ${ids.length} paciente(s) arquivado(s).`)
 
