@@ -85,8 +85,11 @@ export const api = {
     update: (id, body)    => request(`/patients/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     delete: (id)          => request(`/patients/${id}`, { method: 'DELETE' }),
 
-    // Arquivar é automático (6 meses); desarquivar é sempre decisão humana.
+    // Arquivar acontece automaticamente aos 6 meses, mas agente e admin podem
+    // fazer nos dois sentidos a qualquer momento.
+    archive:       (id)   => request(`/patients/${id}/archive`, { method: 'POST' }),
     unarchive:     (id)   => request(`/patients/${id}/unarchive`, { method: 'POST' }),
+    archiveMany:   (ids)  => request('/patients/archive',   { method: 'POST', body: JSON.stringify({ ids }) }),
     unarchiveMany: (ids)  => request('/patients/unarchive', { method: 'POST', body: JSON.stringify({ ids }) }),
 
     listDocuments:        (id)                     => request(`/patients/${id}/documents`),

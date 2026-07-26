@@ -196,11 +196,15 @@ Paciente **não é apagado pelo tempo** — aos 6 meses da cirurgia ele é
 **arquivado**: sai das listagens e buscas do dia a dia, com os dados intactos.
 Apagar de vez só por ação explícita de um admin.
 
-**Arquivar é automático; desarquivar é sempre decisão humana** (recidiva, nova
-cirurgia, data de cirurgia digitada errada). Um admin devolve o paciente ao
-acompanhamento pelo botão na ficha, ou vários de uma vez pelas caixas de seleção
-na aba Arquivados. O desarquivamento recalcula o próximo marco — a data ficou
-defasada enquanto o paciente esteve fora.
+Além do arquivamento automático, **agente e admin podem arquivar e desarquivar a
+qualquer momento** — quem faz o contato é quem sabe se o acompanhamento acabou.
+As duas ações são reversíveis uma pela outra e não perdem dado, por isso não
+exigem admin; **excluir continua restrito a admin**, porque é irreversível.
+
+Pela ficha do paciente (botão "Arquivar" ou a faixa de "Devolver ao
+acompanhamento") ou em massa, pelas caixas de seleção na lista — arquivando nas
+visões ativas, devolvendo na de arquivados. O desarquivamento **recalcula o
+próximo marco**: a data ficou defasada enquanto o paciente esteve fora.
 
 A lista de Pacientes tem três visões: **Em acompanhamento** (padrão),
 **Encerrando** (arquivam nos próximos 30 dias) e **Arquivados**. O aviso de
