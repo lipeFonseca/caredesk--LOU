@@ -578,6 +578,7 @@ function AgentModal({ agent, onClose, onSaved }) {
     email:            agent?.email ?? '',
     phone:            agent?.phone ?? '',
     password:         '',
+    passwordConfirm:  '',
     role:             agent?.role ?? 'agent',
     is_active:        agent?.is_active ?? 1,
     avatar_url:       agent?.avatar_url ?? '',
@@ -623,13 +624,24 @@ function AgentModal({ agent, onClose, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
+
+    // Confirmação de senha na criação: pega tanto erro de digitação quanto
+    // preenchimento automático do navegador. Sem ela, o agente nasce com uma
+    // senha que ninguém digitou e a falha só aparece no primeiro login dele —
+    // longe daqui, sem pista do que houve.
+    if (!isEdit && form.password !== form.passwordConfirm) {
+      setError('As senhas não conferem.')
+      return
+    }
+
     setSaving(true)
     try {
       if (isEdit) {
         const payload = { name: form.name, email: form.email, phone: form.phone, role: form.role, is_active: Number(form.is_active) }
         await api.agents.update(agent.id, payload)
       } else {
-        await api.agents.create(form)
+        const { passwordConfirm, ...payload } = form
+        await api.agents.create(payload)
       }
       onSaved(); onClose()
     } catch (err) {
@@ -681,8 +693,25 @@ function AgentModal({ agent, onClose, onSaved }) {
         {!isEdit && (
           <div>
             <label className="label">Senha</label>
+            {/* `new-password` é obrigatório aqui: sem essa dica o navegador trata
+                o campo como senha genérica e pode preenchê-lo com a credencial
+                salva do site — a do admin logado. O agente nasceria com uma
+                senha que ninguém digitou, e a falha só apareceria no primeiro
+                login dele. */}
             <input type="password" className="input" placeholder="Mínimo 8 caracteres"
+              autoComplete="new-password"
               value={form.password} onChange={set('password')} required minLength={8} disabled={saving} />
+          </div>
+        )}
+        {!isEdit && (
+          <div>
+            <label className="label">Confirmar senha</label>
+            <input type="password" className="input" placeholder="Repita a senha"
+              autoComplete="new-password"
+              value={form.passwordConfirm} onChange={set('passwordConfirm')} required minLength={8} disabled={saving} />
+            <p className="text-label-sm text-outline mt-1">
+              É esta a senha que o agente vai usar para entrar. Anote e entregue a ele.
+            </p>
           </div>
         )}
         <div className="grid grid-cols-2 gap-3">
@@ -749,7 +778,10 @@ function ResetPasswordModal({ agent, onClose }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="label">Nova senha</label>
+            {/* Mesma razão do formulário de criação: sem `new-password` o
+                navegador pode preencher com a credencial salva do admin. */}
             <input type="password" className="input" placeholder="Mínimo 8 caracteres"
+              autoComplete="new-password"
               value={pwd} onChange={e => { setPwd(e.target.value); setError('') }}
               minLength={8} required disabled={saving} autoFocus />
           </div>
