@@ -14,6 +14,25 @@ export function sanitizeOptionalPhone(valor) {
   return limpo || null
 }
 
+// E-mail de agente e OBRIGATORIO e precisa ser endereco real: e a credencial de
+// login E o destino do resumo diario e da redefinicao de senha. O admin default
+// nasceu como "admin" (sem @) e isso custou uma sessao inteira de diagnostico —
+// o sistema reportava envio bem-sucedido enquanto ninguem recebia nada.
+export function validateAgentEmail(valor) {
+  const limpo = typeof valor === 'string' ? valor.trim().toLowerCase() : ''
+
+  if (!limpo) return { error: 'Informe o e-mail do agente', status: 400 }
+  if (limpo.length > 160) return { error: 'E-mail muito longo', status: 400 }
+  if (!limpo.includes('@')) {
+    return { error: 'O e-mail do agente precisa ser um endereço real — é por ele que chegam a redefinição de senha e o resumo diário', status: 400 }
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(limpo)) {
+    return { error: 'E-mail inválido', status: 400 }
+  }
+
+  return { value: limpo }
+}
+
 // Versao so-digitos, gravada em `patients.phone_digits`. Existe pra busca por
 // telefone poder usar prefixo (`LIKE '8598%'`), que usa indice — o formato
 // exibido tem pontuacao e mataria essa possibilidade.

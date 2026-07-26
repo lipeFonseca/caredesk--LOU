@@ -136,6 +136,64 @@ patients.get('/', async (c) => {
   return c.json({ patients: enriched, total, next_cursor: proximoCursor })
 })
 
+// ── POST /api/patients/unarchive ──────────────────────────────
+// Desarquivamento em massa. Declarada ANTES de `/:id/...` porque o Hono casa na
+// ordem de registro e `unarchive` seria lido como um id.
+//
+// Arquivar é automático (cron aos 6 meses); desarquivar é sempre decisão humana
+// — recidiva, nova cirurgia, ou data de cirurgia digitada errada.
+patients.post('/unarchive', adminOnly, async (c) => {
+  const { ids } = await c.req.json().catch(() => ({}))
+
+  if (!Array.isArray(ids) || !ids.length) {
+    return c.json({ error: 'Informe os pacientes a desarquivar' }, 400)
+  }
+  if (ids.length > 200) {
+    return c.json({ error: 'Desarquive no máximo 200 pacientes por vez' }, 400)
+  }
+
+  const restaurados = await desarquivarPacientes(c.env.DB, ids)
+  return c.json({ success: true, restaurados })
+})
+
+// ── POST /api/patients/:id/unarchive ──────────────────────────
+patients.post('/:id/unarchive', adminOnly, async (c) => {
+  const restaurados = await desarquivarPacientes(c.env.DB, [c.req.param('id')])
+
+  if (!restaurados) return c.json({ error: 'Paciente não encontrado ou já ativo' }, 404)
+  return c.json({ success: true })
+})
+
+// Volta o paciente para o acompanhamento: limpa `archived_at`, recalcula o
+// próximo marco (a data ficou defasada enquanto ele esteve fora) e devolve ao
+// contador de ativos.
+async function desarquivarPacientes(db, ids) {
+  const marcadores = ids.map(() => '?').join(',')
+
+  const { results: alvos } = await db.prepare(
+    `SELECT id, status FROM patients WHERE id IN (${marcadores}) AND archived_at IS NOT NULL`
+  ).bind(...ids).all()
+
+  if (!alvos?.length) return 0
+
+  const idsReais = alvos.map((p) => p.id)
+  await db.prepare(
+    `UPDATE patients SET archived_at = NULL, updated_at = datetime('now')
+     WHERE id IN (${idsReais.map(() => '?').join(',')})`
+  ).bind(...idsReais).run()
+
+  for (const paciente of alvos) {
+    await recalcularProximoMarco(db, paciente.id)
+  }
+
+  // Só quem está 'active' volta a contar — paciente arquivado em 'discharged'
+  // continua fora da conta ao ser restaurado.
+  const voltamAoAtivo = alvos.filter((p) => p.status === 'active').length
+  await ajustarContador(db, CONTADOR_PACIENTES_ATIVOS, voltamAoAtivo)
+
+  return idsReais.length
+}
+
 // ── GET /api/patients/:id ─────────────────────────────────────
 patients.get('/:id', async (c) => {
   const patient = await c.env.DB.prepare(`

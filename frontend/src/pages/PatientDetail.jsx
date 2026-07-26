@@ -160,6 +160,18 @@ export default function PatientDetail() {
     }
   }
 
+  async function handleUnarchive() {
+    setSaving(true)
+    try {
+      await api.patients.unarchive(id)
+      load()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleDelete() {
     setSaving(true)
     try {
@@ -215,6 +227,31 @@ export default function PatientDetail() {
         <span className="material-symbols-outlined mx-1" style={{ fontSize: '16px' }}>chevron_right</span>
         <span className="text-on-surface font-medium">{patient.name}</span>
       </nav>
+
+      {/* ── Faixa de arquivado ──────────────────────────────────── */}
+      {patient.archived_at && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-low px-5 py-4">
+          <p className="text-body-md text-on-surface-variant flex items-center gap-2">
+            <span className="material-symbols-outlined text-outline">inventory_2</span>
+            <span>
+              Paciente arquivado em{' '}
+              <strong className="text-on-surface">
+                {format(parseISO(patient.archived_at.replace(' ', 'T')), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+              </strong>
+              {' '}— fora das listagens e buscas do dia a dia.
+            </span>
+          </p>
+          {isAdmin() && (
+            <button
+              onClick={handleUnarchive}
+              disabled={saving}
+              className="btn-primary shrink-0 disabled:opacity-50"
+            >
+              {saving ? <Spinner /> : <><span className="material-symbols-outlined" style={{ fontSize: '18px' }}>unarchive</span> Devolver ao acompanhamento</>}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Header Card ─────────────────────────────────────────── */}
       <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
