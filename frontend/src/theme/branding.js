@@ -10,6 +10,11 @@ export const DEFAULT_LOGIN_BORDER_INTENSITY = 0.2
 export const DEFAULT_LOGIN_BORDER_SPEED = 1
 export const DEFAULT_LOGIN_BORDER_THICKNESS = 0.1
 export const DEFAULT_LOGIN_BORDER_BLOOM = 0.25
+// Teto dos quatro controles da borda pulsante. Os presets da biblioteca vivem
+// entre 0 e 1, mas o shader aceita valores acima disso — e é lá que estão os
+// visuais mais marcados. Um único ponto define o limite: mudar aqui move o
+// slider, a validação e o clamp da margem juntos.
+export const LOGIN_BORDER_MAX = 5
 // Cor das ondas do fundo animado do login. Sai da cor primária: o padrão nasce
 // coerente com a marca, e quem quiser diferencia depois.
 export const DEFAULT_LOGIN_BACKGROUND_COLOR = '#2e79ad'
@@ -32,10 +37,13 @@ export function normalizeBrandingSettings(settings = {}) {
     login_border_color_2: sanitizeColorString(settings.login_border_color_2, DEFAULT_LOGIN_BORDER_COLORS[1]),
     login_border_color_3: sanitizeColorString(settings.login_border_color_3, DEFAULT_LOGIN_BORDER_COLORS[2]),
     login_border_color_back: sanitizeColorString(settings.login_border_color_back, DEFAULT_LOGIN_BORDER_COLOR_BACK),
-    login_border_intensity: coerceNumber(settings.login_border_intensity, DEFAULT_LOGIN_BORDER_INTENSITY, 0, 1),
-    login_border_speed: coerceNumber(settings.login_border_speed, DEFAULT_LOGIN_BORDER_SPEED, 0, 2),
-    login_border_thickness: coerceNumber(settings.login_border_thickness, DEFAULT_LOGIN_BORDER_THICKNESS, 0, 1),
-    login_border_bloom: coerceNumber(settings.login_border_bloom, DEFAULT_LOGIN_BORDER_BLOOM, 0, 1),
+    login_border_intensity: coerceNumber(settings.login_border_intensity, DEFAULT_LOGIN_BORDER_INTENSITY, 0, LOGIN_BORDER_MAX),
+    login_border_speed: coerceNumber(settings.login_border_speed, DEFAULT_LOGIN_BORDER_SPEED, 0, LOGIN_BORDER_MAX),
+    login_border_thickness: coerceNumber(settings.login_border_thickness, DEFAULT_LOGIN_BORDER_THICKNESS, 0, LOGIN_BORDER_MAX),
+    login_border_bloom: coerceNumber(settings.login_border_bloom, DEFAULT_LOGIN_BORDER_BLOOM, 0, LOGIN_BORDER_MAX),
+    // Ligado por padrão: quem já usava a tela antes do efeito existir não perde
+    // nada, e a chave só é gravada quando alguém mexe no controle.
+    login_background_effect_enabled: coerceBooleanish(settings.login_background_effect_enabled, true),
     login_background_color: sanitizePrimaryColor(settings.login_background_color, DEFAULT_LOGIN_BACKGROUND_COLOR),
     timezone: coerceString(settings.timezone) || DEFAULT_TIMEZONE,
   }
@@ -69,6 +77,7 @@ export function getBranding(settings = {}) {
     // fundo animado do login.
     primaryColor: normalized.primary_color,
     loginBackgroundColor: normalized.login_background_color,
+    loginBackgroundEffectEnabled: normalized.login_background_effect_enabled,
     backgroundImageUrl,
     loginImageUrl,
     loginBackgroundImageUrl,
@@ -154,9 +163,14 @@ function coerceString(value) {
   return typeof value === 'string' ? value : ''
 }
 
-function coerceBooleanish(value) {
+// `padrao` vale só quando a chave nunca foi gravada (ausente ou string vazia).
+// Um '0' ou 'false' explícito continua sendo falso mesmo com padrão `true` —
+// caso contrário, desligar um efeito nunca persistiria.
+function coerceBooleanish(value, padrao = false) {
   if (typeof value === 'boolean') return value
-  const normalized = String(value || '').trim().toLowerCase()
+  if (value === undefined || value === null || value === '') return padrao
+
+  const normalized = String(value).trim().toLowerCase()
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
 }
 

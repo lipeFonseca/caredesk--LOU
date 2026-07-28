@@ -3,7 +3,7 @@ import { api } from '@/services/api'
 import LoginCardLayout from '@/components/LoginCardLayout'
 import { useSettingsStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
-import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor, DEFAULT_LOGIN_BACKGROUND_COLOR } from '@/theme/branding'
+import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor, DEFAULT_LOGIN_BACKGROUND_COLOR, LOGIN_BORDER_MAX } from '@/theme/branding'
 import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
 import SmokeyBackground from '@/components/SmokeyBackground'
 import { getLoginPageBackgroundStyle } from '@/components/login/loginPageBackground'
@@ -289,12 +289,24 @@ export default function BrandingSettingsTab() {
       {/* Seção própria: o fundo animado é um efeito distinto da borda pulsante,
           e ficava invisível quando morava dentro da seção dela. */}
       <section className="card space-y-6">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.26em] text-on-surface-variant">Fundo animado do login</p>
-          <h2 className="mt-2 text-headline-sm text-on-surface">Ondas atrás do card de acesso</h2>
-          <p className="mt-2 max-w-xl text-sm text-on-surface-variant">
-            Movimento contínuo e lento, gerado em tempo real. A cor abaixo tinge as ondas — o preview responde enquanto você escolhe.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-on-surface-variant">Fundo animado do login</p>
+            <h2 className="mt-2 text-headline-sm text-on-surface">Ondas atrás do card de acesso</h2>
+            <p className="mt-2 max-w-xl text-sm text-on-surface-variant">
+              Movimento contínuo e lento, gerado em tempo real. A cor abaixo tinge as ondas — o preview responde enquanto você escolhe.
+              Desligado, a tela usa a imagem de fundo do login.
+            </p>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-surface-container px-4 py-2 text-sm text-on-surface">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-outline-variant"
+              checked={form.login_background_effect_enabled}
+              onChange={setToggle('login_background_effect_enabled')}
+            />
+            Ativar
+          </label>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] lg:items-start">
@@ -309,11 +321,19 @@ export default function BrandingSettingsTab() {
             </p>
           </div>
 
-          <div className="relative h-56 overflow-hidden rounded-[22px] border border-outline-variant">
-            <SmokeyBackground color={branding.loginBackgroundColor} />
-            {/* Mesmo véu da tela real, pra o preview não prometer um brilho que
-                o login não vai ter. */}
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(6,12,10,0.35),rgba(5,10,9,0.72))]" />
+          <div className="relative h-56 overflow-hidden rounded-[22px] border border-outline-variant bg-[#091117]">
+            {form.login_background_effect_enabled ? (
+              <>
+                <SmokeyBackground color={branding.loginBackgroundColor} />
+                {/* Mesmo véu da tela real, pra o preview não prometer um brilho
+                    que o login não vai ter. */}
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(6,12,10,0.35),rgba(5,10,9,0.72))]" />
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center px-6 text-center text-label-md text-white/50">
+                Efeito desligado — a tela usa a imagem de fundo do login
+              </div>
+            )}
             <span className="absolute bottom-3 left-4 text-label-sm text-white/70">Prévia</span>
           </div>
         </div>
@@ -360,10 +380,10 @@ export default function BrandingSettingsTab() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <RangeField label="Intensidade" min="0" max="1" step="0.01" value={form.login_border_intensity} onChange={setNumber('login_border_intensity')} />
-              <RangeField label="Velocidade" min="0" max="2" step="0.01" value={form.login_border_speed} onChange={setNumber('login_border_speed')} />
-              <RangeField label="Espessura" min="0" max="1" step="0.01" value={form.login_border_thickness} onChange={setNumber('login_border_thickness')} />
-              <RangeField label="Bloom" min="0" max="1" step="0.01" value={form.login_border_bloom} onChange={setNumber('login_border_bloom')} />
+              <RangeField label="Intensidade" min="0" max={LOGIN_BORDER_MAX} step="0.01" value={form.login_border_intensity} onChange={setNumber('login_border_intensity')} />
+              <RangeField label="Velocidade" min="0" max={LOGIN_BORDER_MAX} step="0.01" value={form.login_border_speed} onChange={setNumber('login_border_speed')} />
+              <RangeField label="Espessura" min="0" max={LOGIN_BORDER_MAX} step="0.01" value={form.login_border_thickness} onChange={setNumber('login_border_thickness')} />
+              <RangeField label="Bloom" min="0" max={LOGIN_BORDER_MAX} step="0.01" value={form.login_border_bloom} onChange={setNumber('login_border_bloom')} />
             </div>
           </div>
 
@@ -487,6 +507,7 @@ function buildSettingsPayload(form) {
     login_border_thickness: normalized.login_border_thickness,
     login_border_bloom: normalized.login_border_bloom,
     login_background_color: normalized.login_background_color,
+    login_background_effect_enabled: normalized.login_background_effect_enabled,
     timezone: normalized.timezone,
   }
 }

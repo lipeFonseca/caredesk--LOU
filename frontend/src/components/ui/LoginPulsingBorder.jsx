@@ -1,5 +1,6 @@
 import { Suspense, lazy, useMemo } from 'react'
 import { useReducedMotion } from 'framer-motion'
+import { LOGIN_BORDER_MAX } from '@/theme/branding'
 
 // Lazy: @paper-design/shaders-react (WebGL) so entra no bundle quando o efeito
 // realmente renderiza, em vez de pesar no chunk principal do app inteiro.
@@ -42,8 +43,11 @@ export default function LoginPulsingBorder({ config, className = '', children, r
   )
 }
 
+// Margem entre a borda e o card. Acompanha a espessura na escala inteira: com o
+// clamp antigo em 1, qualquer valor acima disso dava a mesma margem e a borda
+// passava a invadir o card em vez de crescer para fora.
 function resolveBorderInset(config = {}) {
   const thickness = typeof config.thickness === 'number' ? config.thickness : 0.1
-  const normalized = Math.min(1, Math.max(0, thickness))
-  return 4 + (normalized * 8)
+  const normalized = Math.min(LOGIN_BORDER_MAX, Math.max(0, thickness)) / LOGIN_BORDER_MAX
+  return 4 + (normalized * 22)
 }
