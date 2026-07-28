@@ -139,8 +139,15 @@ O painel de credenciais usa vidro **claro** (`bg-white/10`): camada de branco
 translúcido, não escura. Os campos são sublinhados com rótulo flutuante — caixa
 com fundo próprio viraria um bloco opaco dentro do vidro.
 
-A cor das ondas é configurável em **Configurações → Identidade Visual → Fundo
-animado do login** (`login_background_color`).
+Cor das ondas (`login_background_color`) e liga/desliga do efeito
+(`login_background_effect_enabled`, ligado por padrão) ficam em **Configurações →
+Identidade Visual → Fundo animado do login**. Desligado, a tela cai na imagem de
+fundo do branding.
+
+Os quatro controles da borda pulsante vão de 0 a `LOGIN_BORDER_MAX` (5), acima do
+teto dos presets da biblioteca. A constante mora em `frontend/src/theme/branding.js`
+e governa o slider, a validação e a margem entre a borda e o card — mudar o teto
+em um lugar só evita que a borda cresça para dentro.
 
 ---
 
