@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/services/api'
-import LoginCardLayout from '@/components/login/LoginCardLayout'
+import LoginCardLayout from '@/components/LoginCardLayout'
 import { useSettingsStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
-import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor } from '@/theme/branding'
+import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor, DEFAULT_LOGIN_BACKGROUND_COLOR } from '@/theme/branding'
 import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
+import SmokeyBackground from '@/components/SmokeyBackground'
 import { getLoginPageBackgroundStyle } from '@/components/login/loginPageBackground'
 
 export default function BrandingSettingsTab() {
@@ -31,9 +32,13 @@ export default function BrandingSettingsTab() {
 
   function set(field) {
     return (event) => {
+      // Ambas passam pela mesma validação de hex; a do fundo cai no seu próprio
+      // padrão quando o valor não é um hex completo.
       const nextValue = field === 'primary_color'
         ? sanitizePrimaryColor(event.target.value)
-        : event.target.value
+        : field === 'login_background_color'
+          ? sanitizePrimaryColor(event.target.value, DEFAULT_LOGIN_BACKGROUND_COLOR)
+          : event.target.value
       setFormState((current) => ({ ...current, [field]: nextValue }))
       setSuccess(false)
       setError('')
@@ -281,6 +286,39 @@ export default function BrandingSettingsTab() {
         </div>
       </section>
 
+      {/* Seção própria: o fundo animado é um efeito distinto da borda pulsante,
+          e ficava invisível quando morava dentro da seção dela. */}
+      <section className="card space-y-6">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.26em] text-on-surface-variant">Fundo animado do login</p>
+          <h2 className="mt-2 text-headline-sm text-on-surface">Ondas atrás do card de acesso</h2>
+          <p className="mt-2 max-w-xl text-sm text-on-surface-variant">
+            Movimento contínuo e lento, gerado em tempo real. A cor abaixo tinge as ondas — o preview responde enquanto você escolhe.
+          </p>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] lg:items-start">
+          <div>
+            <ColorInputField
+              label="Cor das ondas"
+              value={form.login_background_color}
+              onChange={set('login_background_color')}
+            />
+            <p className="mt-2 text-label-sm text-outline">
+              Tons médios e saturados funcionam melhor: muito escuro some no fundo, muito claro compete com o card.
+            </p>
+          </div>
+
+          <div className="relative h-56 overflow-hidden rounded-[22px] border border-outline-variant">
+            <SmokeyBackground color={branding.loginBackgroundColor} />
+            {/* Mesmo véu da tela real, pra o preview não prometer um brilho que
+                o login não vai ter. */}
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(6,12,10,0.35),rgba(5,10,9,0.72))]" />
+            <span className="absolute bottom-3 left-4 text-label-sm text-white/70">Prévia</span>
+          </div>
+        </div>
+      </section>
+
       <section className="card space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -312,6 +350,7 @@ export default function BrandingSettingsTab() {
                 <option value="solid-line">Solid line</option>
               </select>
             </div>
+
 
             <div className="grid grid-cols-2 gap-4">
               <ColorInputField label="Cor 1" value={form.login_border_color_1} onChange={set('login_border_color_1')} />
@@ -447,6 +486,7 @@ function buildSettingsPayload(form) {
     login_border_speed: normalized.login_border_speed,
     login_border_thickness: normalized.login_border_thickness,
     login_border_bloom: normalized.login_border_bloom,
+    login_background_color: normalized.login_background_color,
     timezone: normalized.timezone,
   }
 }

@@ -118,11 +118,29 @@ Cada rota mora no arquivo de mesmo nome — sem indireção.
 **Componentes de nota:**
 
 - `components/LoginPageShell.jsx` — casca das telas públicas (login e redefinição)
-- `components/login/LoginCardLayout.jsx` — layout interno do card
+- `components/LoginCardLayout.jsx` — layout interno do card, com o painel de vidro
+- `components/SmokeyBackground.jsx` — fundo animado do login (WebGL puro, sem dependência)
 - `components/admin/` — abas de Configurações, incluindo `MessagingTab` e `EmailTemplateEditor`
 
-> `LoginPageShell.jsx` deveria estar em `components/login/`, mas essa pasta está
-> com a ACL do Windows quebrada e a correção exige shell elevado.
+> `LoginPageShell.jsx` e `LoginCardLayout.jsx` deveriam estar em
+> `components/login/`, mas essa pasta está com a ACL do Windows quebrada — nega
+> até escrita em arquivo existente — e a correção exige shell elevado. A versão
+> antiga do `LoginCardLayout` continua lá, órfã.
+
+### Tela de login
+
+Três camadas empilhadas, e a ordem importa: **fundo animado** (shader) → **véu
+escuro** → **card**. O card não pode ter fundo sólido em nenhum nível, senão o
+`backdrop-blur` do painel de vidro filtra esse fundo em vez do shader — foi
+exatamente o que um `bg-surface` no `LoginPulsingBorder` causava, deixando o
+painel branco e opaco.
+
+O painel de credenciais usa vidro **claro** (`bg-white/10`): camada de branco
+translúcido, não escura. Os campos são sublinhados com rótulo flutuante — caixa
+com fundo próprio viraria um bloco opaco dentro do vidro.
+
+A cor das ondas é configurável em **Configurações → Identidade Visual → Fundo
+animado do login** (`login_background_color`).
 
 ---
 

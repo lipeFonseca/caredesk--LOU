@@ -7,7 +7,7 @@ import { api } from '@/services/api'
 import { getBranding } from '@/theme/branding'
 import LoginPageShell from '@/components/LoginPageShell'
 
-const CAMPO = 'input border-white/10 bg-[rgba(35,29,29,0.55)] text-[#f6eee8] placeholder:text-[#ab9faa]'
+const CAMPO = 'input border-white/20 bg-[rgba(9,20,17,0.52)] text-[#f7f2ec] shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] transition-colors placeholder:text-[#b9b0a6] focus:border-white/40 focus:bg-[rgba(9,20,17,0.66)]'
 
 export default function EsqueciSenha() {
   const navigate = useNavigate()
@@ -91,9 +91,9 @@ export default function EsqueciSenha() {
             alt={`Logo da clinica ${branding.clinicName}`}
             className="mx-auto h-16 w-16 rounded-[20px] border border-white/12 bg-[rgba(255,255,255,0.10)] object-cover shadow-card lg:mx-0"
           />
-          <p className="mt-5 text-[11px] uppercase tracking-[0.3em] text-[#cfc4d3]">Redefinir senha</p>
-          <h1 className="mt-3 text-display-md text-[#f7f0ea]">{branding.clinicName}</h1>
-          <p className="mt-2 text-sm leading-6 text-[#d4c7c0]">
+          <p className="mt-5 text-[11px] uppercase tracking-[0.3em] text-[#ded5c9]">Redefinir senha</p>
+          <h1 className="mt-3 text-display-md text-[#fbf7f2]">{branding.clinicName}</h1>
+          <p className="mt-2 text-sm leading-6 text-[#e0d7cc]">
             {etapa === 'email'
               ? 'Informe o e-mail da sua conta e enviaremos um código de 6 dígitos.'
               : 'Digite o código que chegou por e-mail e escolha a nova senha.'}
@@ -103,7 +103,7 @@ export default function EsqueciSenha() {
         {etapa === 'email' ? (
           <form onSubmit={pedirCodigo} className="relative space-y-5">
             <div>
-              <label className="label text-[#cec4cf]">E-mail da conta</label>
+              <label className="label text-[#e6ded4]">E-mail da conta</label>
               <input
                 type="email"
                 className={CAMPO}
@@ -127,7 +127,7 @@ export default function EsqueciSenha() {
             {aviso && <Mensagem tipo="aviso">{aviso}</Mensagem>}
 
             <div>
-              <label className="label text-[#cec4cf]">Código de 6 dígitos</label>
+              <label className="label text-[#e6ded4]">Código de 6 dígitos</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -143,7 +143,7 @@ export default function EsqueciSenha() {
             </div>
 
             <div>
-              <label className="label text-[#cec4cf]">Nova senha</label>
+              <label className="label text-[#e6ded4]">Nova senha</label>
               <input
                 type="password"
                 className={CAMPO}
@@ -156,7 +156,7 @@ export default function EsqueciSenha() {
             </div>
 
             <div>
-              <label className="label text-[#cec4cf]">Confirme a nova senha</label>
+              <label className="label text-[#e6ded4]">Confirme a nova senha</label>
               <input
                 type="password"
                 className={CAMPO}
@@ -177,7 +177,7 @@ export default function EsqueciSenha() {
             <button
               type="button"
               onClick={() => { setEtapa('email'); setError(''); setAviso('') }}
-              className="w-full text-sm text-[#cbbfdf] underline-offset-4 hover:text-white hover:underline"
+              className="w-full text-sm text-[#dcd3c8] underline-offset-4 hover:text-white hover:underline"
               disabled={loading}
             >
               Não recebeu? Pedir outro código
@@ -186,7 +186,7 @@ export default function EsqueciSenha() {
         )}
 
         <p className="relative mt-7 text-center lg:text-left">
-          <Link to="/login" className="text-sm text-[#cbbfdf] underline-offset-4 hover:text-white hover:underline">
+          <Link to="/login" className="text-sm text-[#dcd3c8] underline-offset-4 hover:text-white hover:underline">
             Voltar para o login
           </Link>
         </p>
@@ -196,9 +196,11 @@ export default function EsqueciSenha() {
 }
 
 function Mensagem({ tipo, children }) {
+  // Sobre vidro translúcido as caixas precisam de fundo próprio e borda: sem
+  // isso a mensagem se dissolve no que está atrás.
   const estilo = tipo === 'erro'
-    ? 'bg-error-container/20 text-error'
-    : 'bg-white/8 text-[#e4dcd6]'
+    ? 'border border-error/40 bg-[rgba(120,26,26,0.42)] text-[#ffdad6] backdrop-blur-sm'
+    : 'border border-white/15 bg-[rgba(9,20,17,0.45)] text-[#e8e0d6] backdrop-blur-sm'
 
   return (
     <motion.p
@@ -214,3 +216,4 @@ function Mensagem({ tipo, children }) {
 function Girando() {
   return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
 }
+

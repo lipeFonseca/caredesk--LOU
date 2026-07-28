@@ -10,6 +10,9 @@ export const DEFAULT_LOGIN_BORDER_INTENSITY = 0.2
 export const DEFAULT_LOGIN_BORDER_SPEED = 1
 export const DEFAULT_LOGIN_BORDER_THICKNESS = 0.1
 export const DEFAULT_LOGIN_BORDER_BLOOM = 0.25
+// Cor das ondas do fundo animado do login. Sai da cor primária: o padrão nasce
+// coerente com a marca, e quem quiser diferencia depois.
+export const DEFAULT_LOGIN_BACKGROUND_COLOR = '#2e79ad'
 
 export function normalizeBrandingSettings(settings = {}) {
   return {
@@ -33,6 +36,7 @@ export function normalizeBrandingSettings(settings = {}) {
     login_border_speed: coerceNumber(settings.login_border_speed, DEFAULT_LOGIN_BORDER_SPEED, 0, 2),
     login_border_thickness: coerceNumber(settings.login_border_thickness, DEFAULT_LOGIN_BORDER_THICKNESS, 0, 1),
     login_border_bloom: coerceNumber(settings.login_border_bloom, DEFAULT_LOGIN_BORDER_BLOOM, 0, 1),
+    login_background_color: sanitizePrimaryColor(settings.login_background_color, DEFAULT_LOGIN_BACKGROUND_COLOR),
     timezone: coerceString(settings.timezone) || DEFAULT_TIMEZONE,
   }
 }
@@ -61,6 +65,10 @@ export function getBranding(settings = {}) {
     heroSubtitle,
     logoUrl,
     faviconUrl,
+    // Expostas como valor, não como token CSS: vão direto para o shader do
+    // fundo animado do login.
+    primaryColor: normalized.primary_color,
+    loginBackgroundColor: normalized.login_background_color,
     backgroundImageUrl,
     loginImageUrl,
     loginBackgroundImageUrl,
@@ -77,10 +85,12 @@ export function getBranding(settings = {}) {
   }
 }
 
-export function sanitizePrimaryColor(value) {
+// `padrao` permite reusar a mesma validação de hex para outras cores da marca
+// sem duplicar a regex — hoje a cor do fundo animado do login.
+export function sanitizePrimaryColor(value, padrao = DEFAULT_PRIMARY_COLOR) {
   return /^#([0-9a-f]{6})$/i.test(String(value || '').trim())
     ? String(value).trim()
-    : DEFAULT_PRIMARY_COLOR
+    : padrao
 }
 
 export function sanitizeBrandUrl(value) {
