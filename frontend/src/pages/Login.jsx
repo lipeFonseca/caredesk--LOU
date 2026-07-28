@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LogIn } from 'lucide-react'
+import { User, Lock, ArrowRight } from 'lucide-react'
 import { useAuthStore, useSettingsStore } from '@/store'
 import { api } from '@/services/api'
 import { getBranding } from '@/theme/branding'
@@ -53,65 +53,90 @@ export default function Login() {
             alt={`Logo da clinica ${branding.clinicName}`}
             className="mx-auto h-16 w-16 rounded-[20px] border border-white/12 bg-[rgba(255,255,255,0.10)] object-cover shadow-card lg:mx-0"
           />
-          <p className="mt-5 text-[11px] uppercase tracking-[0.3em] text-[#cfc4d3]">Entrar no painel</p>
-          <h1 className="mt-3 text-display-md text-[#f7f0ea]">{branding.clinicName}</h1>
-          <p className="mt-2 text-sm leading-6 text-[#d4c7c0]">{branding.tagline}</p>
+          {/* Sombra sutil no texto: sobre vidro claro o fundo pode ter áreas
+              claras, e é ela que garante contraste sem opacificar o painel. */}
+          <p className="mt-5 text-[11px] uppercase tracking-[0.3em] text-white/70 [text-shadow:0_1px_3px_rgba(0,0,0,0.45)]">Entrar no painel</p>
+          <h1 className="mt-3 text-display-md text-white [text-shadow:0_2px_10px_rgba(0,0,0,0.4)]">{branding.clinicName}</h1>
+          <p className="mt-2 text-sm leading-6 text-white/75 [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]">{branding.tagline}</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="relative space-y-5">
-          <div>
-            <label className="label text-[#cec4cf]">Usuario</label>
+        {/* Campos com sublinhado e rótulo flutuante: sobre vidro, caixa com
+            fundo próprio vira um bloco opaco dentro do painel e quebra o efeito.
+            O sublinhado deixa o vidro contínuo.
+            O `placeholder=" "` (espaço, não vazio) é o que faz `placeholder-shown`
+            distinguir campo vazio de preenchido — é ele que move o rótulo. */}
+        <form onSubmit={handleSubmit} className="relative space-y-8">
+          <div className="relative z-0">
             <input
               type="text"
-              className="input border-white/10 bg-[rgba(35,29,29,0.55)] text-[#f6eee8] placeholder:text-[#ab9faa]"
-              placeholder="nome de usuario"
+              id="login-usuario"
+              className="peer block w-full appearance-none border-0 border-b-2 border-white/30 bg-transparent px-0 py-2.5 text-sm text-white transition-colors focus:border-primary focus:outline-none focus:ring-0 disabled:opacity-60"
+              placeholder=" "
               value={form.email}
               onChange={set('email')}
               autoFocus
               autoComplete="username"
               disabled={loading}
             />
+            <label
+              htmlFor="login-usuario"
+              className="absolute top-3 -z-10 origin-[0] -translate-y-6 scale-75 text-sm text-white/70 duration-300 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:left-0 peer-focus:-translate-y-6 peer-focus:scale-75 peer-focus:text-primary"
+            >
+              <User className="-mt-1 mr-2 inline-block" size={16} />
+              Usuario
+            </label>
           </div>
 
-          <div>
-            <label className="label text-[#cec4cf]">Senha</label>
+          <div className="relative z-0">
             <input
               type="password"
-              className="input border-white/10 bg-[rgba(35,29,29,0.55)] text-[#f6eee8] placeholder:text-[#ab9faa]"
-              placeholder="••••••••"
+              id="login-senha"
+              className="peer block w-full appearance-none border-0 border-b-2 border-white/30 bg-transparent px-0 py-2.5 text-sm text-white transition-colors focus:border-primary focus:outline-none focus:ring-0 disabled:opacity-60"
+              placeholder=" "
               value={form.password}
               onChange={set('password')}
               autoComplete="current-password"
               disabled={loading}
             />
+            <label
+              htmlFor="login-senha"
+              className="absolute top-3 -z-10 origin-[0] -translate-y-6 scale-75 text-sm text-white/70 duration-300 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:left-0 peer-focus:-translate-y-6 peer-focus:scale-75 peer-focus:text-primary"
+            >
+              <Lock className="-mt-1 mr-2 inline-block" size={16} />
+              Senha
+            </label>
           </div>
 
           {error && (
             <motion.p
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
-              className="rounded-2xl bg-error-container/20 px-4 py-3 text-sm text-error"
+              className="rounded-2xl border border-error/40 bg-[rgba(120,26,26,0.42)] px-4 py-3 text-sm text-[#ffdad6] backdrop-blur-sm"
             >
               {error}
             </motion.p>
           )}
 
-          <button type="submit" className="btn-primary w-full" disabled={loading}>
+          {/* Seta desliza no hover — o `group` no botão é quem dispara. */}
+          <button type="submit" className="btn-primary group w-full" disabled={loading}>
             {loading ? (
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
             ) : (
-              <><LogIn size={16} /> Entrar</>
+              <>
+                Entrar
+                <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+              </>
             )}
           </button>
 
           <p className="relative text-center lg:text-left">
-            <Link to="/esqueci-senha" className="text-sm text-[#cbbfdf] underline-offset-4 hover:text-white hover:underline">
+            <Link to="/esqueci-senha" className="text-xs text-white/70 transition-colors hover:text-white">
               Esqueci minha senha
             </Link>
           </p>
         </form>
 
-        <p className="relative mt-7 text-center text-xs uppercase tracking-[0.18em] text-[#cbbfdf] lg:text-left">
+        <p className="relative mt-7 text-center text-xs uppercase tracking-[0.18em] text-white/55 lg:text-left [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]">
           Cuidado humano com rotina organizada
         </p>
       </div>

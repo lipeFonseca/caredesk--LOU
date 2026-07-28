@@ -80,6 +80,7 @@ settings.patch('/', adminOnly, async (c) => {
     'login_border_speed',
     'login_border_thickness',
     'login_border_bloom',
+    'login_background_color',
     'timezone',
     ...MESSAGING_SETTING_KEYS,
   ]
@@ -262,6 +263,7 @@ function buildPublicSettingsPayload(settingsMap = {}) {
     'login_border_speed',
     'login_border_thickness',
     'login_border_bloom',
+    'login_background_color',
     'timezone',
   ]
 
@@ -312,4 +314,5 @@ const BRAND_ASSET_CONFIG = {
     maxSizeMb: 2,
   },
 }
+
 

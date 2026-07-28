@@ -26,8 +26,11 @@ export default function LoginPulsingBorder({ config, className = '', children, r
           <LoginPulsingBorderShader config={config} outerRadius={outerRadius} />
         </Suspense>
       ) : null}
+      {/* Sem fundo próprio: `bg-surface` é branco no tema claro e era ELE que o
+          vidro do card filtrava — o efeito nunca alcançava o fundo animado.
+          Quem pinta as duas colunas é o LoginCardLayout. */}
       <div
-        className="relative z-10 border border-outline-variant/60 bg-surface"
+        className="relative z-10 border border-white/15 bg-transparent"
         style={{
           borderRadius: `${innerRadius}px`,
           ...(isEnabled ? { margin: `${borderInset}px` } : undefined),

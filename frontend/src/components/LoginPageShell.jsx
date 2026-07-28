@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import LoginCardLayout from '@/components/login/LoginCardLayout'
+import LoginCardLayout from '@/components/LoginCardLayout'
 import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
+import SmokeyBackground from '@/components/SmokeyBackground'
 import { getLoginPageBackgroundStyle } from '@/components/login/loginPageBackground'
 
 // Casca das telas publicas (login e redefinicao de senha): fundo, halos, borda
@@ -17,13 +18,18 @@ export default function LoginPageShell({ branding, children }) {
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#091117] px-4 py-8"
       style={getLoginPageBackgroundStyle(branding.loginBackgroundImageUrl)}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(255,255,255,0.04),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_24%,transparent_72%,rgba(255,255,255,0.03))]" />
-      <div className="absolute inset-x-[14%] bottom-[-12%] top-[58%] rounded-full bg-[radial-gradient(circle,rgba(46,121,173,0.16),rgba(46,121,173,0.06)_38%,transparent_72%)] blur-3xl" />
-      <div className="absolute left-[-12%] top-[10%] h-[18rem] w-[18rem] rounded-full bg-[radial-gradient(circle,rgba(109,154,194,0.18),transparent_70%)] blur-3xl" />
-      <div className="absolute right-[-10%] top-[18%] h-[16rem] w-[16rem] rounded-full bg-[radial-gradient(circle,rgba(124,92,162,0.12),transparent_72%)] blur-3xl" />
+      {/* Fundo animado em WebGL. Fica sob tudo; o card é quem recebe o clique. */}
+      <SmokeyBackground color={branding.loginBackgroundColor} className="pointer-events-none" />
 
-      <LoginPulsingBorder config={branding.loginBorder} radius={36} className="w-full max-w-5xl shadow-modal">
-        <div className="overflow-hidden bg-surface-container-low" style={{ borderRadius: 'inherit' }}>
+      {/* Véu escuro sobre o shader: o brilho das ondas passa por baixo do card e
+          lavaria o texto branco sem isto. */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(6,12,10,0.35),rgba(5,10,9,0.72))]" />
+
+      <LoginPulsingBorder config={branding.loginBorder} radius={36} className="relative w-full max-w-5xl shadow-modal">
+        {/* Sem fundo sólido aqui: era `bg-surface-container-low` — quase branco
+            no tema claro — e era ELE que o vidro filtrava, não o shader. Com
+            fundo transparente o efeito passa a valer de verdade. */}
+        <div className="overflow-hidden" style={{ borderRadius: 'inherit' }}>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
