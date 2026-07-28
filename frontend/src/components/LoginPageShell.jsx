@@ -18,12 +18,16 @@ export default function LoginPageShell({ branding, children }) {
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#091117] px-4 py-8"
       style={getLoginPageBackgroundStyle(branding.loginBackgroundImageUrl)}
     >
-      {/* Fundo animado em WebGL. Fica sob tudo; o card é quem recebe o clique. */}
-      <SmokeyBackground color={branding.loginBackgroundColor} className="pointer-events-none" />
-
-      {/* Véu escuro sobre o shader: o brilho das ondas passa por baixo do card e
-          lavaria o texto branco sem isto. */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(6,12,10,0.35),rgba(5,10,9,0.72))]" />
+      {/* Fundo animado em WebGL. Fica sob tudo; o card é quem recebe o clique.
+          Desligado, a tela cai na imagem de fundo do branding (ou no tom sólido
+          quando não há imagem) — o véu abaixo acompanha, senão escureceria uma
+          tela que já não tem brilho para conter. */}
+      {branding.loginBackgroundEffectEnabled && (
+        <>
+          <SmokeyBackground color={branding.loginBackgroundColor} className="pointer-events-none" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(6,12,10,0.35),rgba(5,10,9,0.72))]" />
+        </>
+      )}
 
       <LoginPulsingBorder config={branding.loginBorder} radius={36} className="relative w-full max-w-5xl shadow-modal">
         {/* Sem fundo sólido aqui: era `bg-surface-container-low` — quase branco

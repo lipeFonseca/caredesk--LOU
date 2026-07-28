@@ -7,6 +7,7 @@ import {
   sanitizeColorString,
   buildInitialsLogo,
   DEFAULT_LOGIN_BORDER_COLORS,
+  LOGIN_BORDER_MAX,
 } from './branding'
 
 describe('sanitizePrimaryColor', () => {
@@ -68,12 +69,42 @@ describe('normalizeBrandingSettings', () => {
   })
 
   it('clamps numeric fields into their valid range', () => {
+    // Teto é LOGIN_BORDER_MAX, não 1: os presets da biblioteca ficam entre 0 e 1,
+    // mas o shader aceita além disso e é lá que estão os visuais mais marcados.
     const normalized = normalizeBrandingSettings({
-      login_border_intensity: 5,
+      login_border_intensity: LOGIN_BORDER_MAX + 3,
       login_border_speed: -3,
     })
-    expect(normalized.login_border_intensity).toBe(1)
+    expect(normalized.login_border_intensity).toBe(LOGIN_BORDER_MAX)
     expect(normalized.login_border_speed).toBe(0)
+  })
+
+  it('accepts values above 1 in the border controls', () => {
+    const normalized = normalizeBrandingSettings({
+      login_border_thickness: 2.5,
+      login_border_bloom: 4,
+    })
+    expect(normalized.login_border_thickness).toBe(2.5)
+    expect(normalized.login_border_bloom).toBe(4)
+  })
+
+  it('liga o fundo animado quando a chave nunca foi gravada', () => {
+    // A chave só nasce no primeiro save. Sem padrão `true`, quem já usava a tela
+    // veria o efeito sumir até abrir as configurações.
+    expect(normalizeBrandingSettings({}).login_background_effect_enabled).toBe(true)
+    expect(normalizeBrandingSettings({ login_background_effect_enabled: '' }).login_background_effect_enabled).toBe(true)
+  })
+
+  it('respeita o desligamento explicito do fundo animado', () => {
+    // O oposto do teste acima: se '0' caísse no padrão, desligar nunca gravaria.
+    expect(normalizeBrandingSettings({ login_background_effect_enabled: '0' }).login_background_effect_enabled).toBe(false)
+    expect(normalizeBrandingSettings({ login_background_effect_enabled: false }).login_background_effect_enabled).toBe(false)
+    expect(normalizeBrandingSettings({ login_background_effect_enabled: 'false' }).login_background_effect_enabled).toBe(false)
+  })
+
+  it('mantem a borda pulsante desligada por padrao', () => {
+    // Comportamento anterior preservado: só o fundo animado nasce ligado.
+    expect(normalizeBrandingSettings({}).login_border_effect_enabled).toBe(false)
   })
 
   it('rejects unknown login_border_preset values', () => {
