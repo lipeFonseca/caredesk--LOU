@@ -193,6 +193,8 @@ export const api = {
     // Mensageria: dispara um e-mail de teste pro admin logado.
     testEmail:      ()     => request('/settings/email/test', { method: 'POST' }),
     testDigest:     ()     => request('/settings/email/test-digest', { method: 'POST' }),
+    // Roda o resumo de verdade pra todos os agentes ativos, sem esperar o cron das 20h.
+    runDigestNow:   ()     => request('/settings/email/digest/run-now', { method: 'POST' }),
 
     // Templates de e-mail editáveis
     getEmailTemplates: ()            => request('/settings/email-templates'),

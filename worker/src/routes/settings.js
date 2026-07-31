@@ -18,7 +18,7 @@ import {
   isValidEmailTemplateType,
   validateEmailTemplatePayload,
 } from '../utils/emailTemplates.js'
-import { sendDigestToAgent } from '../services/daily-digest.js'
+import { sendDigestToAgent, runDailyDigest } from '../services/daily-digest.js'
 
 // Configuracoes da clinica: branding, identidade visual, mensageria e
 // modelos de e-mail. Antes isto morava em notifications.js e este arquivo era
@@ -144,6 +144,20 @@ settings.post('/email/test-digest', adminOnly, async (c) => {
     return c.json({ success: true, ...resultado })
   } catch (falha) {
     return c.json({ error: falha.message || 'Falha ao enviar o resumo de teste' }, 502)
+  }
+})
+
+// ── POST /api/settings/email/digest/run-now ───────────────────
+// Dispara o resumo de verdade, pra todos os agentes ativos, sem esperar as
+// 20h. Existe porque "Enviar para mim" so testa o template pro proprio admin —
+// o escopo por papel (admin ve a clinica inteira, agente ve so a propria
+// carteira) so se prova na pratica rodando pra todo mundo de uma vez.
+settings.post('/email/digest/run-now', adminOnly, async (c) => {
+  try {
+    const resultado = await runDailyDigest(c.env)
+    return c.json({ success: true, ...resultado })
+  } catch (falha) {
+    return c.json({ error: falha.message || 'Falha ao disparar o resumo' }, 502)
   }
 })
 
