@@ -39,6 +39,7 @@ export default function EmailTemplateEditor() {
   const [carregando, setCarregando]     = useState(true)
   const [salvando, setSalvando]         = useState(false)
   const [enviandoTeste, setEnviandoTeste] = useState(false)
+  const [disparandoAgora, setDisparandoAgora] = useState(false)
   const [feedback, setFeedback]         = useState(null)
   const corpoRef = useRef(null)
 
@@ -123,6 +124,28 @@ export default function EmailTemplateEditor() {
       setFeedback({ tipo: 'erro', texto: err.message || 'Falha no envio de teste.' })
     } finally {
       setEnviandoTeste(false)
+    }
+  }
+
+  // Diferente de "Enviar para mim": dispara o resumo real pra todo agente
+  // ativo com e-mail válido, não só pro admin logado. É o único jeito de testar
+  // na prática o escopo por papel (admin vê a clínica inteira, agente só a
+  // própria carteira) sem esperar o cron das 20h.
+  async function dispararParaTodosAgora() {
+    const confirmado = window.confirm(
+      'Isso envia o resumo diário agora, de verdade, para todos os agentes ativos com e-mail válido — não é um teste. Continuar?'
+    )
+    if (!confirmado) return
+
+    setDisparandoAgora(true)
+    setFeedback(null)
+    try {
+      const data = await api.settings.runDigestNow()
+      setFeedback({ tipo: 'ok', texto: `Disparado: ${data.enviados} enviado(s), ${data.pulados} pulado(s). Salve antes de disparar — o envio usa o que está gravado.` })
+    } catch (err) {
+      setFeedback({ tipo: 'erro', texto: err.message || 'Falha ao disparar o resumo.' })
+    } finally {
+      setDisparandoAgora(false)
     }
   }
 
@@ -246,6 +269,17 @@ export default function EmailTemplateEditor() {
           <button type="button" onClick={enviarTeste} className="btn-ghost" disabled={enviandoTeste || salvando}>
             {enviandoTeste ? 'Enviando...' : 'Enviar para mim'}
           </button>
+          {tipoAtivo === 'daily_digest' && (
+            <button
+              type="button"
+              onClick={dispararParaTodosAgora}
+              className="btn-danger"
+              disabled={disparandoAgora || salvando}
+              title="Envia agora, de verdade, para todos os agentes ativos com e-mail válido"
+            >
+              {disparandoAgora ? 'Disparando...' : 'Disparar para todos agora'}
+            </button>
+          )}
         </div>
       </form>
     </div>
