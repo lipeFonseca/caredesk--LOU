@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/services/api'
 import LoginCardLayout from '@/components/LoginCardLayout'
-import { useSettingsStore } from '@/store'
+import { useSettingsStore, useThemeStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
 import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor, DEFAULT_LOGIN_BACKGROUND_COLOR, LOGIN_BORDER_MAX } from '@/theme/branding'
+import { applyThemePaletteWithMode } from '@/darkPalette'
 import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
 import SmokeyBackground from '@/components/SmokeyBackground'
 import { getLoginPageBackgroundStyle } from '@/components/login/loginPageBackground'
 
 export default function BrandingSettingsTab() {
   const { setSettings } = useSettingsStore()
+  const { dark } = useThemeStore()
   const defaultForm = getDefaultFormState()
   const [form, setFormState] = useState({
     ...defaultForm,
@@ -28,6 +30,26 @@ export default function BrandingSettingsTab() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+  }, [])
+
+  // Preview ao vivo: o rótulo abaixo do seletor já dizia "cor aplicada na
+  // interface", mas escolher um tema só mexia no estado local do formulário —
+  // sidebar e hero do Dashboard só mudavam depois de salvar. Ao desmontar
+  // (sair sem salvar), reverte pra cor realmente gravada, senão a pré-via fica
+  // "vazando" pro resto do app.
+  useEffect(() => {
+    // Ainda carregando: `form` está no placeholder padrão, não no que está
+    // salvo. Aplicar agora piscaria a cor errada por um instante.
+    if (loading) return
+    applyThemePaletteWithMode(form.primary_color, dark)
+  }, [form.primary_color, dark, loading])
+
+  useEffect(() => {
+    return () => {
+      const corSalva = useSettingsStore.getState().settings.primary_color
+      const escuro = useThemeStore.getState().dark
+      applyThemePaletteWithMode(sanitizePrimaryColor(corSalva), escuro)
+    }
   }, [])
 
   function set(field) {
@@ -168,16 +190,16 @@ export default function BrandingSettingsTab() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <section
-        className="overflow-hidden rounded-[32px] border border-outline-variant/60 bg-[#1d342d] text-[#f7efe3] shadow-glow"
+        className="overflow-hidden rounded-[32px] border border-outline-variant/60 bg-hero text-[#f7efe3] shadow-glow"
         style={branding.backgroundImageUrl ? {
-          backgroundImage: `linear-gradient(90deg, rgba(21, 36, 31, 0.86), rgba(21, 36, 31, 0.56)), url("${branding.backgroundImageUrl}")`,
+          backgroundImage: `linear-gradient(90deg, rgb(var(--color-hero) / 0.86), rgb(var(--color-hero) / 0.56)), url("${branding.backgroundImageUrl}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         } : undefined}
       >
         <div className="grid gap-6 px-6 py-7 md:grid-cols-[minmax(0,1fr)_240px] md:px-8">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.28em] text-[#d6c2a2]">Preview de marca</p>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-hero-label">Preview de marca</p>
             <h2 className="mt-3 text-display-md text-white">{branding.heroTitle}</h2>
             <p className="mt-3 max-w-2xl text-body-md text-[#ece1cf]/88">{branding.heroSubtitle}</p>
             <p className="mt-5 text-sm uppercase tracking-[0.2em] text-[#e7dac4]/82">{branding.tagline}</p>
@@ -250,12 +272,20 @@ export default function BrandingSettingsTab() {
             })}
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-surface-container/60 px-4 py-3">
-            <span className="h-10 w-10 shrink-0 rounded-full border border-black/5 shadow-sm" style={{ backgroundColor: form.primary_color }} />
-            <div>
-              <p className="text-sm font-semibold text-on-surface">{activeTheme?.name ?? 'Tema personalizado legado'}</p>
-              <p className="text-sm text-on-surface-variant">Cor principal aplicada na interface: {form.primary_color}</p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-surface-container/60 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="h-10 w-10 shrink-0 rounded-full border border-black/5 shadow-sm" style={{ backgroundColor: form.primary_color }} />
+              <div>
+                <p className="text-sm font-semibold text-on-surface">{activeTheme?.name ?? 'Tema personalizado legado'}</p>
+                <p className="text-sm text-on-surface-variant">Cor principal aplicada na interface: {form.primary_color}</p>
+              </div>
             </div>
+            {/* Salva o formulario inteiro (mesmo handleSubmit do botao do rodape) —
+                existe so pra nao obrigar a rolar a pagina toda so pra confirmar a
+                troca de tema, ja que a pre-via acima de tudo ja aplica ao vivo. */}
+            <button type="submit" className="btn-primary shrink-0" disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar tema'}
+            </button>
           </div>
         </div>
 

@@ -23,10 +23,10 @@ const ADMIN_NAV_ITEMS = [
 
 function navLinkClass({ isActive }) {
   return `
-    flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all
+    flex items-center gap-3 rounded-2xl py-3 text-sm transition-all
     ${isActive
-      ? 'bg-[#f6ebd9] text-[#18352d] shadow-card'
-      : 'text-[#f3e6d2]/86 hover:bg-white/10 hover:text-white'}
+      ? 'border-l-4 border-hero-strong bg-hero-strong/15 pl-3 pr-4 text-hero-strong shadow-card'
+      : 'px-4 text-[#f3e6d2]/86 hover:bg-white/10 hover:text-white'}
   `
 }
 
@@ -89,7 +89,7 @@ export default function AppLayout() {
   const today = format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })
   const sidebarHeroStyle = branding.backgroundImageUrl
     ? {
-        backgroundImage: `linear-gradient(180deg, rgba(24, 41, 35, 0.76), rgba(24, 41, 35, 0.94)), url("${branding.backgroundImageUrl}")`,
+        backgroundImage: `linear-gradient(180deg, rgb(var(--color-hero) / 0.76), rgb(var(--color-hero) / 0.94)), url("${branding.backgroundImageUrl}")`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }
@@ -116,13 +116,13 @@ export default function AppLayout() {
       <nav
         className={`
           fixed inset-y-0 left-0 z-30 w-[292px] border-r border-white/10
-          bg-[#1d342d] text-[#f7efe3] shadow-glow transition-transform duration-300
+          bg-hero text-[#f7efe3] shadow-glow transition-transform duration-300
           md:translate-x-0 md:relative md:z-auto
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
         style={sidebarHeroStyle}
       >
-        <div className="flex h-full flex-col bg-[linear-gradient(180deg,rgba(15,22,19,0.14),rgba(15,22,19,0.36))] px-5 pb-6 pt-5 backdrop-blur-[1px]">
+        <div className="flex h-full flex-col bg-[linear-gradient(180deg,rgba(0,0,0,0.14),rgba(0,0,0,0.36))] px-5 pb-6 pt-5 backdrop-blur-[1px]">
           <div className="shrink-0 rounded-[28px] border border-white/10 bg-white/8 p-5 shadow-card backdrop-blur-sm">
             <div className="flex items-start gap-4">
               <img
@@ -131,7 +131,7 @@ export default function AppLayout() {
                 className="h-16 w-16 rounded-[22px] border border-white/20 bg-white/15 object-cover shadow-card"
               />
               <div className="min-w-0 flex-1 pt-1">
-                <h1 className="text-[2rem] leading-none text-white">{branding.clinicName}</h1>
+                <h1 className="text-[2rem] leading-none text-hero-strong">{branding.clinicName}</h1>
                 <p className="mt-3 text-sm leading-6 text-[#ebddc8]/88">{branding.tagline}</p>
               </div>
               <button
@@ -146,7 +146,7 @@ export default function AppLayout() {
           {/* `min-h-0` permite este bloco encolher dentro do flex e rolar sozinho
               em telas baixas — sem ele, o menu empurraria o rodapé para fora. */}
           <div className="mt-6 min-h-0 overflow-y-auto rounded-[28px] border border-white/8 bg-black/10 p-3 backdrop-blur-sm">
-            <p className="px-3 pb-2 text-[11px] uppercase tracking-[0.26em] text-[#d5c2a3]">Navegacao</p>
+            <p className="px-3 pb-2 text-[11px] uppercase tracking-[0.26em] text-hero-label">Navegacao</p>
             <ul className="space-y-1.5">
               {[...NAV_ITEMS, ...(isAdmin() ? ADMIN_NAV_ITEMS : [])].map(({ to, icon, label, end }) => (
                 <li key={to}>
@@ -181,7 +181,7 @@ export default function AppLayout() {
               />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-white">{agent?.name}</p>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#d6c3a5]">
+                <p className="text-xs uppercase tracking-[0.18em] text-hero-label">
                   {agent?.role === 'admin' ? 'Administrador' : 'Agente'}
                 </p>
               </div>

@@ -193,7 +193,7 @@ export default function Dashboard() {
 
   const heroStyle = branding.backgroundImageUrl
     ? {
-        backgroundImage: `linear-gradient(90deg, rgba(22, 37, 32, 0.9), rgba(22, 37, 32, 0.54)), url("${branding.backgroundImageUrl}")`,
+        backgroundImage: `linear-gradient(90deg, rgb(var(--color-hero) / 0.9), rgb(var(--color-hero) / 0.54)), url("${branding.backgroundImageUrl}")`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }
@@ -201,14 +201,14 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <section className="overflow-hidden rounded-[32px] border border-outline-variant/60 bg-[#1c342c] text-[#f8f1e6] shadow-glow" style={heroStyle}>
+      <section className="overflow-hidden rounded-[32px] border border-outline-variant/60 bg-hero text-[#f8f1e6] shadow-glow" style={heroStyle}>
         <div className="grid gap-8 px-6 py-7 md:px-8 md:py-8 xl:grid-cols-[minmax(0,1.3fr)_360px]">
           <div className="max-w-3xl">
-            <p className="text-[11px] uppercase tracking-[0.3em] text-[#d6c2a2]">Gestao de acompanhamento</p>
+            <p className="text-[11px] uppercase tracking-[0.3em] text-hero-label">Gestao de acompanhamento</p>
             <h1 className="mt-3 text-display-lg text-white">{branding.heroTitle}</h1>
             <p className="mt-5 max-w-[42rem] text-body-lg leading-8 text-[#ece1cf]/90">{branding.heroSubtitle}</p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/patients/new" className="btn rounded-full bg-[#f5ead8] px-6 text-[#18352d] hover:bg-white">
+              <Link to="/patients/new" className="btn rounded-full bg-primary px-6 text-on-primary hover:opacity-90">
                 Novo paciente
               </Link>
             </div>
@@ -216,11 +216,11 @@ export default function Dashboard() {
 
           <div className="grid gap-4">
             <div className="rounded-[28px] border border-white/10 bg-black/12 p-5 backdrop-blur-sm">
-              <p className="text-[11px] uppercase tracking-[0.24em] text-[#d5c2a3]">Panorama imediato</p>
+              <p className="text-[11px] uppercase tracking-[0.24em] text-hero-label">Panorama imediato</p>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 {kpiCards.map((card) => (
                   <div key={card.label} className="rounded-[22px] border border-white/10 bg-white/8 p-4">
-                    <span className="material-symbols-outlined text-[#dcc390]">{card.icon}</span>
+                    <span className="material-symbols-outlined text-hero-label">{card.icon}</span>
                     <p className="mt-3 text-3xl leading-none text-white">{loading ? '...' : card.value}</p>
                     <p className="mt-2 text-sm text-[#ebddc8]/88">{card.label}</p>
                   </div>
@@ -454,7 +454,7 @@ export default function Dashboard() {
               O painel segue centrado em acompanhamento clinico, protocolo e registro interno de contatos, sem canais de mensagem ativos nesta fase.
             </p>
             <div className="mt-5 flex gap-3">
-              <Link to="/admin" className="btn rounded-full bg-[#26483e] text-[#f8f1e6] hover:opacity-95">
+              <Link to="/admin" className="btn rounded-full bg-primary text-on-primary hover:opacity-90">
                 Ajustar identidade
               </Link>
             </div>
