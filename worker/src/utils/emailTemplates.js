@@ -23,6 +23,9 @@ export const EMAIL_TEMPLATE_PLACEHOLDERS = Object.freeze({
     { key: 'reached_count', label: 'Pacientes alcançados hoje' },
     { key: 'no_answer_count', label: 'Sem resposta hoje' },
     { key: 'callback_count', label: 'Retornos agendados hoje' },
+    { key: 'today_chart', label: 'Gráfico do dia por resultado (HTML)' },
+    { key: 'overdue_count', label: 'Total de pacientes atrasados' },
+    { key: 'overdue_list', label: 'Lista de pacientes atrasados (HTML)' },
     { key: 'tomorrow_total', label: 'Total de pacientes de amanhã' },
     { key: 'tomorrow_list', label: 'Lista de pacientes de amanhã (HTML)' },
     { key: 'clinic_name', label: 'Nome da clínica' },
@@ -31,7 +34,7 @@ export const EMAIL_TEMPLATE_PLACEHOLDERS = Object.freeze({
 
 // Placeholders que o sistema monta como HTML (uma lista pronta, por exemplo) e
 // portanto NAO podem ser escapados — o resto e sempre escapado.
-const PLACEHOLDERS_DE_HTML_PRONTO = new Set(['tomorrow_list'])
+const PLACEHOLDERS_DE_HTML_PRONTO = new Set(['tomorrow_list', 'overdue_list', 'today_chart'])
 
 export function isValidEmailTemplateType(tipo) {
   return EMAIL_TEMPLATE_TYPES.includes(tipo)

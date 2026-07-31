@@ -24,6 +24,9 @@ const EXEMPLO = {
   reached_count: '5',
   no_answer_count: '1',
   callback_count: '1',
+  today_chart: '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr height="12"><td width="71%" bgcolor="#2e7d32" style="background:#2e7d32;font-size:1px;line-height:12px;">&nbsp;</td><td width="15%" bgcolor="#ef6c00" style="background:#ef6c00;font-size:1px;line-height:12px;">&nbsp;</td><td width="14%" bgcolor="#c62828" style="background:#c62828;font-size:1px;line-height:12px;">&nbsp;</td></tr></table><p style="margin:8px 0 0;"><span style="display:inline-block;margin-right:16px;color:#4a4a4a;font-size:13px;"><span style="display:inline-block;width:10px;height:10px;background:#2e7d32;margin-right:6px;"></span>Alcançados: <strong>5</strong></span><span style="display:inline-block;margin-right:16px;color:#4a4a4a;font-size:13px;"><span style="display:inline-block;width:10px;height:10px;background:#ef6c00;margin-right:6px;"></span>Retorno agendado: <strong>1</strong></span><span style="display:inline-block;margin-right:16px;color:#4a4a4a;font-size:13px;"><span style="display:inline-block;width:10px;height:10px;background:#c62828;margin-right:6px;"></span>Sem resposta: <strong>1</strong></span></p>',
+  overdue_count: '2',
+  overdue_list: '<ul style="padding-left:18px"><li><strong>Marcos Vieira</strong> — (85) 98888-7777<br><span style="color:#c62828">3 dias de atraso</span> · <span style="color:#6b6b6b">Prótese de quadril</span></li></ul>',
   tomorrow_total: '3',
   tomorrow_list: '<ul style="padding-left:18px"><li><strong>João Lima</strong> — (85) 99999-9999<br><span style="color:#6b6b6b">Artroscopia · 7 dia(s) de pós-operatório</span></li></ul>',
 }
