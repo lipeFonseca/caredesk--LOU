@@ -101,6 +101,14 @@ function buildDarkPalette(theme) {
     '--color-outline-variant':            mix(neutral, '#ffffff', 0.20),
     '--color-inverse-surface':            mix(onSurf, '#ffffff', 0.86),
     '--color-inverse-on-surface':         bg,
+
+    // Mesma logica do modo claro (ver visualThemes.js) — hero/sidebar sao um
+    // card escuro editorial fixo, independente do tema claro/escuro do resto do
+    // app, entao usa `theme.hero` cru (curado a mao) e `primary`/`tertiary`
+    // crus, nao os tons ja ajustados pro modo escuro acima.
+    '--color-hero': theme.hero ? normalizeHex(theme.hero) : mix(secondary, '#0c1a15', 0.72),
+    '--color-hero-label': mix(tertiary, '#ffffff', 0.35),
+    '--color-hero-strong': mix(primary, '#ffffff', 0.55),
   }
 }
 

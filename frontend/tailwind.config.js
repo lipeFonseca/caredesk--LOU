@@ -63,6 +63,9 @@ export default {
         'outline-variant': 'rgb(var(--color-outline-variant) / <alpha-value>)',
         'inverse-surface': 'rgb(var(--color-inverse-surface) / <alpha-value>)',
         'inverse-on-surface': 'rgb(var(--color-inverse-on-surface) / <alpha-value>)',
+        hero: 'rgb(var(--color-hero) / <alpha-value>)',
+        'hero-label': 'rgb(var(--color-hero-label) / <alpha-value>)',
+        'hero-strong': 'rgb(var(--color-hero-strong) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Manrope', 'system-ui', 'sans-serif'],
