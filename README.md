@@ -98,7 +98,7 @@ Cada rota mora no arquivo de mesmo nome — sem indireção.
 ### Serviços (`services/`)
 
 - **`scheduler.js`** — as rotinas dos crons: follow-ups do dia e a faxina noturna
-- **`daily-digest.js`** — resumo das 20h por agente (desempenho do dia + agenda de amanhã)
+- **`daily-digest.js`** — resumo das 20h por agente: desempenho do dia (pessoal, sempre por `agent_id`), atrasados e agenda de amanhã. Atrasados/amanhã são **escopados por papel**: `admin` vê a clínica inteira (como o Dashboard, sem filtro de agente), `agent` só a própria carteira — necessário porque paciente sem `assigned_agent_id` some do resumo de todo mundo se o escopo for sempre "meus pacientes".
 - **`arquivamento.js`** — marca `archived_at` aos 6 meses e avisa os admins
 - **`email.js`** — único ponto de saída de e-mail do sistema
 - **`error-log.js`** — grava e expira os erros que alimentam a aba de Logs
