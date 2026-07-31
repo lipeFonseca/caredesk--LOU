@@ -149,6 +149,28 @@ teto dos presets da biblioteca. A constante mora em `frontend/src/theme/branding
 e governa o slider, a validação e a margem entre a borda e o card — mudar o teto
 em um lugar só evita que a borda cresça para dentro.
 
+### Temas visuais
+
+`frontend/src/theme/visualThemes.js` define 9 paletas curadas (`VISUAL_THEMES`),
+cada uma com `primary`/`secondary`/`tertiary`/`surface`/`neutral` + um `hero`
+**escolhido à mão**, não calculado — é a cor de fundo do hero do Dashboard e da
+sidebar inteira. Admin escolhe em Configurações → Identidade Visual →
+Tema Visual, aplicado ao vivo assim que clica no card (sem precisar salvar) via
+`applyThemePaletteWithMode`; sair da aba sem salvar reverte pra cor gravada.
+
+**Hero/sidebar são sempre escuros, em qualquer modo claro/escuro do app** — três
+tokens exclusivos, computados de forma idêntica nos dois modos
+(`visualThemes.js` e `darkPalette.js`):
+
+| Token | Origem | Uso |
+|---|---|---|
+| `--color-hero` | `theme.hero` (curado) | fundo do hero e da sidebar |
+| `--color-hero-label` | `tertiary`, clareado | rótulos em caixa alta, ícones de KPI |
+| `--color-hero-strong` | `primary`, clareado | nome da clínica, item de menu ativo |
+
+Tema sem `hero` definido (cor customizada fora dos 9 presets, digitada direto no
+campo de cor) cai num fallback calculado: `mix(secondary, quase-preto, 72%)`.
+
 ---
 
 ## Banco
