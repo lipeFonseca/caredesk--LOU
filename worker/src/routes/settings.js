@@ -42,8 +42,19 @@ settings.get('/logo/:key', async (c) => {
 })
 
 settings.get('/public', async (c) => {
+  const cache = caches.default
+  const cacheKey = new Request(PUBLIC_SETTINGS_CACHE_URL)
+  const cached = await cache.match(cacheKey)
+  if (cached) return cached
+
   const settingsMap = await getSettingsMap(c.env.DB)
-  return c.json(buildPublicSettingsPayload(settingsMap))
+  const response = c.json(buildPublicSettingsPayload(settingsMap))
+  // Branding muda raro mas essa rota roda sem sessao em toda carga da tela de
+  // login/painel — cache de borda evita bater no D1 a cada acesso. TTL curto
+  // como rede de seguranca; a invalidacao explicita (abaixo) cobre o caso normal.
+  response.headers.set('Cache-Control', 'public, max-age=300')
+  c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
+  return response
 })
 
 settings.use('*', authMiddleware)
@@ -94,6 +105,7 @@ settings.patch('/', adminOnly, async (c) => {
     await upsertSetting(c.env.DB, key, value)
   }
 
+  c.executionCtx.waitUntil(invalidatePublicSettingsCache())
   return c.json({ success: true })
 })
 
@@ -231,6 +243,7 @@ async function uploadBrandAsset(c, type) {
   await upsertSetting(c.env.DB, config.urlKey, assetUrl)
   await upsertSetting(c.env.DB, config.storageKey, objectKey)
 
+  c.executionCtx.waitUntil(invalidatePublicSettingsCache())
   return c.json({ success: true, [config.urlKey]: assetUrl })
 }
 
@@ -248,7 +261,15 @@ async function removeBrandAsset(c, type) {
   await upsertSetting(c.env.DB, config.urlKey, '')
   await upsertSetting(c.env.DB, config.storageKey, '')
 
+  c.executionCtx.waitUntil(invalidatePublicSettingsCache())
   return c.json({ success: true })
+}
+
+// URL fake so pra servir de chave no Cache API — nunca e requisitada de verdade.
+const PUBLIC_SETTINGS_CACHE_URL = 'https://caredesk.internal/cache/settings-public'
+
+async function invalidatePublicSettingsCache() {
+  await caches.default.delete(new Request(PUBLIC_SETTINGS_CACHE_URL))
 }
 
 async function getSettingsMap(db) {
