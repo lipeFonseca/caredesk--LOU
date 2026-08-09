@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '@/services/api'
 import { formatProtocolDayShort, normalizeProtocolDays } from '@/utils/protocols'
@@ -312,6 +312,24 @@ function MessageProtocolModal({ template, protocols, placeholders, defaultProtoc
   const [contactType, setContactType] = useState(template?.contact_type ?? 'whatsapp')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const contentRef = useRef(null)
+
+  function inserirPlaceholder(key) {
+    const token = `{{${key}}}`
+    const textarea = contentRef.current
+    if (!textarea) {
+      setContent((prev) => prev + token)
+      return
+    }
+    const inicio = textarea.selectionStart ?? content.length
+    const fim = textarea.selectionEnd ?? content.length
+    setContent(content.slice(0, inicio) + token + content.slice(fim))
+    requestAnimationFrame(() => {
+      textarea.focus()
+      const posicao = inicio + token.length
+      textarea.setSelectionRange(posicao, posicao)
+    })
+  }
 
   const selectedProtocol = useMemo(
     () => protocols.find((protocol) => protocol.id === protocolId) ?? null,
@@ -429,6 +447,7 @@ function MessageProtocolModal({ template, protocols, placeholders, defaultProtoc
         <div>
           <label className="label">Texto da mensagem</label>
           <textarea
+            ref={contentRef}
             className="input min-h-[180px] resize-y"
             value={content}
             onChange={(event) => setContent(event.target.value)}
@@ -440,12 +459,17 @@ function MessageProtocolModal({ template, protocols, placeholders, defaultProtoc
         </div>
 
         <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4">
-          <p className="text-label-sm font-semibold text-on-surface">Placeholders disponíveis</p>
+          <p className="text-label-sm font-semibold text-on-surface">Placeholders disponíveis · clique pra inserir no texto</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {placeholders.map((item) => (
-              <span key={item.key} className="rounded-full border border-outline-variant bg-surface px-2 py-1 text-[11px] text-on-surface-variant">
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => inserirPlaceholder(item.key)}
+                className="rounded-full border border-outline-variant bg-surface px-2 py-1 text-[11px] text-on-surface-variant transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+              >
                 {`{{${item.key}}}`} · {item.label}
-              </span>
+              </button>
             ))}
           </div>
         </div>
