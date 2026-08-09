@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { endOfMonth, format, startOfMonth, startOfWeek } from 'date-fns'
 import DatePickerField from './date-picker'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -30,6 +31,12 @@ function clicar(elemento) {
   act(() => {
     elemento.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   })
+}
+
+// So os botoes de dia vivem dentro dessa grade — separa de proposito dos
+// botoes de navegacao/Limpar/Hoje, que nao tem essa classe.
+function botoesDeDia(popup) {
+  return popup.querySelector('.grid.grid-cols-7').querySelectorAll('button')
 }
 
 describe('DatePickerField — interação real (jsdom)', () => {
@@ -116,5 +123,59 @@ describe('DatePickerField — interação real (jsdom)', () => {
     clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
 
     expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('o botão de texto (não só o ícone) também abre o calendário', () => {
+    const container = montar({ value: '', onChange: vi.fn() })
+    clicar(container.querySelector('button[aria-label="Selecionar data"]'))
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+  })
+
+  it('clicar de novo no botão que abriu fecha o calendário (toggle)', () => {
+    const container = montar({ value: '', onChange: vi.fn() })
+    const botaoAbrir = container.querySelector('button[aria-label="Abrir calendário"]')
+    clicar(botaoAbrir)
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    clicar(botaoAbrir)
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('navega pro próximo mês e pro mês anterior, atualizando o cabeçalho', () => {
+    const container = montar({ value: '2026-08-15', onChange: vi.fn() })
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
+    const popup = container.querySelector('[role="dialog"]')
+    const cabecalho = () => popup.querySelector('span.capitalize')
+
+    expect(cabecalho().textContent).toBe('agosto de 2026')
+
+    clicar(popup.querySelector('button[aria-label="Próximo mês"]'))
+    expect(cabecalho().textContent).toBe('setembro de 2026')
+
+    clicar(popup.querySelector('button[aria-label="Mês anterior"]'))
+    clicar(popup.querySelector('button[aria-label="Mês anterior"]'))
+    expect(cabecalho().textContent).toBe('julho de 2026')
+  })
+
+  it('permite selecionar um dia esmaecido do mês adjacente mostrado na grade', () => {
+    const onChange = vi.fn()
+    const container = montar({ value: '2026-08-15', onChange })
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
+    const popup = container.querySelector('[role="dialog"]')
+
+    const primeiroDiaDaGrade = startOfWeek(startOfMonth(new Date(2026, 7, 15)))
+    clicar(botoesDeDia(popup)[0])
+
+    expect(onChange).toHaveBeenCalledWith({ target: { value: format(primeiroDiaDaGrade, 'yyyy-MM-dd') } })
+  })
+
+  it('a grade sempre cobre o mês inteiro, do primeiro ao último dia', () => {
+    const container = montar({ value: '2026-02-15', onChange: vi.fn() })
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
+    const popup = container.querySelector('[role="dialog"]')
+
+    const dias = botoesDeDia(popup)
+    const ultimoDiaDoMes = format(endOfMonth(new Date(2026, 1, 15)), 'd')
+    expect(dias.length % 7).toBe(0)
+    expect(Array.from(dias).some((botao) => botao.textContent === ultimoDiaDoMes)).toBe(true)
   })
 })

@@ -94,6 +94,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'Seleci
           type="button"
           onClick={() => setAberto((estaAberto) => !estaAberto)}
           disabled={disabled}
+          aria-label="Selecionar data"
           className="flex-1 truncate bg-transparent py-1 text-left text-base text-on-surface outline-none disabled:cursor-not-allowed"
         >
           {dataSelecionada ? format(dataSelecionada, 'dd/MM/yyyy') : <span className="text-on-surface-variant/70">{placeholder}</span>}
