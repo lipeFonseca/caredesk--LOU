@@ -5,7 +5,7 @@ import { User, Lock, ArrowRight } from 'lucide-react'
 import { useAuthStore, useSettingsStore } from '@/store'
 import { api } from '@/services/api'
 import { getBranding } from '@/theme/branding'
-import LoginPageShell from '@/components/LoginPageShell'
+import LoginPageShell from '@/components/login/LoginPageShell'
 
 export default function Login() {
   const navigate = useNavigate()

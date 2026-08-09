@@ -5,7 +5,7 @@ import { Mail, KeyRound } from 'lucide-react'
 import { useSettingsStore } from '@/store'
 import { api } from '@/services/api'
 import { getBranding } from '@/theme/branding'
-import LoginPageShell from '@/components/LoginPageShell'
+import LoginPageShell from '@/components/login/LoginPageShell'
 
 const CAMPO = 'input border-white/20 bg-[rgba(9,20,17,0.52)] text-[#f7f2ec] shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] transition-colors placeholder:text-[#b9b0a6] focus:border-white/40 focus:bg-[rgba(9,20,17,0.66)]'
 

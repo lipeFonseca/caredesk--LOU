@@ -1,3 +1,6 @@
+// Layout interno do card de login: coluna institucional à esquerda, coluna de
+// credenciais à direita.
+
 function getLoginImageStyle(imageUrl) {
   if (!imageUrl) return undefined
 
@@ -7,6 +10,24 @@ function getLoginImageStyle(imageUrl) {
     backgroundPosition: 'center',
   }
 }
+
+// Vidro de verdade depende do fundo ATRAVESSAR o painel. A versão anterior usava
+// marrom-neutro a 68% de opacidade com blur máximo: o fundo sumia e sobrava um
+// cinza chapado. Aqui a base é o verde da marca em opacidade baixa, o blur é
+// moderado e a saturação alta faz a imagem atrás vibrar através do vidro.
+//
+// O gradiente escurece de cima para baixo de propósito — é embaixo que ficam os
+// campos e o botão, e a legibilidade do formulário vem antes do efeito.
+// Glassmorphism claro: o vidro é uma camada de BRANCO translúcido, não uma
+// camada escura. É essa inversão que separa "vidro" de "placa cinza" — o fundo
+// atravessa e o painel parece iluminado por trás, em vez de tapá-lo.
+const GLASS_BASE = [
+  'relative flex items-center justify-center overflow-hidden',
+  'border-l border-white/20',
+  'bg-white/10 backdrop-blur-lg backdrop-saturate-[1.6]',
+  // Aresta de luz no topo e à esquerda: é o que o olho lê como espessura.
+  'shadow-[inset_1px_0_0_rgba(255,255,255,0.22),inset_0_1px_0_rgba(255,255,255,0.18)]',
+].join(' ')
 
 export default function LoginCardLayout({ branding, children, compact = false }) {
   const shellClassName = compact
@@ -28,8 +49,9 @@ export default function LoginCardLayout({ branding, children, compact = false })
   const leftClinicNameClassName = compact ? 'text-sm font-semibold text-white' : 'text-headline-sm text-white'
   const leftTaglineClassName = compact ? 'mt-1 text-xs text-[#e7dac4]/84' : 'mt-1 text-sm text-[#e7dac4]/84'
   const rightSectionClassName = compact
-    ? 'relative flex items-center justify-center overflow-hidden border-l border-white/8 bg-[linear-gradient(180deg,rgba(34,28,29,0.68),rgba(24,20,21,0.50))] px-5 py-6 backdrop-blur-2xl backdrop-saturate-150'
-    : 'relative flex items-center justify-center overflow-hidden border-l border-white/8 bg-[linear-gradient(180deg,rgba(34,28,29,0.68),rgba(24,20,21,0.50))] p-6 backdrop-blur-2xl backdrop-saturate-150 sm:p-8 lg:p-10'
+    ? `${GLASS_BASE} px-5 py-6`
+    : `${GLASS_BASE} p-6 sm:p-8 lg:p-10`
+
   const leftSectionStyle = {
     ...getLoginImageStyle(branding.loginImageUrl),
     borderTopLeftRadius: 'var(--login-card-inner-radius)',
@@ -65,8 +87,19 @@ export default function LoginCardLayout({ branding, children, compact = false })
       </section>
 
       <section className={rightSectionClassName} style={rightSectionStyle}>
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.04))]" />
-        {children}
+        {/* Reflexo especular: concentra luz no topo e some antes da metade, que
+            é onde o formulário começa. Dá volume ao vidro sem lavar o texto. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-2/5 bg-[radial-gradient(130%_100%_at_50%_0%,rgba(255,255,255,0.20),rgba(255,255,255,0.06)_45%,transparent_75%)]"
+        />
+        {/* Vinheta inferior: com vidro claro o texto branco depende dela para
+            manter contraste quando a imagem atrás tiver uma área clara. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-[linear-gradient(180deg,transparent,rgba(10,20,17,0.38))]"
+        />
+        <div className="relative w-full">{children}</div>
       </section>
     </div>
   )

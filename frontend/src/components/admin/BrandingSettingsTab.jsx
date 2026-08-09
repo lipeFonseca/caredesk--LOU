@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/services/api'
-import LoginCardLayout from '@/components/LoginCardLayout'
+import LoginCardLayout from '@/components/login/LoginCardLayout'
 import { useSettingsStore, useThemeStore } from '@/store'
 import { VISUAL_THEMES } from '@/theme/visualThemes'
 import { getBranding, normalizeBrandingSettings, sanitizeBrandUrl, sanitizePrimaryColor, DEFAULT_LOGIN_BACKGROUND_COLOR, LOGIN_BORDER_MAX } from '@/theme/branding'

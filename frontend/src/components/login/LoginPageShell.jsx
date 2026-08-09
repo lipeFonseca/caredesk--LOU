@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import LoginCardLayout from '@/components/LoginCardLayout'
+import LoginCardLayout from '@/components/login/LoginCardLayout'
 import LoginPulsingBorder from '@/components/ui/LoginPulsingBorder'
 import SmokeyBackground from '@/components/SmokeyBackground'
 import { getLoginPageBackgroundStyle } from '@/components/login/loginPageBackground'
@@ -8,10 +8,6 @@ import { getLoginPageBackgroundStyle } from '@/components/login/loginPageBackgro
 // pulsante e card. Mesma motivacao do LoginCardLayout — enquanto isso viveu
 // solto dentro de Login.jsx, qualquer tela publica nova nascia como uma segunda
 // arvore JSX paralela e o visual divergia na primeira mudanca de branding.
-//
-// LIMITACAO: o lugar natural deste arquivo era components/login/, mas essa pasta
-// esta com a ACL do Windows quebrada (permissao negada pra criar arquivo novo) e
-// a correcao precisa de shell elevado. Mover quando isso for resolvido.
 export default function LoginPageShell({ branding, children }) {
   return (
     <div
