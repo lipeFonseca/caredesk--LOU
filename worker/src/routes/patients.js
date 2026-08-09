@@ -436,7 +436,8 @@ patients.delete('/:id', adminOnly, async (c) => {
 
   // Verificar se paciente tem protocolo customizado (is_custom=1) para limpar depois
   const row = await c.env.DB.prepare(
-    `SELECT p.protocol_id, p.status, p.archived_at, cp.is_custom
+    `SELECT p.protocol_id, p.status, p.archived_at, cp.is_custom,
+       (SELECT COUNT(*) FROM followup_logs WHERE patient_id = p.id) AS total_contatos
      FROM patients p
      LEFT JOIN contact_protocols cp ON p.protocol_id = cp.id
      WHERE p.id = ?`
@@ -449,6 +450,12 @@ patients.delete('/:id', adminOnly, async (c) => {
     await ajustarContador(c.env.DB, CONTADOR_PACIENTES_ATIVOS, -1)
   }
   await ajustarContador(c.env.DB, CONTADOR_PACIENTES_TOTAL, -1)
+  // O CASCADE acima apaga os followup_logs do paciente junto — sem isso o
+  // contador materializado de contatos ficava inflado ate a reconciliacao
+  // noturna corrigir.
+  if (row?.total_contatos) {
+    await ajustarContador(c.env.DB, CONTADOR_CONTATOS, -row.total_contatos)
+  }
 
   // Limpar protocolo customizado orphan (só existe para esse paciente)
   if (row?.protocol_id && row?.is_custom === 1) {
