@@ -24,7 +24,7 @@ import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 const DIAS_DA_SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 const TAMANHO_GRADE_DE_ANOS = 12
-const NAV_TRIGGER_CLASS = 'rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-primary'
+const NAV_TRIGGER_CLASS = 'rounded-lg p-2 text-on-surface-variant outline-none transition-colors hover:bg-surface-container-low hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40'
 
 function paraIso(data) {
   return format(data, 'yyyy-MM-dd')
@@ -168,7 +168,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
           <button
             type="button"
             onClick={limpar}
-            className="rounded-xl p-2 text-on-surface-variant transition-colors hover:bg-error-container/30 hover:text-error"
+            className="rounded-xl p-2 text-on-surface-variant outline-none transition-colors hover:bg-error-container/30 hover:text-error focus-visible:ring-2 focus-visible:ring-error/40"
             aria-label="Limpar data"
           >
             <X size={16} />
@@ -178,7 +178,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
           type="button"
           onClick={() => setAberto((estaAberto) => !estaAberto)}
           disabled={disabled}
-          className="rounded-xl p-2 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary disabled:pointer-events-none"
+          className="rounded-xl p-2 text-on-surface-variant outline-none transition-colors hover:bg-surface-container hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none"
           aria-label="Abrir calendário"
         >
           <Calendar size={18} />
@@ -200,7 +200,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
                   <button
                     type="button"
                     onClick={() => setVisao('anos')}
-                    className="rounded-lg px-1.5 py-0.5 text-label-md font-label-md text-on-surface transition-colors hover:bg-surface-container-low hover:text-primary"
+                    className="rounded-lg px-1.5 py-0.5 text-label-md font-label-md text-on-surface outline-none transition-colors hover:bg-surface-container-low hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40"
                     aria-label="Selecionar ano"
                   >
                     {anoCentral}
@@ -226,7 +226,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
                       key={dia.toISOString()}
                       type="button"
                       onClick={() => selecionar(dia)}
-                      className={`flex h-10 w-10 items-center justify-center rounded-full text-sm transition-colors hover:bg-primary/10
+                      className={`flex h-10 w-10 items-center justify-center rounded-full text-sm outline-none transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary/40
                         ${selecionado ? 'bg-primary text-on-primary hover:opacity-90' : 'text-on-surface'}
                         ${foraDoMes && !selecionado ? 'text-outline/40' : ''}
                         ${hoje && !selecionado ? 'font-bold' : ''}`}
@@ -238,10 +238,10 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
               </div>
 
               <div className="mt-3 flex items-center justify-between border-t border-outline-variant pt-3">
-                <button type="button" onClick={limpar} className="text-label-sm font-label-sm text-primary hover:underline">
+                <button type="button" onClick={limpar} className="rounded px-1 text-label-sm font-label-sm text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">
                   Limpar
                 </button>
-                <button type="button" onClick={irParaHoje} className="text-label-sm font-label-sm text-primary hover:underline">
+                <button type="button" onClick={irParaHoje} className="rounded px-1 text-label-sm font-label-sm text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">
                   Hoje
                 </button>
               </div>
@@ -269,7 +269,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
                       key={ano}
                       type="button"
                       onClick={() => selecionarAno(ano)}
-                      className={`rounded-xl py-2 text-sm transition-colors hover:bg-primary/10
+                      className={`rounded-xl py-2 text-sm outline-none transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary/40
                         ${selecionado ? 'bg-primary text-on-primary hover:opacity-90' : 'text-on-surface'}
                         ${anoDeHoje && !selecionado ? 'font-bold' : ''}`}
                     >
