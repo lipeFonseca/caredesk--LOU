@@ -19,6 +19,10 @@ export default function MessageProtocolTab() {
   const [delTarget, setDelTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [delError, setDelError] = useState('')
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkDelError, setBulkDelError] = useState('')
 
   async function load() {
     setLoading(true)
@@ -61,12 +65,42 @@ export default function MessageProtocolTab() {
     try {
       await api.messageProtocols.delete(template.id)
       setDelTarget(null)
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(template.id)
+        return next
+      })
       await load()
     } catch (err) {
       setDelError(err.message)
     } finally {
       setDeleting(false)
     }
+  }
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true)
+    setBulkDelError('')
+    const ids = Array.from(selectedIds)
+    const results = await Promise.allSettled(ids.map((id) => api.messageProtocols.delete(id)))
+    const falhas = results.filter((result) => result.status === 'rejected').length
+    if (falhas > 0) {
+      setBulkDelError(`${falhas} de ${ids.length} mensagens não puderam ser excluídas.`)
+    } else {
+      setConfirmBulkDelete(false)
+    }
+    setSelectedIds(new Set())
+    setBulkDeleting(false)
+    await load()
   }
 
   if (loading) {
@@ -108,99 +142,117 @@ export default function MessageProtocolTab() {
         <div className="space-y-4">
           {protocolsWithTemplates.map((protocol) => (
             <section key={protocol.id} className="rounded-xl border border-outline-variant bg-surface p-5 ambient-shadow-lvl1">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="mt-0.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: protocol.color || '#6366f1' }} />
-                    <h3 className="text-label-md font-semibold text-on-surface">{protocol.name}</h3>
-                    {protocol.is_default ? (
-                      <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-label-sm text-primary">
-                        Padrão
-                      </span>
-                    ) : null}
-                    <span className="text-label-sm text-outline">
-                      {new Set(protocol.templates.map((template) => Number(template.day_offset))).size}/{protocol.protocolDays.length} marcos com mensagem
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="mt-0.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: protocol.color || '#6366f1' }} />
+                  <h3 className="text-label-md font-semibold text-on-surface">{protocol.name}</h3>
+                  {protocol.is_default ? (
+                    <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-label-sm text-primary">
+                      Padrão
                     </span>
-                  </div>
-                  {protocol.description && (
-                    <p className="mt-1 text-body-md text-on-surface-variant">{protocol.description}</p>
-                  )}
+                  ) : null}
+                  <span className="text-label-sm text-outline">
+                    {new Set(protocol.templates.map((template) => Number(template.day_offset))).size}/{protocol.protocolDays.length} marcos com mensagem
+                  </span>
                 </div>
-
-                <button
-                  onClick={() => setModalTemplate({ protocol_id: protocol.id })}
-                  className="rounded-lg border border-outline-variant px-3 py-1.5 text-label-sm text-on-surface transition-colors hover:bg-surface-container-low"
-                >
-                  Adicionar
-                </button>
+                {protocol.description && (
+                  <p className="mt-1 text-body-md text-on-surface-variant">{protocol.description}</p>
+                )}
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-4 space-y-3">
                 {protocol.protocolDays.map((day) => {
-                  const linkedTemplate = protocol.templates.find((template) => Number(template.day_offset) === Number(day))
+                  const templatesDoMarco = protocol.templates.filter(
+                    (template) => Number(template.day_offset) === Number(day)
+                  )
                   return (
-                    <span
-                      key={day}
-                      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                        linkedTemplate
-                          ? 'border-secondary/30 bg-secondary/10 text-secondary'
-                          : 'border-outline-variant bg-surface-container-low text-on-surface-variant'
-                      }`}
-                    >
-                      {formatProtocolDayShort(day)}
-                    </span>
+                    <div key={day} className="rounded-xl border border-outline-variant/60 bg-surface-container-low/40 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full border border-secondary/30 bg-secondary/10 px-2 py-0.5 text-[11px] font-semibold text-secondary">
+                            {formatProtocolDayShort(day)}
+                          </span>
+                          <span className="text-label-sm text-on-surface-variant">
+                            {templatesDoMarco.length} mensage{templatesDoMarco.length !== 1 ? 'ns' : 'm'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setModalTemplate({ protocol_id: protocol.id, day_offset: day })}
+                          className="flex items-center gap-1 rounded-lg border border-outline-variant px-2.5 py-1 text-label-sm text-on-surface transition-colors hover:bg-surface-container-low"
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+                          Adicionar a este marco
+                        </button>
+                      </div>
+
+                      {templatesDoMarco.length === 0 ? (
+                        <p className="mt-2 text-sm text-on-surface-variant">Nenhuma mensagem para este marco ainda.</p>
+                      ) : (
+                        <div className="mt-3 space-y-2">
+                          {templatesDoMarco.map((template) => (
+                            <article key={template.id} className="rounded-xl border border-outline-variant bg-surface p-4">
+                              <div className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedIds.has(template.id)}
+                                  onChange={() => toggleSelected(template.id)}
+                                  className="mt-1 h-4 w-4 shrink-0 rounded border-outline-variant text-primary"
+                                  aria-label={`Selecionar mensagem ${template.title}`}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant">
+                                      <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
+                                        {CONTACT_TYPE_OPTIONS.find((option) => option.value === template.contact_type)?.icon ?? 'chat'}
+                                      </span>
+                                      {CONTACT_TYPE_OPTIONS.find((option) => option.value === template.contact_type)?.label ?? template.contact_type}
+                                    </span>
+
+                                    <div className="flex gap-1.5 shrink-0">
+                                      <button
+                                        onClick={() => setModalTemplate(template)}
+                                        className="rounded p-1.5 text-outline transition-colors hover:bg-surface-container-low hover:text-primary"
+                                      >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>edit</span>
+                                      </button>
+                                      <button
+                                        onClick={() => { setDelTarget(template); setDelError('') }}
+                                        className="rounded p-1.5 text-outline transition-colors hover:bg-error-container/20 hover:text-error"
+                                      >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>delete</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <h4 className="mt-2 text-label-md font-semibold text-on-surface">{template.title}</h4>
+                                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-on-surface-variant">
+                                    {template.content}
+                                  </p>
+                                </div>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>
-
-              {protocol.templates.length === 0 ? (
-                <div className="mt-4 rounded-xl border border-dashed border-outline-variant bg-surface-container-low px-4 py-5 text-sm text-on-surface-variant">
-                  Nenhuma mensagem criada ainda para este protocolo.
-                </div>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {protocol.templates.map((template) => (
-                    <article key={template.id} className="rounded-xl border border-outline-variant bg-surface-container-low p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                              {formatProtocolDayShort(template.day_offset)}
-                            </span>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant">
-                              <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
-                                {CONTACT_TYPE_OPTIONS.find((option) => option.value === template.contact_type)?.icon ?? 'chat'}
-                              </span>
-                              {CONTACT_TYPE_OPTIONS.find((option) => option.value === template.contact_type)?.label ?? template.contact_type}
-                            </span>
-                          </div>
-                          <h4 className="mt-2 text-label-md font-semibold text-on-surface">{template.title}</h4>
-                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-on-surface-variant">
-                            {template.content}
-                          </p>
-                        </div>
-
-                        <div className="flex gap-1.5 shrink-0">
-                          <button
-                            onClick={() => setModalTemplate(template)}
-                            className="rounded p-1.5 text-outline transition-colors hover:bg-surface hover:text-primary"
-                          >
-                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>edit</span>
-                          </button>
-                          <button
-                            onClick={() => { setDelTarget(template); setDelError('') }}
-                            className="rounded p-1.5 text-outline transition-colors hover:bg-error-container/20 hover:text-error"
-                          >
-                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>delete</span>
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
             </section>
           ))}
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-4 z-30 flex items-center justify-between gap-4 rounded-xl border border-outline-variant bg-surface px-4 py-3 shadow-modal">
+          <p className="text-label-md text-on-surface">
+            {selectedIds.size} mensage{selectedIds.size !== 1 ? 'ns' : 'm'} selecionada{selectedIds.size !== 1 ? 's' : ''}
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => setSelectedIds(new Set())} className="btn-ghost">Limpar seleção</button>
+            <button onClick={() => { setConfirmBulkDelete(true); setBulkDelError('') }} className="btn-danger">
+              Excluir selecionadas
+            </button>
+          </div>
         </div>
       )}
 
@@ -210,6 +262,7 @@ export default function MessageProtocolTab() {
           protocols={protocols}
           placeholders={placeholders}
           defaultProtocolId={modalTemplate.protocol_id || ''}
+          defaultDayOffset={modalTemplate.day_offset != null ? String(modalTemplate.day_offset) : ''}
           onClose={() => setModalTemplate(null)}
           onSaved={load}
         />
@@ -229,15 +282,30 @@ export default function MessageProtocolTab() {
           </div>
         </Modal>
       )}
+
+      {confirmBulkDelete && (
+        <Modal open onClose={() => setConfirmBulkDelete(false)} title="Excluir mensagens selecionadas">
+          <p className="mb-4 text-body-md text-on-surface-variant">
+            Tem certeza que deseja excluir <strong className="text-on-surface">{selectedIds.size}</strong> mensage{selectedIds.size !== 1 ? 'ns' : 'm'}?
+          </p>
+          {bulkDelError && <p className="mb-4 rounded-lg bg-error-container/20 px-3 py-2 text-label-sm text-error">{bulkDelError}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmBulkDelete(false)} className="btn-ghost flex-1">Cancelar</button>
+            <button onClick={handleBulkDelete} disabled={bulkDeleting} className="btn-danger flex-1">
+              {bulkDeleting ? <Spinner /> : 'Excluir'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
 
-function MessageProtocolModal({ template, protocols, placeholders, defaultProtocolId, onClose, onSaved }) {
+function MessageProtocolModal({ template, protocols, placeholders, defaultProtocolId, defaultDayOffset, onClose, onSaved }) {
   const isEdit = Boolean(template)
   const [protocolId, setProtocolId] = useState(template?.protocol_id ?? defaultProtocolId ?? '')
   const [dayOffset, setDayOffset] = useState(
-    template?.day_offset != null ? String(template.day_offset) : ''
+    template?.day_offset != null ? String(template.day_offset) : defaultDayOffset || ''
   )
   const [title, setTitle] = useState(template?.title ?? '')
   const [content, setContent] = useState(template?.content ?? '')
