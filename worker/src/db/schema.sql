@@ -29,7 +29,12 @@ CREATE TABLE IF NOT EXISTS patients (
   -- paciente. protocol_id continua sendo o vinculo com o protocolo de
   -- contato, os dois campos nao se confundem.
   cpf             TEXT,
+  -- Obrigatorio so quando o paciente e menor de idade (0028) — derivado de
+  -- data_nascimento na hora da validacao, nunca guardado como flag fixa.
   responsavel     TEXT,
+  -- ISO (YYYY-MM-DD). Idade nunca e materializada: calculada a partir daqui
+  -- sempre que precisa (mesma razao de urgencia nao ser coluna).
+  data_nascimento TEXT,
   procedure       TEXT NOT NULL,
   surgery_date    TEXT NOT NULL,
   assigned_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,

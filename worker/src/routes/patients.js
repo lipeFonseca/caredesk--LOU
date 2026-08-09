@@ -10,6 +10,7 @@ import {
 import { resolveSuggestedMessageTemplate, isValidMessageTemplateContactType } from '../utils/messageTemplates.js'
 import { isValidDocumentStatus } from '../utils/documentTemplates.js'
 import { sanitizeOptionalPhone, sanitizeOptionalEmail, sanitizeRequiredCpf, phoneDigits } from '../utils/contactFields.js'
+import { ehMenorDeIdade } from '../utils/patientAge.js'
 import {
   buildPatientFilters,
   classifySearchTerm,
@@ -268,13 +269,20 @@ patients.post('/', async (c) => {
 
     const name        = stripHtml(body.name).slice(0, 120)
     const procedure   = stripHtml(body.procedure).slice(0, 120)
-    const responsavel = stripHtml(body.responsavel).slice(0, 120)
+    const responsavel = body.responsavel != null ? stripHtml(body.responsavel).slice(0, 120) : ''
     const notes       = body.notes != null ? stripHtml(body.notes).slice(0, 2000) : null
     const phone       = sanitizeOptionalPhone(body.phone)
     const surgery_date = /^\d{4}-\d{2}-\d{2}$/.test(body.surgery_date) ? body.surgery_date : null
+    const data_nascimento = /^\d{4}-\d{2}-\d{2}$/.test(body.data_nascimento) ? body.data_nascimento : null
 
-    if (!name || !procedure || !surgery_date || !responsavel) {
-      return c.json({ error: 'Nome, procedimento, data da cirurgia e responsável são obrigatórios' }, 400)
+    if (!name || !procedure || !surgery_date || !data_nascimento) {
+      return c.json({ error: 'Nome, procedimento, data da cirurgia e data de nascimento são obrigatórios' }, 400)
+    }
+
+    // Responsavel so e obrigatorio pra menor de idade — maior de idade pode
+    // nao ter (ou nao precisar informar) um.
+    if (ehMenorDeIdade(data_nascimento) && !responsavel) {
+      return c.json({ error: 'Responsável é obrigatório para pacientes menores de idade' }, 400)
     }
 
     const cpfSanitizado = sanitizeRequiredCpf(body.cpf)
@@ -308,15 +316,16 @@ patients.post('/', async (c) => {
     const backfillEntries = await resolveBackfillEntries(c.env.DB, resolvedProtocolId, surgery_date, body.backfill)
 
     await c.env.DB.prepare(`
-      INSERT INTO patients (id, name, phone, phone_digits, email, cpf, responsavel, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by, created_by_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO patients (id, name, phone, phone_digits, email, cpf, responsavel, data_nascimento, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by, created_by_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, name,
       phone,
       phoneDigits(phone),
       email,
       cpf,
-      responsavel,
+      responsavel || null,
+      data_nascimento,
       procedure,
       surgery_date,
       assigned_agent_id,
@@ -352,7 +361,8 @@ patients.post('/', async (c) => {
       phone,
       email,
       cpf,
-      responsavel,
+      responsavel: responsavel || null,
+      data_nascimento,
       procedure,
       surgery_date,
       assigned_agent_id,
@@ -374,12 +384,15 @@ patients.patch('/:id', async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
 
-    const allowed = ['name','phone','email','cpf','responsavel','procedure','surgery_date','assigned_agent_id','protocol_id','status','notes']
+    const allowed = ['name','phone','email','cpf','responsavel','data_nascimento','procedure','surgery_date','assigned_agent_id','protocol_id','status','notes']
     const fields = Object.keys(body).filter(k => allowed.includes(k))
     if (!fields.length) return c.json({ error: 'Nenhum campo válido enviado' }, 400)
 
     if (fields.includes('surgery_date') && !/^\d{4}-\d{2}-\d{2}$/.test(body.surgery_date)) {
       return c.json({ error: 'Data da cirurgia inválida' }, 400)
+    }
+    if (fields.includes('data_nascimento') && !/^\d{4}-\d{2}-\d{2}$/.test(body.data_nascimento)) {
+      return c.json({ error: 'Data de nascimento inválida' }, 400)
     }
     if (fields.includes('email') && !sanitizeOptionalEmail(body.email).ok) {
       return c.json({ error: 'E-mail inválido' }, 400)
@@ -394,11 +407,20 @@ patients.patch('/:id', async (c) => {
         return c.json({ error: 'Já existe um paciente cadastrado com este CPF' }, 409)
       }
     }
-    if (fields.includes('responsavel') && !String(body.responsavel ?? '').trim()) {
-      return c.json({ error: 'Responsável é obrigatório' }, 400)
-    }
     if (fields.includes('status') && !isValidPatientStatus(body.status)) {
       return c.json({ error: 'Status inválido' }, 400)
+    }
+
+    // Responsavel so e obrigatorio pra menor de idade. Quando um dos dois
+    // campos muda, valida o estado RESULTANTE (o que ja esta no banco + o
+    // que esta sendo alterado agora), nao so o campo isolado que veio no body.
+    if (fields.includes('responsavel') || fields.includes('data_nascimento')) {
+      const atual = await c.env.DB.prepare('SELECT data_nascimento, responsavel FROM patients WHERE id = ?').bind(id).first()
+      const dataNascimentoResultante = fields.includes('data_nascimento') ? body.data_nascimento : atual?.data_nascimento
+      const responsavelResultante = fields.includes('responsavel') ? String(body.responsavel ?? '').trim() : (atual?.responsavel ?? '')
+      if (dataNascimentoResultante && ehMenorDeIdade(dataNascimentoResultante) && !responsavelResultante) {
+        return c.json({ error: 'Responsável é obrigatório para pacientes menores de idade' }, 400)
+      }
     }
 
     // Só interessa quando o status muda: sair de 'active' ou voltar pra ele
@@ -420,8 +442,12 @@ patients.patch('/:id', async (c) => {
       if (field === 'assigned_agent_id') {
         return resolveWritableAgentId(c.env.DB, body[field])
       }
-      if (field === 'name' || field === 'procedure' || field === 'responsavel') {
+      if (field === 'name' || field === 'procedure') {
         return stripHtml(body[field]).slice(0, 120)
+      }
+      if (field === 'responsavel') {
+        const limpo = stripHtml(body[field] ?? '').slice(0, 120)
+        return limpo || null
       }
       if (field === 'cpf') {
         return sanitizeRequiredCpf(body[field]).value

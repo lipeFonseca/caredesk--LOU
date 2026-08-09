@@ -21,6 +21,7 @@ import {
   URGENCY_BADGE,
   getInitials,
   formatCpf,
+  calcularIdade,
 } from '@/utils/contactDisplay'
 import PatientDocumentsSection from '@/components/patient/PatientDocumentsSection'
 import PatientIdentitySummary from '@/components/patient/PatientIdentitySummary'
@@ -78,6 +79,7 @@ export default function PatientDetail() {
         phone:             data.phone || '',
         email:             data.email || '',
         cpf:               data.cpf ? formatCpf(data.cpf) : '',
+        data_nascimento:   data.data_nascimento || '',
         responsavel:       data.responsavel || '',
         procedure:         data.procedure,
         surgery_date:      data.surgery_date,
@@ -331,7 +333,19 @@ export default function PatientDetail() {
               </div>
 
               <div>
-                <p className="text-label-sm font-label-sm text-on-surface-variant mb-1 uppercase tracking-wider">Responsável</p>
+                <p className="text-label-sm font-label-sm text-on-surface-variant mb-1 uppercase tracking-wider">Data de nascimento</p>
+                <p className="text-body-md font-body-md text-on-surface flex items-center gap-2">
+                  <span className="material-symbols-outlined text-outline" style={{ fontSize: '16px' }}>cake</span>
+                  {patient.data_nascimento
+                    ? <>{format(parseISO(patient.data_nascimento), 'dd/MM/yyyy', { locale: ptBR })} · {calcularIdade(patient.data_nascimento)} anos</>
+                    : <span className="text-outline">Não informado</span>}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-label-sm font-label-sm text-on-surface-variant mb-1 uppercase tracking-wider">
+                  Responsável {patient.data_nascimento && calcularIdade(patient.data_nascimento) < 18 && <span className="text-error normal-case">(obrigatório · menor de idade)</span>}
+                </p>
                 <p className="text-body-md font-body-md text-on-surface flex items-center gap-2">
                   <span className="material-symbols-outlined text-outline" style={{ fontSize: '16px' }}>person</span>
                   {patient.responsavel || <span className="text-outline">Não informado</span>}
@@ -850,9 +864,17 @@ export default function PatientDetail() {
                 onChange={e => setEditForm(f => ({ ...f, cpf: e.target.value }))} required />
             </div>
             <div>
-              <label className="label">Responsável</label>
+              <label className="label">Data de nascimento</label>
+              <input type="date" className="input" value={editForm.data_nascimento}
+                onChange={e => setEditForm(f => ({ ...f, data_nascimento: e.target.value }))} required />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label">
+                Responsável {editForm.data_nascimento && calcularIdade(editForm.data_nascimento) < 18 && '*'}
+              </label>
               <input className="input" value={editForm.responsavel}
-                onChange={e => setEditForm(f => ({ ...f, responsavel: e.target.value }))} required />
+                onChange={e => setEditForm(f => ({ ...f, responsavel: e.target.value }))}
+                required={Boolean(editForm.data_nascimento && calcularIdade(editForm.data_nascimento) < 18)} />
             </div>
             <div className="sm:col-span-2">
               <label className="label">Procedimento</label>

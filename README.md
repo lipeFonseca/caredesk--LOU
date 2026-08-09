@@ -313,9 +313,21 @@ pro marco atual.
 
 `patients.cpf` (só dígitos, único via índice parcial `WHERE cpf IS NOT NULL`,
 dígito verificador validado em `sanitizeRequiredCpf` — `worker/src/utils/contactFields.js`)
-e `patients.responsavel` são obrigatórios desde o cadastro. **`protocol_id`
+e `patients.data_nascimento` são obrigatórios desde o cadastro. **`protocol_id`
 não mudou de papel** — continua o vínculo com o protocolo de contato (marco,
 dashboard, digest); CPF é campo novo, aditivo, não substituiu nada.
+
+**`patients.responsavel` é condicional, não sempre obrigatório (migration
+0028):** só é exigido quando o paciente é menor de 18 anos. Idade nunca é
+guardada como número — `calcularIdade`/`ehMenorDeIdade`
+(`worker/src/utils/patientAge.js`, espelhado no frontend em
+`utils/contactDisplay.js`) derivam sempre de `data_nascimento` na hora da
+validação, mesmo raciocínio de `next_followup_date` ser materializada mas
+urgência não. `POST /api/patients` e `PATCH /api/patients/:id` validam o
+**estado resultante** (o que já está salvo + o que está mudando agora) —
+mudar `data_nascimento` pra uma data que torna o paciente menor exige
+`responsavel` no mesmo request, e não dá pra limpar `responsavel` de um
+paciente que já é menor.
 
 `assigned_agent_id` deixou de ter seletor manual em `NewPatient.jsx`: o
 backend sempre atribui ao agente autenticado que criou o paciente

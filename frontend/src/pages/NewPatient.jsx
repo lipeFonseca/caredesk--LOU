@@ -11,6 +11,7 @@ import {
   normalizeProtocolDays,
 } from '@/utils/protocols'
 import PatientProtocolTimeline from '@/components/patient/PatientProtocolTimeline'
+import { calcularIdade } from '@/utils/contactDisplay'
 
 const BACKFILL_CONTACT_TYPES = [
   { value: 'call', label: 'Ligação' },
@@ -27,6 +28,7 @@ export default function NewPatient() {
     phone:        '',
     email:        '',
     cpf:          '',
+    data_nascimento: '',
     responsavel:  '',
     procedure:    '',
     surgery_date: new Date().toISOString().split('T')[0],
@@ -65,6 +67,9 @@ export default function NewPatient() {
     return (e) => { setForm(f => ({ ...f, [field]: e.target.value })); setError('') }
   }
 
+  const idadePaciente = form.data_nascimento ? calcularIdade(form.data_nascimento) : null
+  const pacienteMenorDeIdade = idadePaciente != null && idadePaciente < 18
+
   // Marcos do protocolo selecionado que já passaram da data prevista — são as
   // únicas opções que fazem sentido oferecer como "último já contatado". A
   // lista já sai na ordem certa porque normalizeProtocolDays/buildProtocolMilestones
@@ -85,12 +90,16 @@ export default function NewPatient() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.name.trim() || !form.procedure.trim() || !form.surgery_date || !form.responsavel.trim()) {
-      setError('Nome, procedimento, data da cirurgia e responsável são obrigatórios')
+    if (!form.name.trim() || !form.procedure.trim() || !form.surgery_date || !form.data_nascimento) {
+      setError('Nome, procedimento, data da cirurgia e data de nascimento são obrigatórios')
       return
     }
     if (form.cpf.replace(/\D/g, '').length !== 11) {
       setError('CPF inválido')
+      return
+    }
+    if (pacienteMenorDeIdade && !form.responsavel.trim()) {
+      setError('Responsável é obrigatório para pacientes menores de idade')
       return
     }
     setLoading(true)
@@ -189,15 +198,33 @@ export default function NewPatient() {
                   />
                 </div>
                 <div>
-                  <label className="label">Responsável *</label>
+                  <label className="label">Data de nascimento *</label>
                   <input
+                    type="date"
                     className="input"
-                    placeholder="Nome do responsável"
-                    value={form.responsavel}
-                    onChange={set('responsavel')}
+                    value={form.data_nascimento}
+                    onChange={set('data_nascimento')}
                     disabled={loading}
                   />
+                  {idadePaciente != null && (
+                    <p className="mt-1 text-[11px] text-on-surface-variant">{idadePaciente} anos</p>
+                  )}
                 </div>
+              </div>
+              <div>
+                <label className="label">
+                  Responsável {pacienteMenorDeIdade ? '*' : <span className="text-outline font-normal">(opcional para maiores de idade)</span>}
+                </label>
+                <input
+                  className="input"
+                  placeholder="Nome do responsável"
+                  value={form.responsavel}
+                  onChange={set('responsavel')}
+                  disabled={loading}
+                />
+                {pacienteMenorDeIdade && (
+                  <p className="mt-1 text-[11px] text-on-surface-variant">Obrigatório — paciente menor de idade.</p>
+                )}
               </div>
             </div>
           </section>

@@ -51,3 +51,17 @@ export function formatCpf(cpf = '') {
   if (digitos.length !== 11) return cpf || ''
   return digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 }
+
+// Mesma logica do backend (worker/src/utils/patientAge.js) — idade nunca e
+// guardada, so calculada na hora que precisa (aqui, pra decidir se o campo
+// Responsável fica obrigatorio no formulario).
+export function calcularIdade(dataNascimentoIso, referenciaIso = new Date().toISOString().slice(0, 10)) {
+  if (!dataNascimentoIso) return null
+  const [anoNasc, mesNasc, diaNasc] = dataNascimentoIso.split('-').map(Number)
+  const [anoRef, mesRef, diaRef] = referenciaIso.split('-').map(Number)
+
+  let idade = anoRef - anoNasc
+  if (mesRef < mesNasc || (mesRef === mesNasc && diaRef < diaNasc)) idade -= 1
+
+  return idade
+}
