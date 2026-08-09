@@ -43,3 +43,11 @@ export function getInitials(name = '') {
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
   return (parts[0]?.[0] ?? '?').toUpperCase()
 }
+
+// Backend guarda so-digitos (mesma logica de phone_digits); mascara e so
+// exibicao.
+export function formatCpf(cpf = '') {
+  const digitos = String(cpf).replace(/\D/g, '')
+  if (digitos.length !== 11) return cpf || ''
+  return digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+}

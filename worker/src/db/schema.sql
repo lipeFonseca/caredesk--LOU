@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS patients (
   -- um indice estreito em vez da tabela. Mantida em sincronia pelas rotas.
   phone_digits    TEXT,
   email           TEXT,
+  -- So-digitos, obrigatorio no cadastro (0027) — identificacao real do
+  -- paciente. protocol_id continua sendo o vinculo com o protocolo de
+  -- contato, os dois campos nao se confundem.
+  cpf             TEXT,
+  responsavel     TEXT,
   procedure       TEXT NOT NULL,
   surgery_date    TEXT NOT NULL,
   assigned_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
@@ -213,6 +218,9 @@ CREATE INDEX IF NOT EXISTS idx_patients_archived ON patients(archived_at);
 CREATE INDEX IF NOT EXISTS idx_patients_proximo_marco
   ON patients(next_followup_date) WHERE archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_patients_protocol ON patients(protocol_id);
+-- Parcial: so exige unicidade quando o CPF existe, sem travar registros
+-- antigos a migration (0027) encontrar com a coluna ainda vazia.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_cpf ON patients(cpf) WHERE cpf IS NOT NULL;
 -- Sem indice so de (patient_id): seria prefixo do composto abaixo, que ja
 -- atende as mesmas consultas. Indice redundante nao acelera nada e cobra em
 -- espaco e em escrita a cada INSERT.

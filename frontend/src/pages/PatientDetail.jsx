@@ -20,6 +20,7 @@ import {
   OUTCOMES,
   URGENCY_BADGE,
   getInitials,
+  formatCpf,
 } from '@/utils/contactDisplay'
 import PatientDocumentsSection from '@/components/patient/PatientDocumentsSection'
 import PatientIdentitySummary from '@/components/patient/PatientIdentitySummary'
@@ -76,6 +77,8 @@ export default function PatientDetail() {
         name:              data.name,
         phone:             data.phone || '',
         email:             data.email || '',
+        cpf:               data.cpf ? formatCpf(data.cpf) : '',
+        responsavel:       data.responsavel || '',
         procedure:         data.procedure,
         surgery_date:      data.surgery_date,
         status:            data.status,
@@ -316,6 +319,22 @@ export default function PatientDetail() {
                   {patient.email
                     ? <a href={`mailto:${patient.email}`} className="hover:text-primary hover:underline truncate">{patient.email}</a>
                     : <span className="text-outline">Não informado</span>}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-label-sm font-label-sm text-on-surface-variant mb-1 uppercase tracking-wider">CPF</p>
+                <p className="text-body-md font-body-md text-on-surface flex items-center gap-2">
+                  <span className="material-symbols-outlined text-outline" style={{ fontSize: '16px' }}>badge</span>
+                  {patient.cpf ? formatCpf(patient.cpf) : <span className="text-outline">Não informado</span>}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-label-sm font-label-sm text-on-surface-variant mb-1 uppercase tracking-wider">Responsável</p>
+                <p className="text-body-md font-body-md text-on-surface flex items-center gap-2">
+                  <span className="material-symbols-outlined text-outline" style={{ fontSize: '16px' }}>person</span>
+                  {patient.responsavel || <span className="text-outline">Não informado</span>}
                 </p>
               </div>
 
@@ -824,6 +843,16 @@ export default function PatientDetail() {
               <label className="label">E-mail</label>
               <input type="email" className="input" placeholder="opcional" value={editForm.email}
                 onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">CPF</label>
+              <input className="input" placeholder="000.000.000-00" value={editForm.cpf}
+                onChange={e => setEditForm(f => ({ ...f, cpf: e.target.value }))} required />
+            </div>
+            <div>
+              <label className="label">Responsável</label>
+              <input className="input" value={editForm.responsavel}
+                onChange={e => setEditForm(f => ({ ...f, responsavel: e.target.value }))} required />
             </div>
             <div className="sm:col-span-2">
               <label className="label">Procedimento</label>

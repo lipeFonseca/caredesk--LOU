@@ -4,6 +4,7 @@
 
 const MAX_PHONE_LENGTH = 20
 const MAX_EMAIL_LENGTH = 160
+const CPF_LENGTH = 11
 
 // Aceita o que uma pessoa realmente digita num telefone: digitos, +, parenteses,
 // espaco e hifen. O resto sai fora.
@@ -53,4 +54,31 @@ export function sanitizeOptionalEmail(valor) {
 
   const plausivel = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(limpo)
   return plausivel ? { ok: true, value: limpo } : { ok: false, value: null }
+}
+
+// CPF e obrigatorio no cadastro — e a chave real de identificacao do paciente
+// (protocol_id nao serve pra isso, e so o vinculo com o protocolo de contato).
+// Guardado so-digitos (mesma logica de phoneDigits): mascara e problema de
+// exibicao, nao de armazenamento. Valida o digito verificador de verdade —
+// sequencias falsas como 111.111.111-11 sao rejeitadas antes de chegar ao banco.
+export function sanitizeRequiredCpf(valor) {
+  const digitos = valor == null ? '' : String(valor).replace(/\D/g, '')
+  if (digitos.length !== CPF_LENGTH) return { ok: false, value: null }
+  if (/^(\d)\1{10}$/.test(digitos)) return { ok: false, value: null }
+
+  const calcularDigitoVerificador = (base) => {
+    let soma = 0
+    let peso = base.length + 1
+    for (const digito of base) {
+      soma += Number(digito) * peso
+      peso -= 1
+    }
+    const resto = soma % 11
+    return resto < 2 ? 0 : 11 - resto
+  }
+
+  const dv1 = calcularDigitoVerificador(digitos.slice(0, 9))
+  const dv2 = calcularDigitoVerificador(digitos.slice(0, 9) + String(dv1))
+
+  return digitos.slice(9) === `${dv1}${dv2}` ? { ok: true, value: digitos } : { ok: false, value: null }
 }

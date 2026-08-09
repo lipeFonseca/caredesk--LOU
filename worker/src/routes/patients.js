@@ -9,7 +9,7 @@ import {
 } from '../utils/protocols.js'
 import { resolveSuggestedMessageTemplate, isValidMessageTemplateContactType } from '../utils/messageTemplates.js'
 import { isValidDocumentStatus } from '../utils/documentTemplates.js'
-import { sanitizeOptionalPhone, sanitizeOptionalEmail, phoneDigits } from '../utils/contactFields.js'
+import { sanitizeOptionalPhone, sanitizeOptionalEmail, sanitizeRequiredCpf, phoneDigits } from '../utils/contactFields.js'
 import {
   buildPatientFilters,
   classifySearchTerm,
@@ -266,14 +266,26 @@ patients.post('/', async (c) => {
   try {
     const body = await c.req.json()
 
-    const name      = stripHtml(body.name).slice(0, 120)
-    const procedure = stripHtml(body.procedure).slice(0, 120)
-    const notes     = body.notes != null ? stripHtml(body.notes).slice(0, 2000) : null
-    const phone     = sanitizeOptionalPhone(body.phone)
+    const name        = stripHtml(body.name).slice(0, 120)
+    const procedure   = stripHtml(body.procedure).slice(0, 120)
+    const responsavel = stripHtml(body.responsavel).slice(0, 120)
+    const notes       = body.notes != null ? stripHtml(body.notes).slice(0, 2000) : null
+    const phone       = sanitizeOptionalPhone(body.phone)
     const surgery_date = /^\d{4}-\d{2}-\d{2}$/.test(body.surgery_date) ? body.surgery_date : null
 
-    if (!name || !procedure || !surgery_date) {
-      return c.json({ error: 'Nome, procedimento e data da cirurgia são obrigatórios' }, 400)
+    if (!name || !procedure || !surgery_date || !responsavel) {
+      return c.json({ error: 'Nome, procedimento, data da cirurgia e responsável são obrigatórios' }, 400)
+    }
+
+    const cpfSanitizado = sanitizeRequiredCpf(body.cpf)
+    if (!cpfSanitizado.ok) {
+      return c.json({ error: 'CPF inválido' }, 400)
+    }
+    const cpf = cpfSanitizado.value
+
+    const cpfExistente = await c.env.DB.prepare('SELECT id FROM patients WHERE cpf = ?').bind(cpf).first()
+    if (cpfExistente) {
+      return c.json({ error: 'Já existe um paciente cadastrado com este CPF' }, 409)
     }
 
     const emailSanitizado = sanitizeOptionalEmail(body.email)
@@ -282,24 +294,29 @@ patients.post('/', async (c) => {
     }
     const email = emailSanitizado.value
 
-    const assigned_agent_id = await resolveWritableAgentId(c.env.DB, body.assigned_agent_id)
     const resolvedProtocolId = await resolveWritableProtocolId(c.env.DB, body.protocol_id)
     const id = crypto.randomUUID()
     const autor = c.get('agent')
     const createdBy = autor?.sub || null
+    // Paciente sempre e atribuido a quem cadastrou — sem seletor manual no
+    // formulario. Reatribuicao pra outro agente continua possivel depois via
+    // PATCH, se algum dia precisar de tela pra isso.
+    const assigned_agent_id = createdBy
 
     // Resolvida ANTES do INSERT: se o marco informado nao pertencer ao
     // protocolo, o paciente nao deve nascer meio-criado no banco.
     const backfillEntries = await resolveBackfillEntries(c.env.DB, resolvedProtocolId, surgery_date, body.backfill)
 
     await c.env.DB.prepare(`
-      INSERT INTO patients (id, name, phone, phone_digits, email, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by, created_by_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO patients (id, name, phone, phone_digits, email, cpf, responsavel, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by, created_by_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, name,
       phone,
       phoneDigits(phone),
       email,
+      cpf,
+      responsavel,
       procedure,
       surgery_date,
       assigned_agent_id,
@@ -334,6 +351,8 @@ patients.post('/', async (c) => {
       id, name,
       phone,
       email,
+      cpf,
+      responsavel,
       procedure,
       surgery_date,
       assigned_agent_id,
@@ -355,7 +374,7 @@ patients.patch('/:id', async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
 
-    const allowed = ['name','phone','email','procedure','surgery_date','assigned_agent_id','protocol_id','status','notes']
+    const allowed = ['name','phone','email','cpf','responsavel','procedure','surgery_date','assigned_agent_id','protocol_id','status','notes']
     const fields = Object.keys(body).filter(k => allowed.includes(k))
     if (!fields.length) return c.json({ error: 'Nenhum campo válido enviado' }, 400)
 
@@ -364,6 +383,19 @@ patients.patch('/:id', async (c) => {
     }
     if (fields.includes('email') && !sanitizeOptionalEmail(body.email).ok) {
       return c.json({ error: 'E-mail inválido' }, 400)
+    }
+    if (fields.includes('cpf') && !sanitizeRequiredCpf(body.cpf).ok) {
+      return c.json({ error: 'CPF inválido' }, 400)
+    }
+    if (fields.includes('cpf')) {
+      const cpfDigitos = sanitizeRequiredCpf(body.cpf).value
+      const cpfDeOutroPaciente = await c.env.DB.prepare('SELECT id FROM patients WHERE cpf = ? AND id != ?').bind(cpfDigitos, id).first()
+      if (cpfDeOutroPaciente) {
+        return c.json({ error: 'Já existe um paciente cadastrado com este CPF' }, 409)
+      }
+    }
+    if (fields.includes('responsavel') && !String(body.responsavel ?? '').trim()) {
+      return c.json({ error: 'Responsável é obrigatório' }, 400)
     }
     if (fields.includes('status') && !isValidPatientStatus(body.status)) {
       return c.json({ error: 'Status inválido' }, 400)
@@ -388,8 +420,11 @@ patients.patch('/:id', async (c) => {
       if (field === 'assigned_agent_id') {
         return resolveWritableAgentId(c.env.DB, body[field])
       }
-      if (field === 'name' || field === 'procedure') {
+      if (field === 'name' || field === 'procedure' || field === 'responsavel') {
         return stripHtml(body[field]).slice(0, 120)
+      }
+      if (field === 'cpf') {
+        return sanitizeRequiredCpf(body[field]).value
       }
       if (field === 'notes') {
         return body[field] === '' ? null : stripHtml(body[field]).slice(0, 2000)

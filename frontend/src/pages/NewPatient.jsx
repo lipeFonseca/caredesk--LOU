@@ -23,16 +23,16 @@ export default function NewPatient() {
   const navigate = useNavigate()
 
   const [form, setForm] = useState({
-    name:              '',
-    phone:             '',
-    email:             '',
-    procedure:         '',
-    surgery_date:      new Date().toISOString().split('T')[0],
-    assigned_agent_id: '',
-    protocol_id:       '',
-    notes:             '',
+    name:         '',
+    phone:        '',
+    email:        '',
+    cpf:          '',
+    responsavel:  '',
+    procedure:    '',
+    surgery_date: new Date().toISOString().split('T')[0],
+    protocol_id:  '',
+    notes:        '',
   })
-  const [agents, setAgents]       = useState([])
   const [protocols, setProtocols] = useState([])
   const [documents, setDocuments] = useState([])
   const [selectedDocumentIds, setSelectedDocumentIds] = useState([])
@@ -47,7 +47,6 @@ export default function NewPatient() {
   const [backfillContactType, setBackfillContactType]       = useState('call')
 
   useEffect(() => {
-    api.agents.list().then(data => setAgents(data ?? [])).catch(() => {})
     api.protocols.list().then(data => {
       setProtocols(data ?? [])
       const def = (data ?? []).find(p => p.is_default)
@@ -86,8 +85,12 @@ export default function NewPatient() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.name.trim() || !form.procedure.trim() || !form.surgery_date) {
-      setError('Nome, procedimento e data da cirurgia são obrigatórios')
+    if (!form.name.trim() || !form.procedure.trim() || !form.surgery_date || !form.responsavel.trim()) {
+      setError('Nome, procedimento, data da cirurgia e responsável são obrigatórios')
+      return
+    }
+    if (form.cpf.replace(/\D/g, '').length !== 11) {
+      setError('CPF inválido')
       return
     }
     setLoading(true)
@@ -174,6 +177,28 @@ export default function NewPatient() {
                   disabled={loading}
                 />
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="label">CPF *</label>
+                  <input
+                    className="input"
+                    placeholder="000.000.000-00"
+                    value={form.cpf}
+                    onChange={set('cpf')}
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <label className="label">Responsável *</label>
+                  <input
+                    className="input"
+                    placeholder="Nome do responsável"
+                    value={form.responsavel}
+                    onChange={set('responsavel')}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
             </div>
           </section>
 
@@ -195,31 +220,15 @@ export default function NewPatient() {
                   disabled={loading}
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Data da cirurgia *</label>
-                  <input
-                    type="date"
-                    className="input"
-                    value={form.surgery_date}
-                    onChange={set('surgery_date')}
-                    disabled={loading}
-                  />
-                </div>
-                <div>
-                  <label className="label">Agente responsável</label>
-                  <select
-                    className="input"
-                    value={form.assigned_agent_id}
-                    onChange={set('assigned_agent_id')}
-                    disabled={loading}
-                  >
-                    <option value="">Não atribuído</option>
-                    {agents.map(a => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="label">Data da cirurgia *</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={form.surgery_date}
+                  onChange={set('surgery_date')}
+                  disabled={loading}
+                />
               </div>
             </div>
           </section>

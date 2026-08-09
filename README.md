@@ -309,6 +309,21 @@ devolve `suggested_message_templates` (array, não mais singular); a tela de
 registro de contato mostra um seletor por título quando há mais de uma opção
 pro marco atual.
 
+### CPF, Responsável e atribuição automática por agente (migration 0027)
+
+`patients.cpf` (só dígitos, único via índice parcial `WHERE cpf IS NOT NULL`,
+dígito verificador validado em `sanitizeRequiredCpf` — `worker/src/utils/contactFields.js`)
+e `patients.responsavel` são obrigatórios desde o cadastro. **`protocol_id`
+não mudou de papel** — continua o vínculo com o protocolo de contato (marco,
+dashboard, digest); CPF é campo novo, aditivo, não substituiu nada.
+
+`assigned_agent_id` deixou de ter seletor manual em `NewPatient.jsx`: o
+backend sempre atribui ao agente autenticado que criou o paciente
+(`c.get('agent')`, nunca o `body` do cliente). A coluna continua existindo —
+ainda é o que o dashboard e o resumo diário usam pra escopar "meus
+pacientes" por agente, e `PATCH /api/patients/:id` continua podendo
+reatribuir depois, só não há tela pra isso hoje.
+
 ### Domínios
 
 - `patients.status`: `active` · `paused` · `discharged`
