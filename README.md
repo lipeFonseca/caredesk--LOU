@@ -277,11 +277,44 @@ Automático". A interface marca esses registros como *(fora da equipe)*.
 
 O backend recusa excluir a própria conta ou o último administrador ativo.
 
+### Progresso no protocolo é por posição, não por marco
+
+O próximo marco pendente (`getNextPendingMilestone`, `worker/src/utils/protocols.js`)
+não olha *qual* marco foi contatado — olha **quantos** contatos existem
+(`COUNT(followup_logs WHERE is_extra_contact=0)`) e pega essa posição na lista
+ordenada de dias do protocolo. Não existe coluna ligando uma linha de
+`followup_logs` a um `day_offset` específico. Isso importa em qualquer código
+que precise "voltar" ou "avançar" o progresso de um paciente: a única alavanca
+é a contagem, não uma marcação direta de qual marco foi feito.
+
+**Cadastro retroativo** (`POST /api/patients` com `backfill:
+{ last_completed_day_offset, contact_type, dates? }`) existe por causa disso:
+paciente que já estava em acompanhamento fora do sistema não pode simplesmente
+"marcar os marcos já feitos" — se marcar fora de ordem, o sistema conta certo
+mas assume os marcos errados, e o próximo contato sugerido erra em silêncio. O
+backend deriva o **prefixo contíguo** da lista ordenada de dias a partir do
+marco informado (nunca aceita uma lista arbitrária do cliente) e cria os
+`followup_logs` retroativos via `db.batch` — atômico, e sempre antes de
+`recalcularProximoMarco`. Cada linha nasce com `is_backfilled=1`, badge
+"(registrado retroativamente)" no histórico (`ContactLogEntry.jsx`).
+
+### Mais de um template de mensagem por marco
+
+`protocol_message_templates` não tem mais `UNIQUE(protocol_id, day_offset)`
+(migration `0025`) — um mesmo marco pode ter várias mensagens, cada uma com
+`title` próprio. Decisão do usuário: variar o texto entre pacientes ajuda a
+evitar padrão de banimento de número no WhatsApp (envio continua manual,
+copiar/colar — não foi automatizado de propósito). `GET /api/patients/:id`
+devolve `suggested_message_templates` (array, não mais singular); a tela de
+registro de contato mostra um seletor por título quando há mais de uma opção
+pro marco atual.
+
 ### Domínios
 
 - `patients.status`: `active` · `paused` · `discharged`
 - `followup_logs.contact_type`: `call` · `whatsapp` · `email` · `in_person`
 - `followup_logs.outcome`: `reached` · `no_answer` · `callback_scheduled`
+- `followup_logs.is_backfilled`: `0` contato real · `1` registrado retroativamente no cadastro
 - urgência (derivada): `overdue` · `due` · `soon` · `ok` · `none`
 
 ---
