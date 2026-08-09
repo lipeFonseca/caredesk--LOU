@@ -10,6 +10,7 @@ export const MESSAGE_TEMPLATE_CONTACT_TYPES = Object.freeze([
 export const MESSAGE_TEMPLATE_PLACEHOLDERS = Object.freeze([
   { key: 'patient_name', label: 'Nome do paciente' },
   { key: 'patient_phone', label: 'Telefone do paciente' },
+  { key: 'responsavel_name', label: 'Nome do responsável' },
   { key: 'procedure', label: 'Procedimento' },
   { key: 'surgery_date', label: 'Data da cirurgia' },
   { key: 'assigned_agent_name', label: 'Nome do agente responsável' },
@@ -84,6 +85,7 @@ function buildMessageTemplateContext({ patient, resolution, nextMilestone, clini
   return {
     patient_name: patient.name ?? '',
     patient_phone: patient.phone ?? '',
+    responsavel_name: patient.responsavel ?? '',
     procedure: patient.procedure ?? '',
     surgery_date: formatDatePtBr(patient.surgery_date),
     assigned_agent_name: patient.agent_name ?? '',
