@@ -18,12 +18,15 @@ import {
   CONTACT_TYPES,
   CONTACT_TYPE_CONFIG,
   OUTCOMES,
-  OUTCOME_CONFIG,
-  STATUS_LABEL,
   URGENCY_BADGE,
   getInitials,
 } from '@/utils/contactDisplay'
 import PatientDocumentsSection from '@/components/patient/PatientDocumentsSection'
+import PatientIdentitySummary from '@/components/patient/PatientIdentitySummary'
+import PatientNextFollowupCard from '@/components/patient/PatientNextFollowupCard'
+import PatientProtocolTimeline from '@/components/patient/PatientProtocolTimeline'
+import ProtocolDayChips from '@/components/patient/ProtocolDayChips'
+import ContactLogEntry from '@/components/patient/ContactLogEntry'
 
 function buildInitialLogForm(patient = null) {
   return {
@@ -261,29 +264,7 @@ export default function PatientDetail() {
       {/* ── Header Card ─────────────────────────────────────────── */}
       <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="flex items-center gap-6">
-            <div className="w-20 h-20 rounded-full bg-surface-container-high text-primary flex items-center justify-center text-display-md font-semibold shrink-0 border-2 border-primary/20">
-              {initials}
-            </div>
-            <div>
-              <h1 className="text-display-md font-display-md text-on-surface mb-1">{patient.name}</h1>
-              <p className="text-body-lg text-on-surface-variant mb-3 flex items-center gap-2">
-                {patient.procedure}
-                <span className="text-outline">•</span>
-                {patient.surgery_date
-                  ? format(parseISO(patient.surgery_date), "dd MMM. yyyy", { locale: ptBR })
-                  : '—'}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <span className={`px-2.5 py-1 rounded-full font-label-sm text-label-sm uppercase tracking-wider ${urg.cls}`}>
-                  {urg.label}
-                </span>
-                <span className="px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm border border-outline-variant uppercase tracking-wider">
-                  {STATUS_LABEL[patient.status]}
-                </span>
-              </div>
-            </div>
-          </div>
+          <PatientIdentitySummary patient={patient} initials={initials} urg={urg} variant="full" />
           <div className="flex flex-col sm:flex-row gap-3 shrink-0">
             <button
               onClick={() => setEditOpen(true)}
@@ -375,17 +356,7 @@ export default function PatientDetail() {
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {patientProtocolDays.map(d => (
-                    <span key={d} className={`px-2 py-0.5 rounded text-label-sm font-label-sm border ${
-                      d < 0  ? 'bg-[#fff3e0] border-[#ffe0b2] text-[#ef6c00]'
-                             : d === 0 ? 'bg-primary/10 border-primary/30 text-primary'
-                             : 'bg-secondary/10 border-secondary/30 text-secondary'
-                    }`}>
-                      {formatProtocolDay(d)}
-                    </span>
-                  ))}
-                </div>
+                <ProtocolDayChips days={patientProtocolDays} variant="full" />
               </div>
 
               {patient.notes && (
@@ -403,66 +374,7 @@ export default function PatientDetail() {
           <PatientDocumentsSection patientId={id} />
 
           {/* Linha do Tempo do Protocolo */}
-          {timeline.length > 0 && (
-            <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
-              <h2 className="text-headline-sm font-headline-sm text-on-surface mb-4 pb-4 border-b border-outline-variant flex items-center gap-2">
-                <span className="material-symbols-outlined text-outline">timeline</span>
-                Linha do Tempo
-                <span className="ml-1 bg-surface-container-high text-on-surface-variant text-label-sm font-label-sm px-2 py-0.5 rounded-full border border-outline-variant">
-                  {timeline.filter(t => t.status === 'completed').length}/{timeline.length}
-                </span>
-              </h2>
-              <div className="overflow-x-auto pb-2">
-                <div className="flex items-center gap-0" style={{ minWidth: 'max-content' }}>
-                  {timeline.map((item, i) => (
-                    <div key={item.day} className="flex items-center">
-                      {i > 0 && (
-                        <div className={`w-6 h-0.5 ${
-                          item.status === 'completed' ? 'bg-secondary' :
-                          item.status === 'overdue'   ? 'bg-error/40'  :
-                          'bg-outline-variant'
-                        }`} />
-                      )}
-                      <div className={`flex flex-col items-center px-2 py-1.5 rounded-lg border text-center min-w-[64px] relative ${
-                        item.status === 'completed' ? 'bg-secondary/10 border-secondary/30 text-secondary' :
-                        item.status === 'overdue'   ? 'bg-error-container/20 border-error/30 text-error'  :
-                        item.status === 'due'       ? 'bg-[#fff8e1] border-[#ffecb3] text-[#f57f17]'   :
-                        item.status === 'next'      ? 'bg-primary text-on-primary border-primary'         :
-                        'bg-surface-container-low border-outline-variant text-on-surface-variant'
-                      }`}>
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
-                          {item.status === 'completed' ? 'check_circle' :
-                           item.status === 'overdue'   ? 'warning'      :
-                           item.status === 'due'       ? 'event_available' :
-                           item.status === 'next'      ? 'notifications_active' :
-                           'radio_button_unchecked'}
-                        </span>
-                        <span className="text-label-sm font-label-sm font-semibold whitespace-nowrap mt-0.5">
-                          {formatProtocolDayShort(item.day)}
-                        </span>
-                        <span className="text-[10px] text-inherit opacity-70 whitespace-nowrap">
-                          {format(parseISO(item.dateStr), 'dd/MM', { locale: ptBR })}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-outline-variant">
-                {[
-                  { cls: 'bg-secondary/10 border-secondary/30 text-secondary', label: 'Concluído' },
-                  { cls: 'bg-error-container/20 border-error/30 text-error',   label: 'Atrasado' },
-                  { cls: 'bg-primary text-on-primary border-primary',          label: 'Próximo' },
-                  { cls: 'bg-surface-container-low border-outline-variant text-on-surface-variant', label: 'Pendente' },
-                ].map(({ cls, label }) => (
-                  <span key={label} className="flex items-center gap-1.5 text-label-sm text-on-surface-variant">
-                    <span className={`w-3 h-3 rounded-sm border inline-block ${cls}`} />
-                    {label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          <PatientProtocolTimeline timeline={timeline} variant="full" />
 
           {/* Histórico de Contatos */}
           <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
@@ -490,7 +402,7 @@ export default function PatientDetail() {
             ) : (
               <div className="relative pl-6 sm:pl-8 border-l-2 border-surface-container-high space-y-8 mt-4">
                 {patient.followup_logs.map(log => (
-                  <LogItem key={log.id} log={log} />
+                  <ContactLogEntry key={log.id} log={log} variant="full" />
                 ))}
               </div>
             )}
@@ -501,57 +413,7 @@ export default function PatientDetail() {
         <div className="md:col-span-4 space-y-5">
 
           {/* Próximo Contato */}
-          {nextFollowup && (
-            <div className="bg-primary text-on-primary rounded-xl ambient-shadow-lvl2 p-6 relative overflow-hidden">
-              <div
-                className="absolute inset-0 opacity-10"
-                style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '16px 16px' }}
-              />
-              <div className="relative z-10">
-                <h3 className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-wider mb-2 flex items-center gap-2">
-                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>event</span>
-                  Próximo Contato
-                </h3>
-                <div className="text-display-md font-display-md mb-1">
-                  {format(nextFollowup.date, "dd MMM. yyyy", { locale: ptBR })}
-                </div>
-                <div className="text-body-lg text-primary-fixed mb-6">{nextFollowup.label}</div>
-                <div className="flex items-center justify-between bg-black/10 rounded-lg p-4">
-                  <div>
-                    <div className="text-display-md font-display-md">
-                      {Math.abs(nextFollowup.daysRemaining)}
-                    </div>
-                    <div className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-wider">
-                      {nextFollowup.daysRemaining >= 0 ? 'Dias Restantes' : 'Dias em Atraso'}
-                    </div>
-                  </div>
-                  <div className="relative w-16 h-16 flex items-center justify-center">
-                    <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                      <path
-                        fill="none" stroke="currentColor"
-                        strokeDasharray="100, 100" strokeWidth="3"
-                        className="text-white/20"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                      <path
-                        fill="none" stroke="currentColor"
-                        strokeDasharray={`${nextFollowup.countdownProgress}, 100`}
-                        strokeLinecap="round" strokeWidth="3"
-                        className="text-white"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                    </svg>
-                    <span className="absolute text-label-sm font-label-sm font-bold">
-                      {nextFollowup.countdownProgress}%
-                    </span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-primary-fixed-dim mt-3">
-                  Percentual restante até o próximo marco do protocolo.
-                </p>
-              </div>
-            </div>
-          )}
+          {nextFollowup && <PatientNextFollowupCard nextFollowup={nextFollowup} variant="full" />}
 
           {/* Ações Rápidas */}
           <div className="bg-surface rounded-xl border border-outline-variant ambient-shadow-lvl1 p-6">
@@ -1015,65 +877,6 @@ export default function PatientDetail() {
           </button>
         </div>
       </Modal>
-    </div>
-  )
-}
-
-function LogItem({ log }) {
-  const tc = CONTACT_TYPE_CONFIG[log.contact_type] ?? CONTACT_TYPE_CONFIG.call
-  const oc = OUTCOME_CONFIG[log.outcome]           ?? OUTCOME_CONFIG.no_answer
-
-  return (
-    <div className="relative">
-      <div className="absolute -left-[35px] sm:-left-[43px] w-5 h-5 rounded-full bg-secondary text-on-secondary flex items-center justify-center border-4 border-white shadow-sm">
-        <span
-          className="material-symbols-outlined"
-          style={{ fontSize: '10px', fontVariationSettings: "'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20" }}
-        >check</span>
-      </div>
-      <div className="bg-surface border border-outline-variant rounded-lg p-4 hover:shadow-[0_4px_6px_rgba(0,0,0,0.08)] transition-shadow">
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex items-center gap-2">
-            <span className={`material-symbols-outlined ${tc.color}`} style={{ fontSize: '18px' }}>{tc.icon}</span>
-            <span className="text-label-md font-label-md text-on-surface font-semibold">
-              {CONTACT_TYPE_CONFIG[log.contact_type]?.label ?? 'Contato'}
-            </span>
-          </div>
-          <span className="text-label-sm font-label-sm text-on-surface-variant">
-            {log.contact_date ? format(parseISO(log.contact_date), "dd MMM. yyyy", { locale: ptBR }) : '—'}
-          </span>
-        </div>
-        {log.notes && (
-          <p className="text-body-md font-body-md text-on-surface-variant mb-3">{log.notes}</p>
-        )}
-        <div className="flex justify-between items-center mt-2 pt-3 border-t border-surface-container-highest">
-          <span className={`inline-flex items-center gap-1 text-label-sm font-label-sm px-2 py-0.5 rounded ${oc.cls}`}>
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{oc.icon}</span>
-            {oc.label}
-          </span>
-          {/* Autoria preservada: agente excluído continua creditado pelo nome
-              gravado no contato. Só é "Sistema Automático" quando de fato não
-              houve pessoa — antes, agente removido caía nesse rótulo e o
-              registro clínico mentia sobre quem ligou. */}
-          <span className="text-label-sm font-label-sm text-on-surface-variant flex items-center gap-1">
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
-              {log.agent_name ? 'person' : 'smart_toy'}
-            </span>
-            {log.agent_name ?? 'Sistema Automático'}
-            {log.agent_removed ? (
-              <span className="text-outline" title="Este agente não faz mais parte da equipe">
-                (fora da equipe)
-              </span>
-            ) : null}
-          </span>
-        </div>
-        {log.next_followup_date && (
-          <p className="text-label-sm font-label-sm text-primary mt-2 flex items-center gap-1">
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>event</span>
-            Próximo: {format(parseISO(log.next_followup_date), "dd/MM/yyyy")}
-          </p>
-        )}
-      </div>
     </div>
   )
 }

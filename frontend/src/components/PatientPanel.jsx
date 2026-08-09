@@ -3,22 +3,17 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store'
-import { format, parseISO } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import {
   buildProtocolTimeline,
-  formatProtocolDay,
-  formatProtocolDayShort,
   getNextFollowup,
   normalizeProtocolDays,
 } from '@/utils/protocols'
-import {
-  CONTACT_TYPE_CONFIG,
-  OUTCOME_CONFIG,
-  STATUS_LABEL,
-  URGENCY_BADGE,
-  getInitials,
-} from '@/utils/contactDisplay'
+import { URGENCY_BADGE, getInitials } from '@/utils/contactDisplay'
+import PatientIdentitySummary from '@/components/patient/PatientIdentitySummary'
+import PatientNextFollowupCard from '@/components/patient/PatientNextFollowupCard'
+import PatientProtocolTimeline from '@/components/patient/PatientProtocolTimeline'
+import ProtocolDayChips from '@/components/patient/ProtocolDayChips'
+import ContactLogEntry from '@/components/patient/ContactLogEntry'
 
 export default function PatientPanel({ patientId, onClose }) {
   const { isAdmin } = useAuthStore()
@@ -112,29 +107,7 @@ function PanelContent({ patient, onClose, isAdmin }) {
     <div className="p-5 space-y-5">
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="flex items-start gap-4">
-        <div className="w-16 h-16 rounded-full bg-surface-container-high text-primary flex items-center justify-center text-display-md font-semibold shrink-0 border-2 border-primary/20">
-          {initials}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-display-md font-display-md text-on-surface truncate">{patient.name}</h2>
-          <p className="text-body-md text-on-surface-variant flex items-center gap-1.5 mt-0.5 flex-wrap">
-            {patient.procedure}
-            <span className="text-outline">•</span>
-            {patient.surgery_date
-              ? format(parseISO(patient.surgery_date), "dd MMM. yyyy", { locale: ptBR })
-              : '—'}
-          </p>
-          <div className="flex flex-wrap gap-2 mt-2">
-            <span className={`px-2.5 py-0.5 rounded-full text-label-sm font-label-sm uppercase tracking-wider ${urg.cls}`}>
-              {urg.label}
-            </span>
-            <span className="px-2.5 py-0.5 rounded-full text-label-sm font-label-sm uppercase tracking-wider bg-surface-container-high text-on-surface-variant border border-outline-variant">
-              {STATUS_LABEL[patient.status]}
-            </span>
-          </div>
-        </div>
-      </div>
+      <PatientIdentitySummary patient={patient} initials={initials} urg={urg} variant="compact" />
 
       {/* ── Botões de ação ──────────────────────────────────────── */}
       <div className="flex gap-2">
@@ -158,48 +131,7 @@ function PanelContent({ patient, onClose, isAdmin }) {
       </div>
 
       {/* ── Próximo Contato ────────────────────────────────────── */}
-      {nextFollowup && (
-        <div className="bg-primary text-on-primary rounded-xl p-5 relative overflow-hidden">
-          <div
-            className="absolute inset-0 opacity-10"
-            style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '16px 16px' }}
-          />
-          <div className="relative z-10">
-            <p className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-wider mb-1 flex items-center gap-1">
-              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>event</span>
-              Próximo Contato
-            </p>
-            <div className="text-headline-sm font-headline-sm mb-0.5">
-              {format(nextFollowup.date, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-            </div>
-            <p className="text-body-md text-primary-fixed mb-4">{nextFollowup.label}</p>
-            <div className="flex items-center justify-between bg-black/10 rounded-lg px-4 py-3">
-              <div>
-                <div className="text-display-md font-display-md">{Math.abs(nextFollowup.daysRemaining)}</div>
-                <div className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-wider">
-                  {nextFollowup.daysRemaining >= 0 ? 'Dias Restantes' : 'Dias em Atraso'}
-                </div>
-              </div>
-              <div className="relative w-14 h-14 flex items-center justify-center">
-                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                  <path fill="none" stroke="currentColor" strokeDasharray="100, 100" strokeWidth="3"
-                    className="text-white/20"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path fill="none" stroke="currentColor"
-                    strokeDasharray={`${nextFollowup.countdownProgress}, 100`}
-                    strokeLinecap="round" strokeWidth="3"
-                    className="text-white"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                </svg>
-                <span className="absolute text-label-sm font-label-sm font-bold">{nextFollowup.countdownProgress}%</span>
-              </div>
-            </div>
-            <p className="text-[11px] text-primary-fixed-dim mt-3">
-              Percentual restante até o próximo marco do protocolo.
-            </p>
-          </div>
-        </div>
-      )}
+      {nextFollowup && <PatientNextFollowupCard nextFollowup={nextFollowup} variant="compact" />}
 
       {/* ── Dados Clínicos ───────────────────────────────────────── */}
       <div className="bg-surface rounded-xl border border-outline-variant p-5">
@@ -230,17 +162,7 @@ function PanelContent({ patient, onClose, isAdmin }) {
           </div>
           <div className="col-span-2">
             <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-1.5">Protocolo</p>
-            <div className="flex flex-wrap gap-1">
-              {protocolDays.map(d => (
-                <span key={d} className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
-                  d < 0  ? 'bg-[#fff3e0] border-[#ffe0b2] text-[#ef6c00]'
-                         : d === 0 ? 'bg-primary/10 border-primary/30 text-primary'
-                         : 'bg-secondary/10 border-secondary/30 text-secondary'
-                }`}>
-                  {formatProtocolDay(d)}
-                </span>
-              ))}
-            </div>
+            <ProtocolDayChips days={protocolDays} variant="compact" />
           </div>
           {patient.notes && (
             <div className="col-span-2 mt-1">
@@ -254,50 +176,7 @@ function PanelContent({ patient, onClose, isAdmin }) {
       </div>
 
       {/* ── Linha do Tempo ──────────────────────────────────────── */}
-      {timeline.length > 0 && (
-        <div className="bg-surface rounded-xl border border-outline-variant p-5">
-          <h3 className="text-label-md font-label-md text-on-surface font-semibold mb-3 pb-3 border-b border-outline-variant flex items-center gap-2">
-            <span className="material-symbols-outlined text-outline" style={{ fontSize: '18px' }}>timeline</span>
-            Linha do Tempo
-            <span className="ml-auto text-label-sm text-on-surface-variant">
-              {timeline.filter(t => t.status === 'completed').length}/{timeline.length}
-            </span>
-          </h3>
-          <div className="overflow-x-auto pb-1">
-            <div className="flex items-center gap-0" style={{ minWidth: 'max-content' }}>
-              {timeline.map((item, i) => (
-                <div key={item.day} className="flex items-center">
-                  {i > 0 && (
-                    <div className={`w-4 h-px ${
-                      item.status === 'completed' ? 'bg-secondary' :
-                      item.status === 'overdue'   ? 'bg-error/40' :
-                      'bg-outline-variant'
-                    }`} />
-                  )}
-                  <div className={`flex flex-col items-center px-1.5 py-1 rounded-lg border text-center min-w-[52px] ${
-                    item.status === 'completed' ? 'bg-secondary/10 border-secondary/30 text-secondary' :
-                    item.status === 'overdue'   ? 'bg-error-container/20 border-error/30 text-error'  :
-                    item.status === 'due'       ? 'bg-[#fff8e1] border-[#ffecb3] text-[#f57f17]'   :
-                    item.status === 'next'      ? 'bg-primary text-on-primary border-primary'         :
-                    'bg-surface-container-low border-outline-variant text-on-surface-variant'
-                  }`}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>
-                      {item.status === 'completed' ? 'check_circle' :
-                       item.status === 'overdue'   ? 'warning' :
-                       item.status === 'due'       ? 'event_available' :
-                       item.status === 'next'      ? 'notifications_active' :
-                       'radio_button_unchecked'}
-                    </span>
-                    <span className="text-[9px] font-bold whitespace-nowrap mt-0.5">
-                      {formatProtocolDayShort(item.day)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <PatientProtocolTimeline timeline={timeline} variant="compact" />
 
       {/* ── Ações Rápidas ────────────────────────────────────────── */}
       <div className="bg-surface rounded-xl border border-outline-variant p-5">
@@ -361,43 +240,9 @@ function PanelContent({ patient, onClose, isAdmin }) {
           </div>
         ) : (
           <div className="relative pl-6 border-l-2 border-surface-container-high space-y-6">
-            {patient.followup_logs.map(log => {
-              const tc = CONTACT_TYPE_CONFIG[log.contact_type] ?? CONTACT_TYPE_CONFIG.call
-              const oc = OUTCOME_CONFIG[log.outcome]           ?? OUTCOME_CONFIG.no_answer
-              return (
-                <div key={log.id} className="relative">
-                  <div className="absolute -left-[29px] w-4 h-4 rounded-full bg-secondary text-on-secondary flex items-center justify-center border-4 border-white shadow-sm">
-                    <span className="material-symbols-outlined" style={{ fontSize: '8px', fontVariationSettings: "'FILL' 1, 'wght' 700" }}>check</span>
-                  </div>
-                  <div className="bg-surface border border-outline-variant rounded-lg p-3 hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-shadow">
-                    <div className="flex justify-between items-start mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`material-symbols-outlined ${tc.color}`} style={{ fontSize: '16px' }}>{tc.icon}</span>
-                        <span className="text-label-md font-label-md text-on-surface font-semibold">{tc.label}</span>
-                      </div>
-                      <span className="text-label-sm font-label-sm text-on-surface-variant">
-                        {log.contact_date ? format(parseISO(log.contact_date), "dd MMM. yyyy", { locale: ptBR }) : '—'}
-                      </span>
-                    </div>
-                    {log.notes && (
-                      <p className="text-body-md font-body-md text-on-surface-variant mb-2 line-clamp-2">{log.notes}</p>
-                    )}
-                    <div className="flex justify-between items-center pt-2 border-t border-surface-container-highest">
-                      <span className={`inline-flex items-center gap-1 text-label-sm font-label-sm px-1.5 py-0.5 rounded ${oc.cls}`}>
-                        <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>{oc.icon}</span>
-                        {oc.label}
-                      </span>
-                      <span className="text-label-sm font-label-sm text-on-surface-variant flex items-center gap-1">
-                        <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
-                          {log.agent_name ? 'person' : 'smart_toy'}
-                        </span>
-                        {log.agent_name ?? 'Auto'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+            {patient.followup_logs.map(log => (
+              <ContactLogEntry key={log.id} log={log} variant="compact" />
+            ))}
           </div>
         )}
       </div>
