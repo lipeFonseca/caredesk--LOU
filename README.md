@@ -123,6 +123,7 @@ Cada rota mora no arquivo de mesmo nome — sem indireção.
 - `components/SmokeyBackground.jsx` — fundo animado do login (WebGL puro, sem dependência)
 - `components/admin/` — abas de Configurações, incluindo `MessagingTab` e `EmailTemplateEditor`
 - `components/patient/` — pedaços de UI compartilhados entre `PatientDetail` (página completa) e `PatientPanel` (drawer resumido em `Patients`): `PatientIdentitySummary`, `PatientNextFollowupCard`, `PatientProtocolTimeline`, `ProtocolDayChips`, `ContactLogEntry`, `PatientDocumentsSection`. Cada um recebe `variant="full"|"compact"` para as duas telas. Dados Clínicos e Ações Rápidas ficam fora de propósito — conteúdo/interação diferem de verdade entre os dois contextos.
+- `components/ui/date-picker.jsx` — substitui todo `<input type="date">` do sistema. Escrito do zero com `date-fns` (já dependência do projeto), **sem lib de terceiro nem `Portal`** — decisão de propósito, ver `Status.md` (uma tentativa anterior com Ark UI portalado quebrou ao selecionar data dentro de modal e foi revertida). `value`/`onChange` imitam o evento nativo (`e.target.value`, string ISO), então os 6 pontos de uso não precisaram mudar lógica de estado, só o elemento. Testado com interação real via jsdom (`date-picker.test.jsx` — abrir, clicar num dia, clicar fora, Escape, Limpar, Hoje, disabled), não só build.
 
 ### Tela de login
 

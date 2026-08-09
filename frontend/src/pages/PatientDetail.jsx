@@ -29,6 +29,7 @@ import PatientNextFollowupCard from '@/components/patient/PatientNextFollowupCar
 import PatientProtocolTimeline from '@/components/patient/PatientProtocolTimeline'
 import ProtocolDayChips from '@/components/patient/ProtocolDayChips'
 import ContactLogEntry from '@/components/patient/ContactLogEntry'
+import DatePickerField from '@/components/ui/date-picker'
 
 function buildInitialLogForm(patient = null) {
   return {
@@ -495,7 +496,7 @@ export default function PatientDetail() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Data do contato</label>
-              <input type="date" className="input"
+              <DatePickerField
                 value={logForm.contact_date}
                 onChange={e => setLogForm(f => ({ ...f, contact_date: e.target.value }))}
               />
@@ -513,7 +514,7 @@ export default function PatientDetail() {
                   Pelo protocolo
                 </button>
               </label>
-              <input type="date" className="input"
+              <DatePickerField
                 value={logForm.next_followup_date}
                 onChange={e => setLogForm(f => ({ ...f, next_followup_date: e.target.value }))}
               />
@@ -865,8 +866,8 @@ export default function PatientDetail() {
             </div>
             <div>
               <label className="label">Data de nascimento</label>
-              <input type="date" className="input" value={editForm.data_nascimento}
-                onChange={e => setEditForm(f => ({ ...f, data_nascimento: e.target.value }))} required />
+              <DatePickerField value={editForm.data_nascimento}
+                onChange={e => setEditForm(f => ({ ...f, data_nascimento: e.target.value }))} />
             </div>
             <div className="sm:col-span-2">
               <label className="label">
@@ -883,8 +884,8 @@ export default function PatientDetail() {
             </div>
             <div>
               <label className="label">Data da cirurgia</label>
-              <input type="date" className="input" value={editForm.surgery_date}
-                onChange={e => setEditForm(f => ({ ...f, surgery_date: e.target.value }))} required />
+              <DatePickerField value={editForm.surgery_date}
+                onChange={e => setEditForm(f => ({ ...f, surgery_date: e.target.value }))} />
             </div>
             <div>
               <label className="label">Status</label>
@@ -980,7 +981,7 @@ function Modal({ open, onClose, title, children, wide = false }) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: .96, y: 16 }}
               transition={{ duration: .2, ease: [.16, 1, .3, 1] }}
-              className={`w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-modal overflow-hidden border border-outline-variant ${
+              className={`w-[calc(100vw-1rem)] bg-surface rounded-2xl shadow-modal border border-outline-variant ${
                 wide ? 'max-w-[70rem]' : 'max-w-[47.25rem]'
               }`}
             >
