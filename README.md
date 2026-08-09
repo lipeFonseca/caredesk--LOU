@@ -26,7 +26,7 @@ Paciente sai do acompanhamento ativo 6 meses após a cirurgia.
 
 | Camada | Tecnologia |
 |---|---|
-| Frontend | React 18, Vite, Tailwind (tokens MD3), Framer Motion, Zustand, date-fns, Ark UI (date picker) |
+| Frontend | React 18, Vite, Tailwind (tokens MD3), Framer Motion, Zustand, date-fns |
 | Backend | Cloudflare Workers + Hono |
 | Banco | Cloudflare D1 (SQLite) |
 | Arquivos | Cloudflare R2 (binários) — metadados sempre no D1 |
@@ -123,7 +123,6 @@ Cada rota mora no arquivo de mesmo nome — sem indireção.
 - `components/SmokeyBackground.jsx` — fundo animado do login (WebGL puro, sem dependência)
 - `components/admin/` — abas de Configurações, incluindo `MessagingTab` e `EmailTemplateEditor`
 - `components/patient/` — pedaços de UI compartilhados entre `PatientDetail` (página completa) e `PatientPanel` (drawer resumido em `Patients`): `PatientIdentitySummary`, `PatientNextFollowupCard`, `PatientProtocolTimeline`, `ProtocolDayChips`, `ContactLogEntry`, `PatientDocumentsSection`. Cada um recebe `variant="full"|"compact"` para as duas telas. Dados Clínicos e Ações Rápidas ficam fora de propósito — conteúdo/interação diferem de verdade entre os dois contextos.
-- `components/ui/date-picker.jsx` — substitui todo `<input type="date">` do sistema (Ark UI headless, `@ark-ui/react/date-picker`). `value`/`onChange` imitam o evento nativo (`e.target.value`, string ISO `YYYY-MM-DD`) de propósito — os chamadores existentes (`set(field)`, handlers inline) não precisam saber que trocou de implementação. Sem TypeScript/shadcn CLI no projeto: componente é `.jsx` puro (o glob do Tailwind não cobre `.tsx`, um arquivo `.tsx` teria suas classes puradas do CSS final em produção). Cores vêm dos tokens MD3 do projeto (`bg-surface`, `text-on-surface` etc.), nunca `dark:` do Tailwind — o dark mode daqui é via classe `html.dark` + CSS custom properties, não o variant do Tailwind.
 
 ### Tela de login
 
