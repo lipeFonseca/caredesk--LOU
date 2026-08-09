@@ -11,6 +11,7 @@ import {
   normalizeProtocolDays,
 } from '@/utils/protocols'
 import PatientProtocolTimeline from '@/components/patient/PatientProtocolTimeline'
+import DatePickerField from '@/components/ui/date-picker'
 import { calcularIdade } from '@/utils/contactDisplay'
 
 const BACKFILL_CONTACT_TYPES = [
@@ -199,9 +200,7 @@ export default function NewPatient() {
                 </div>
                 <div>
                   <label className="label">Data de nascimento *</label>
-                  <input
-                    type="date"
-                    className="input"
+                  <DatePickerField
                     value={form.data_nascimento}
                     onChange={set('data_nascimento')}
                     disabled={loading}
@@ -249,9 +248,7 @@ export default function NewPatient() {
               </div>
               <div>
                 <label className="label">Data da cirurgia *</label>
-                <input
-                  type="date"
-                  className="input"
+                <DatePickerField
                   value={form.surgery_date}
                   onChange={set('surgery_date')}
                   disabled={loading}
