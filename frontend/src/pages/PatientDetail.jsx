@@ -31,7 +31,7 @@ import ContactLogEntry from '@/components/patient/ContactLogEntry'
 function buildInitialLogForm(patient = null) {
   return {
     contact_date: new Date().toISOString().split('T')[0],
-    contact_type: patient?.suggested_message_template?.contact_type || 'call',
+    contact_type: patient?.suggested_message_templates?.[0]?.contact_type || 'call',
     outcome: 'reached',
     notes: '',
     next_followup_date: '',
@@ -58,6 +58,7 @@ export default function PatientDetail() {
 
   const [editForm, setEditForm] = useState({})
   const [messageCopied, setMessageCopied] = useState(false)
+  const [selectedTemplateIndex, setSelectedTemplateIndex] = useState(0)
 
   async function load() {
     setLoading(true)
@@ -70,6 +71,7 @@ export default function PatientDetail() {
       ])
       setPatient(data)
       setLogForm(buildInitialLogForm(data))
+      setSelectedTemplateIndex(0)
       setEditForm({
         name:              data.name,
         phone:             data.phone || '',
@@ -141,6 +143,7 @@ export default function PatientDetail() {
       setLogForm(buildInitialLogForm(patient))
       setCustomProto({ name: 'Personalizado', days: [-2, 0], manualType: 'after', manualDay: '' })
       setMessageCopied(false)
+      setSelectedTemplateIndex(0)
       load()
     } catch (err) {
       alert(err.message)
@@ -526,58 +529,87 @@ export default function PatientDetail() {
           </div>
 
           {!logForm.is_extra_contact && patient.next_protocol_step && (
-            patient.suggested_message_template ? (
+            patient.suggested_message_templates?.length ? (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-label-sm font-semibold uppercase tracking-wider text-primary">
-                      Mensagem sugerida pelo protocolo
-                    </p>
-                    <h4 className="mt-1 text-label-md font-semibold text-on-surface">
-                      {patient.suggested_message_template.title}
-                    </h4>
-                    <p className="mt-1 text-sm text-on-surface-variant">
-                      {patient.suggested_message_template.milestone_label} · previsto para {patient.suggested_message_template.milestone_date}
-                    </p>
-                    <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant">
-                      <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
-                        {CONTACT_TYPE_CONFIG[patient.suggested_message_template.contact_type]?.icon ?? 'chat'}
-                      </span>
-                      Forma sugerida: {CONTACT_TYPE_CONFIG[patient.suggested_message_template.contact_type]?.label ?? patient.suggested_message_template.contact_type}
-                    </p>
-                  </div>
+                {(() => {
+                  const templates = patient.suggested_message_templates
+                  const selected = templates[selectedTemplateIndex] ?? templates[0]
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-label-sm font-semibold uppercase tracking-wider text-primary">
+                            Mensagem sugerida pelo protocolo
+                          </p>
+                          <p className="mt-1 text-sm text-on-surface-variant">
+                            {selected.milestone_label} · previsto para {selected.milestone_date}
+                          </p>
+                        </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(patient.suggested_message_template.rendered_content || '')
-                        setMessageCopied(true)
-                        setTimeout(() => setMessageCopied(false), 2500)
-                      }}
-                      className="rounded-lg border border-outline-variant px-3 py-1.5 text-label-sm text-on-surface transition-colors hover:bg-surface-container-low"
-                    >
-                      {messageCopied ? 'Copiado' : 'Copiar mensagem'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLogForm((current) => ({
-                        ...current,
-                        contact_type: patient.suggested_message_template.contact_type || current.contact_type,
-                        notes: patient.suggested_message_template.rendered_content || current.notes,
-                      }))}
-                      className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-label-sm text-primary transition-colors hover:bg-primary/15"
-                    >
-                      Usar no registro
-                    </button>
-                  </div>
-                </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await navigator.clipboard.writeText(selected.rendered_content || '')
+                              setMessageCopied(true)
+                              setTimeout(() => setMessageCopied(false), 2500)
+                            }}
+                            className="rounded-lg border border-outline-variant px-3 py-1.5 text-label-sm text-on-surface transition-colors hover:bg-surface-container-low"
+                          >
+                            {messageCopied ? 'Copiado' : 'Copiar mensagem'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLogForm((current) => ({
+                              ...current,
+                              contact_type: selected.contact_type || current.contact_type,
+                              notes: selected.rendered_content || current.notes,
+                            }))}
+                            className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-label-sm text-primary transition-colors hover:bg-primary/15"
+                          >
+                            Usar no registro
+                          </button>
+                        </div>
+                      </div>
 
-                <div className="mt-3 rounded-lg border border-outline-variant bg-surface px-4 py-3">
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-on-surface">
-                    {patient.suggested_message_template.rendered_content}
-                  </p>
-                </div>
+                      {/* Mais de um template no mesmo marco e proposital (variar o
+                          texto evita padrao de banimento de numero no WhatsApp) —
+                          seletor so aparece quando ha o que escolher. */}
+                      {templates.length > 1 && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {templates.map((template, index) => (
+                            <button
+                              key={template.id}
+                              type="button"
+                              onClick={() => setSelectedTemplateIndex(index)}
+                              className={`rounded-full border px-3 py-1 text-label-sm font-label-sm transition-colors ${
+                                index === selectedTemplateIndex
+                                  ? 'border-primary bg-primary text-on-primary'
+                                  : 'border-outline-variant text-on-surface-variant hover:bg-surface-container-low'
+                              }`}
+                            >
+                              {template.title}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      <h4 className="mt-3 text-label-md font-semibold text-on-surface">{selected.title}</h4>
+                      <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant">
+                        <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
+                          {CONTACT_TYPE_CONFIG[selected.contact_type]?.icon ?? 'chat'}
+                        </span>
+                        Forma sugerida: {CONTACT_TYPE_CONFIG[selected.contact_type]?.label ?? selected.contact_type}
+                      </p>
+
+                      <div className="mt-3 rounded-lg border border-outline-variant bg-surface px-4 py-3">
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-on-surface">
+                          {selected.rendered_content}
+                        </p>
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             ) : (
               <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4">

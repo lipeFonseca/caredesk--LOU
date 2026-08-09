@@ -109,7 +109,7 @@ messageProtocols.patch('/:id', adminOnly, async (c) => {
     contact_type: body.contact_type ?? existing.contact_type,
   }
 
-  const validation = await validateTemplatePayload(c.env.DB, mergedBody, existing.id)
+  const validation = await validateTemplatePayload(c.env.DB, mergedBody)
   if (validation.error) return c.json({ error: validation.error }, validation.status)
 
   await c.env.DB.prepare(`
@@ -145,7 +145,7 @@ messageProtocols.delete('/:id', adminOnly, async (c) => {
 
 export default messageProtocols
 
-async function validateTemplatePayload(db, body, currentId = null) {
+async function validateTemplatePayload(db, body) {
   const protocolId = typeof body.protocol_id === 'string' ? body.protocol_id.trim() : ''
   const title = typeof body.title === 'string' ? body.title.trim() : ''
   const content = typeof body.content === 'string' ? body.content.trim() : ''
@@ -176,16 +176,8 @@ async function validateTemplatePayload(db, body, currentId = null) {
     return { error: 'O marco escolhido não pertence ao protocolo selecionado', status: 400 }
   }
 
-  const duplicate = await db.prepare(`
-    SELECT id
-    FROM protocol_message_templates
-    WHERE protocol_id = ? AND day_offset = ? AND id != coalesce(?, '')
-    LIMIT 1
-  `).bind(protocol.id, dayOffset, currentId).first()
-
-  if (duplicate) {
-    return { error: 'Já existe uma mensagem cadastrada para este marco do protocolo', status: 409 }
-  }
+  // Mais de uma mensagem por marco e permitido de proposito — variar o texto
+  // entre pacientes evita padrao de banimento de numero no WhatsApp. Ver 0025.
 
   return {
     protocol: {

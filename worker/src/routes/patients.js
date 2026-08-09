@@ -2,10 +2,12 @@ import { Hono } from 'hono'
 import { authMiddleware, adminOnly } from '../middleware/auth.js'
 import {
   attachResolvedProtocol,
+  buildProtocolMilestones,
   calcProtocolUrgency,
+  parseProtocolDays,
   resolvePatientProtocol,
 } from '../utils/protocols.js'
-import { resolveSuggestedMessageTemplate } from '../utils/messageTemplates.js'
+import { resolveSuggestedMessageTemplate, isValidMessageTemplateContactType } from '../utils/messageTemplates.js'
 import { isValidDocumentStatus } from '../utils/documentTemplates.js'
 import { sanitizeOptionalPhone, sanitizeOptionalEmail, phoneDigits } from '../utils/contactFields.js'
 import {
@@ -25,6 +27,7 @@ import {
   contaComoAtivo,
   CONTADOR_PACIENTES_ATIVOS,
   CONTADOR_PACIENTES_TOTAL,
+  CONTADOR_CONTATOS,
 } from '../utils/contadores.js'
 import { arquivarPacientes, desarquivarPacientes } from '../services/arquivamento.js'
 
@@ -253,7 +256,7 @@ patients.get('/:id', async (c) => {
           date: suggestedMessage.nextMilestone.dateStr,
         }
       : null,
-    suggested_message_template: suggestedMessage.template,
+    suggested_message_templates: suggestedMessage.templates,
     followup_logs: logs,
   })
 })
@@ -285,6 +288,10 @@ patients.post('/', async (c) => {
     const autor = c.get('agent')
     const createdBy = autor?.sub || null
 
+    // Resolvida ANTES do INSERT: se o marco informado nao pertencer ao
+    // protocolo, o paciente nao deve nascer meio-criado no banco.
+    const backfillEntries = await resolveBackfillEntries(c.env.DB, resolvedProtocolId, surgery_date, body.backfill)
+
     await c.env.DB.prepare(`
       INSERT INTO patients (id, name, phone, phone_digits, email, procedure, surgery_date, assigned_agent_id, protocol_id, notes, created_by, created_by_name)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -302,6 +309,22 @@ patients.post('/', async (c) => {
       autor?.name ?? null
     ).run()
 
+    if (backfillEntries.length) {
+      // db.batch: ou grava todo o historico retroativo, ou nenhum — paciente
+      // recem-criado nao pode ficar com progresso pela metade se algo falhar
+      // no meio do lote.
+      await c.env.DB.batch(backfillEntries.map((entrada) => c.env.DB.prepare(`
+        INSERT INTO followup_logs (id, patient_id, agent_id, agent_name_snapshot, contact_date, contact_type, outcome, is_extra_contact, is_backfilled)
+        VALUES (?, ?, ?, ?, ?, ?, 'reached', 0, 1)
+      `).bind(
+        crypto.randomUUID(), id, createdBy, autor?.name ?? null, entrada.contact_date, entrada.contact_type
+      )))
+      await ajustarContador(c.env.DB, CONTADOR_CONTATOS, backfillEntries.length)
+    }
+
+    // Backfill entra antes daqui de proposito: o marco pendente ja nasce
+    // calculado com o historico retroativo somado, sem precisar de um
+    // segundo recalculo depois.
     await recalcularProximoMarco(c.env.DB, id)
     // Paciente nasce 'active' e nao arquivado.
     await ajustarContador(c.env.DB, CONTADOR_PACIENTES_ATIVOS, 1)
@@ -566,12 +589,57 @@ async function resolveWritableProtocolId(db, requestedProtocolId) {
   return fallback?.id || null
 }
 
+// Cadastro retroativo: paciente que ja estava em acompanhamento fora do
+// sistema. `last_completed_day_offset` marca ATE QUAL marco (inclusive) ja foi
+// contatado — o prefixo contiguo da lista ordenada de dias do protocolo, nunca
+// uma lista arbitraria vinda do cliente. E o que garante que o progresso
+// calculado por CONTAGEM de followup_logs (ver getNextPendingMilestone) bata
+// com o marco que o operador de fato escolheu.
+async function resolveBackfillEntries(db, protocolId, surgeryDate, backfill) {
+  if (!backfill || backfill.last_completed_day_offset == null || !protocolId) return []
+
+  const protocolo = await db.prepare('SELECT days FROM contact_protocols WHERE id = ?').bind(protocolId).first()
+  const protocolDays = parseProtocolDays(protocolo?.days)
+  const cutIndex = protocolDays.indexOf(Number(backfill.last_completed_day_offset))
+
+  if (cutIndex === -1) {
+    const error = new Error('BACKFILL_DAY_NOT_IN_PROTOCOL')
+    error.status = 400
+    throw error
+  }
+
+  const diasCobertos = protocolDays.slice(0, cutIndex + 1)
+  const marcos = buildProtocolMilestones(surgeryDate, diasCobertos)
+  const hoje = new Date().toISOString().split('T')[0]
+  const tipoDeContato = isValidMessageTemplateContactType(backfill.contact_type) ? backfill.contact_type : 'call'
+  const datasInformadas = backfill.dates && typeof backfill.dates === 'object' ? backfill.dates : {}
+
+  return marcos.map((marco) => {
+    const dataInformada = datasInformadas[String(marco.day)]
+    const contactDate = /^\d{4}-\d{2}-\d{2}$/.test(dataInformada) ? dataInformada : marco.dateStr
+
+    if (contactDate > hoje) {
+      const error = new Error('BACKFILL_DATE_IN_FUTURE')
+      error.status = 400
+      throw error
+    }
+
+    return { contact_date: contactDate, contact_type: tipoDeContato }
+  })
+}
+
 function writeProtocolError(c, error) {
   if (error?.message === 'PROTOCOL_NOT_FOUND') {
     return c.json({ error: 'Protocolo informado não existe' }, error.status || 400)
   }
   if (error?.message === 'AGENT_NOT_FOUND') {
     return c.json({ error: 'Agente informado não existe' }, error.status || 400)
+  }
+  if (error?.message === 'BACKFILL_DAY_NOT_IN_PROTOCOL') {
+    return c.json({ error: 'O marco informado como último contato não pertence ao protocolo selecionado' }, error.status || 400)
+  }
+  if (error?.message === 'BACKFILL_DATE_IN_FUTURE') {
+    return c.json({ error: 'A data de um contato retroativo não pode ser futura' }, error.status || 400)
   }
 
   throw error

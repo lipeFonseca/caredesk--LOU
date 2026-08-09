@@ -2,7 +2,22 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { api } from '@/services/api'
-import { formatProtocolDay, normalizeProtocolDays } from '@/utils/protocols'
+import { format, parseISO } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import {
+  buildProtocolMilestones,
+  buildProtocolTimeline,
+  formatProtocolDay,
+  normalizeProtocolDays,
+} from '@/utils/protocols'
+import PatientProtocolTimeline from '@/components/patient/PatientProtocolTimeline'
+
+const BACKFILL_CONTACT_TYPES = [
+  { value: 'call', label: 'Ligação' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'email', label: 'E-mail' },
+  { value: 'in_person', label: 'Presencial' },
+]
 
 export default function NewPatient() {
   const navigate = useNavigate()
@@ -24,6 +39,13 @@ export default function NewPatient() {
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState('')
 
+  // Paciente que já estava em acompanhamento fora do sistema — o cadastro
+  // precisa nascer sabendo até onde ele já foi contatado, senão o próximo
+  // marco sugerido volta pro começo do protocolo.
+  const [alreadyInTreatment, setAlreadyInTreatment]         = useState(false)
+  const [lastCompletedDayOffset, setLastCompletedDayOffset] = useState('')
+  const [backfillContactType, setBackfillContactType]       = useState('call')
+
   useEffect(() => {
     api.agents.list().then(data => setAgents(data ?? [])).catch(() => {})
     api.protocols.list().then(data => {
@@ -44,6 +66,24 @@ export default function NewPatient() {
     return (e) => { setForm(f => ({ ...f, [field]: e.target.value })); setError('') }
   }
 
+  // Marcos do protocolo selecionado que já passaram da data prevista — são as
+  // únicas opções que fazem sentido oferecer como "último já contatado". A
+  // lista já sai na ordem certa porque normalizeProtocolDays/buildProtocolMilestones
+  // preservam a ordem crescente dos dias.
+  const selectedProtocol = protocols.find(p => p.id === form.protocol_id)
+  const protocolDaysForForm = selectedProtocol ? normalizeProtocolDays(selectedProtocol.days) : []
+  const milestonesForForm = form.surgery_date
+    ? buildProtocolMilestones(form.surgery_date, protocolDaysForForm)
+    : []
+  const todayStr = new Date().toISOString().split('T')[0]
+  const pastMilestones = milestonesForForm.filter(m => m.dateStr <= todayStr)
+
+  // Quantos marcos o backfill cobre — usado tanto pro preview da linha do
+  // tempo quanto, indiretamente, pro payload enviado ao backend.
+  const coveredCount = lastCompletedDayOffset === ''
+    ? 0
+    : pastMilestones.findIndex(m => m.day === Number(lastCompletedDayOffset)) + 1
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.name.trim() || !form.procedure.trim() || !form.surgery_date) {
@@ -52,7 +92,18 @@ export default function NewPatient() {
     }
     setLoading(true)
     try {
-      const created = await api.patients.create(form)
+      const payload = {
+        ...form,
+        ...(alreadyInTreatment && lastCompletedDayOffset !== ''
+          ? {
+              backfill: {
+                last_completed_day_offset: Number(lastCompletedDayOffset),
+                contact_type: backfillContactType,
+              },
+            }
+          : {}),
+      }
+      const created = await api.patients.create(payload)
       if (selectedDocumentIds.length) {
         await Promise.all(
           selectedDocumentIds.map(id => api.patients.assignDocument(created.id, id))
@@ -232,6 +283,100 @@ export default function NewPatient() {
                     </button>
                   )
                 })}
+              </div>
+            )}
+          </section>
+
+          <hr className="border-outline-variant" />
+
+          {/* Paciente que já estava em acompanhamento fora do sistema */}
+          <section>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 mt-0.5 rounded border-outline-variant text-primary focus:ring-primary shrink-0"
+                checked={alreadyInTreatment}
+                onChange={(e) => {
+                  setAlreadyInTreatment(e.target.checked)
+                  if (!e.target.checked) setLastCompletedDayOffset('')
+                }}
+                disabled={loading}
+              />
+              <span>
+                <span className="block text-label-md font-label-md text-on-surface font-semibold">
+                  Paciente já está em acompanhamento
+                </span>
+                <span className="block text-body-md text-on-surface-variant mt-0.5">
+                  Marque se o contato com este paciente já começou antes de existir no sistema — o próximo marco sugerido é calculado a partir de onde ele já está, não do início do protocolo.
+                </span>
+              </span>
+            </label>
+
+            {alreadyInTreatment && (
+              <div className="mt-4 space-y-4 rounded-xl border border-outline-variant bg-surface-container-low p-4">
+                {!form.surgery_date || !selectedProtocol ? (
+                  <p className="text-body-md text-on-surface-variant">
+                    Selecione a data da cirurgia e o protocolo de contato primeiro.
+                  </p>
+                ) : pastMilestones.length === 0 ? (
+                  <p className="text-body-md text-on-surface-variant">
+                    Nenhum marco deste protocolo já passou da data prevista — não há contato anterior para registrar.
+                  </p>
+                ) : (
+                  <>
+                    <div>
+                      <label className="label">Até qual marco o paciente já foi contatado?</label>
+                      <select
+                        className="input"
+                        value={lastCompletedDayOffset}
+                        onChange={(e) => setLastCompletedDayOffset(e.target.value)}
+                        disabled={loading}
+                      >
+                        <option value="">Nenhum ainda — começar do início do protocolo</option>
+                        {pastMilestones.map((m) => (
+                          <option key={m.day} value={m.day}>
+                            {formatProtocolDay(m.day)} · previsto para {format(parseISO(m.dateStr), 'dd/MM/yyyy', { locale: ptBR })}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {lastCompletedDayOffset !== '' && (
+                      <>
+                        <div>
+                          <label className="label">Como esses contatos foram feitos?</label>
+                          <select
+                            className="input"
+                            value={backfillContactType}
+                            onChange={(e) => setBackfillContactType(e.target.value)}
+                            disabled={loading}
+                          >
+                            {BACKFILL_CONTACT_TYPES.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <p className="mt-1.5 text-[11px] text-on-surface-variant">
+                            Um único tipo pro lote retroativo inteiro — se variou, ajuste depois direto no histórico do paciente.
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="label mb-2">Confira a linha do tempo antes de confirmar</p>
+                          <PatientProtocolTimeline
+                            timeline={buildProtocolTimeline(
+                              {
+                                surgery_date: form.surgery_date,
+                                followup_logs: Array.from({ length: coveredCount }, () => ({ is_extra_contact: false })),
+                              },
+                              protocolDaysForForm
+                            )}
+                            variant="compact"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </section>

@@ -62,6 +62,9 @@ CREATE TABLE IF NOT EXISTS followup_logs (
   notes           TEXT,
   next_followup_date TEXT,
   is_extra_contact   INTEGER NOT NULL DEFAULT 0,
+  -- Contato criado retroativamente no cadastro de paciente que ja estava em
+  -- acompanhamento fora do sistema (0026) — nao e um contato do dia a dia.
+  is_backfilled   INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -89,7 +92,9 @@ CREATE TABLE IF NOT EXISTS contact_protocols (
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Templates de mensagem vinculados aos marcos do protocolo
+-- Templates de mensagem vinculados aos marcos do protocolo. Mais de um por
+-- marco e permitido de proposito — variar o texto entre pacientes evita
+-- padrao de banimento de numero no WhatsApp (0025).
 CREATE TABLE IF NOT EXISTS protocol_message_templates (
   id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   protocol_id  TEXT NOT NULL REFERENCES contact_protocols(id) ON DELETE CASCADE,
@@ -98,8 +103,7 @@ CREATE TABLE IF NOT EXISTS protocol_message_templates (
   content      TEXT NOT NULL,
   contact_type TEXT NOT NULL DEFAULT 'whatsapp' CHECK (contact_type IN ('call', 'email', 'whatsapp', 'in_person')),
   created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(protocol_id, day_offset)
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Catálogo de documentos configurado pelo admin (enviar ao paciente / solicitar do paciente)

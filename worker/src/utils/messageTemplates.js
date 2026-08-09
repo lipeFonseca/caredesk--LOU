@@ -33,52 +33,44 @@ export function renderMessageTemplate(content, context) {
   })
 }
 
+// Devolve TODOS os templates cadastrados pro proximo marco pendente — mais de
+// um por marco e permitido de proposito (ver 0025), pra dar ao agente opcoes
+// de texto diferentes a cada contato e evitar padrao de banimento de numero
+// no WhatsApp. `templates` vem sempre em array, mesmo vazio ou com 1 item.
 export async function resolveSuggestedMessageTemplate(db, patient, resolution, completedCount, clinicName = 'CareDesk') {
   const nextMilestone = getNextPendingMilestone(patient.surgery_date, resolution.days, completedCount)
 
   if (!nextMilestone) {
     return {
       nextMilestone: null,
-      template: null,
+      templates: [],
     }
   }
 
   if (!resolution.protocolId) {
     return {
       nextMilestone,
-      template: null,
+      templates: [],
     }
   }
 
-  const row = await db.prepare(`
+  const { results } = await db.prepare(`
     SELECT id, protocol_id, day_offset, title, content, contact_type
     FROM protocol_message_templates
     WHERE protocol_id = ? AND day_offset = ?
-    LIMIT 1
-  `).bind(resolution.protocolId, nextMilestone.day).first()
+    ORDER BY created_at ASC
+  `).bind(resolution.protocolId, nextMilestone.day).all()
 
-  if (!row) {
-    return {
-      nextMilestone,
-      template: null,
-    }
-  }
-
-  const renderedContent = renderMessageTemplate(row.content, buildMessageTemplateContext({
-    patient,
-    resolution,
-    nextMilestone,
-    clinicName,
-  }))
+  const context = buildMessageTemplateContext({ patient, resolution, nextMilestone, clinicName })
 
   return {
     nextMilestone,
-    template: {
+    templates: (results ?? []).map((row) => ({
       ...row,
-      rendered_content: renderedContent,
+      rendered_content: renderMessageTemplate(row.content, context),
       milestone_label: formatProtocolDayLabel(nextMilestone.day),
       milestone_date: formatDatePtBr(nextMilestone.dateStr),
-    },
+    })),
   }
 }
 

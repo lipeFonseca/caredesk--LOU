@@ -119,7 +119,7 @@ export default function MessageProtocolTab() {
                       </span>
                     ) : null}
                     <span className="text-label-sm text-outline">
-                      {protocol.templates.length}/{protocol.protocolDays.length} marcos com mensagem
+                      {new Set(protocol.templates.map((template) => Number(template.day_offset))).size}/{protocol.protocolDays.length} marcos com mensagem
                     </span>
                   </div>
                   {protocol.description && (

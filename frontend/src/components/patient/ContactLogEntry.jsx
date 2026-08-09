@@ -29,6 +29,14 @@ export default function ContactLogEntry({ log, variant = 'full' }) {
           <div className="flex items-center gap-2">
             <span className={`material-symbols-outlined ${tc.color}`} style={{ fontSize: '16px' }}>{tc.icon}</span>
             <span className="text-label-md font-label-md text-on-surface font-semibold">{tc.label}</span>
+            {log.is_backfilled ? (
+              <span
+                className="text-[10px] font-semibold text-outline"
+                title="Registrado no cadastro do paciente, não em tempo real"
+              >
+                (registrado retroativamente)
+              </span>
+            ) : null}
           </div>
           <span className="text-label-sm font-label-sm text-on-surface-variant">
             {log.contact_date ? format(parseISO(log.contact_date), "dd MMM. yyyy", { locale: ptBR }) : '—'}
