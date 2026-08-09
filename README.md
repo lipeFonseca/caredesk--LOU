@@ -121,6 +121,7 @@ Cada rota mora no arquivo de mesmo nome — sem indireção.
 - `components/LoginCardLayout.jsx` — layout interno do card, com o painel de vidro
 - `components/SmokeyBackground.jsx` — fundo animado do login (WebGL puro, sem dependência)
 - `components/admin/` — abas de Configurações, incluindo `MessagingTab` e `EmailTemplateEditor`
+- `components/patient/` — pedaços de UI compartilhados entre `PatientDetail` (página completa) e `PatientPanel` (drawer resumido em `Patients`): `PatientIdentitySummary`, `PatientNextFollowupCard`, `PatientProtocolTimeline`, `ProtocolDayChips`, `ContactLogEntry`, `PatientDocumentsSection`. Cada um recebe `variant="full"|"compact"` para as duas telas. Dados Clínicos e Ações Rápidas ficam fora de propósito — conteúdo/interação diferem de verdade entre os dois contextos.
 
 > `LoginPageShell.jsx` e `LoginCardLayout.jsx` deveriam estar em
 > `components/login/`, mas essa pasta está com a ACL do Windows quebrada — nega
