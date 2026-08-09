@@ -20,7 +20,7 @@ import {
   subYears,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 const DIAS_DA_SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 const TAMANHO_GRADE_DE_ANOS = 12
@@ -65,6 +65,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
   const [mesVisivel, setMesVisivel] = useState(dataSelecionada ?? new Date())
   const [textoDigitado, setTextoDigitado] = useState(dataSelecionada ? formatarBr(dataSelecionada) : '')
   const containerRef = useRef(null)
+  const inputRef = useRef(null)
 
   // So resincroniza com o valor de fora (selecao via calendario, Limpar, Hoje,
   // ou o proprio pai mudando o value) — nao a cada tecla digitada.
@@ -86,7 +87,11 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
       if (containerRef.current && !containerRef.current.contains(evento.target)) setAberto(false)
     }
     function aoPressionarTecla(evento) {
-      if (evento.key === 'Escape') setAberto(false)
+      if (evento.key !== 'Escape') return
+      setAberto(false)
+      // Sem isso, o campo continua focado e um novo focus() nao reabre —
+      // o navegador so dispara o evento de foco quando o foco realmente muda.
+      inputRef.current?.blur()
     }
     document.addEventListener('mousedown', aoClicarFora)
     document.addEventListener('keydown', aoPressionarTecla)
@@ -153,6 +158,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
         data-disabled={disabled}
       >
         <input
+          ref={inputRef}
           type="text"
           inputMode="numeric"
           value={textoDigitado}
@@ -174,15 +180,6 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
             <X size={16} />
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => setAberto((estaAberto) => !estaAberto)}
-          disabled={disabled}
-          className="rounded-xl p-2 text-on-surface-variant outline-none transition-colors hover:bg-surface-container hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none"
-          aria-label="Abrir calendário"
-        >
-          <Calendar size={18} />
-        </button>
       </div>
 
       {aberto && (
