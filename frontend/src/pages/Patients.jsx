@@ -248,7 +248,7 @@ export default function Patients() {
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline" style={{ fontSize: '20px' }}>search</span>
             <input
               type="text"
-              className="w-full pl-10 pr-4 py-2 bg-background border border-outline-variant rounded-lg text-body-md font-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all text-on-surface placeholder:text-outline"
+              className="input pl-10"
               placeholder="Buscar paciente..."
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -258,7 +258,7 @@ export default function Patients() {
           {/* Status */}
           <div className="relative">
             <select
-              className="w-full appearance-none pl-4 pr-10 py-2 bg-background border border-outline-variant rounded-lg text-body-md font-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all text-on-surface"
+              className="input appearance-none pr-10"
               value={status}
               onChange={e => setStatus(e.target.value)}
             >
@@ -274,7 +274,7 @@ export default function Patients() {
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline" style={{ fontSize: '18px' }}>calendar_today</span>
             <select
-              className="w-full appearance-none pl-10 pr-10 py-2 bg-background border border-outline-variant rounded-lg text-body-md font-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all text-on-surface"
+              className="input appearance-none pl-10 pr-10"
               value={dateRange}
               onChange={e => setDateRange(e.target.value)}
             >
@@ -286,7 +286,7 @@ export default function Patients() {
           {/* Specialist */}
           <div className="relative">
             <select
-              className="w-full appearance-none pl-4 pr-10 py-2 bg-background border border-outline-variant rounded-lg text-body-md font-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all text-on-surface"
+              className="input appearance-none pr-10"
               value={agentId}
               onChange={e => setAgentId(e.target.value)}
             >
