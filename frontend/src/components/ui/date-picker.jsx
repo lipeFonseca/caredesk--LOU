@@ -147,7 +147,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
   return (
     <div ref={containerRef} className="relative">
       <div
-        className="flex items-center gap-1 rounded-2xl border border-[#121716] bg-surface-container-low py-2 pl-4 pr-1.5
+        className="flex items-center gap-1 rounded-2xl border border-[#0000] bg-[#0000] py-2 pl-4 pr-1.5
           focus-within:ring-4 focus-within:ring-primary-100/60 data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-60"
         style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.55)' }}
         data-disabled={disabled}
