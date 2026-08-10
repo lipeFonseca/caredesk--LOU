@@ -10,6 +10,12 @@ import { ajustarContador, CONTADOR_PACIENTES_ATIVOS, CONTADOR_PACIENTES_TOTAL } 
 
 export const MAX_LINHAS_POR_IMPORTACAO = 500
 
+// Mesmo domínio do CHECK da coluna `status` em schema.sql — cadastro
+// individual não expõe status na criação (nasce sempre 'active' via DEFAULT
+// do banco), mas a importação em massa recebe paciente já fora do
+// acompanhamento ativo (histórico), então aceita informar aqui.
+const STATUS_VALIDOS = ['active', 'paused', 'discharged']
+
 // D1 limita a 100 parametros vinculados por statement — uma unica query
 // `IN (...)` com 500 CPFs estouraria isso. Consulta em lotes.
 const TAMANHO_LOTE_CONSULTA_CPF = 100
@@ -28,6 +34,13 @@ function validarCamposDaLinha(linhaBruta) {
   const surgery_date = isoDataValida(linhaBruta.surgery_date)
   const data_nascimento = isoDataValida(linhaBruta.data_nascimento)
   const responsavel = linhaBruta.responsavel != null ? stripHtml(String(linhaBruta.responsavel)).slice(0, 120) : ''
+  const notes = linhaBruta.notes != null ? stripHtml(String(linhaBruta.notes)).slice(0, 2000) : ''
+
+  const statusBruto = String(linhaBruta.status ?? '').trim().toLowerCase()
+  const status = statusBruto || 'active'
+  if (!STATUS_VALIDOS.includes(status)) {
+    erros.push(`Status inválido: use ${STATUS_VALIDOS.join(', ')}`)
+  }
 
   if (!name) erros.push('Nome é obrigatório')
   if (!procedure) erros.push('Procedimento é obrigatório')
@@ -60,6 +73,8 @@ function validarCamposDaLinha(linhaBruta) {
       cpf: cpfSanitizado.value,
       email: emailSanitizado.value,
       phone: sanitizeOptionalPhone(linhaBruta.phone),
+      notes: notes || null,
+      status,
     },
   }
 }
@@ -160,8 +175,8 @@ export async function importPatients(db, { rows, protocolId, actor }) {
     const id = crypto.randomUUID()
     idsGerados.push(id)
     return db.prepare(`
-      INSERT INTO patients (id, name, phone, phone_digits, email, cpf, responsavel, data_nascimento, procedure, surgery_date, assigned_agent_id, protocol_id, created_by, created_by_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO patients (id, name, phone, phone_digits, email, cpf, responsavel, data_nascimento, procedure, surgery_date, assigned_agent_id, protocol_id, status, notes, created_by, created_by_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
       paciente.name,
@@ -175,6 +190,8 @@ export async function importPatients(db, { rows, protocolId, actor }) {
       paciente.surgery_date,
       actor.sub,
       protocolId,
+      paciente.status,
+      paciente.notes,
       actor.sub,
       actor.name ?? null
     )

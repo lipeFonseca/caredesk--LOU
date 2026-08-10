@@ -168,6 +168,33 @@ test('acima do teto de linhas por importação é rejeitado antes de validar qua
   assert.ok(resultado.rowErrors[0].errors[0].includes(String(MAX_LINHAS_POR_IMPORTACAO)))
 })
 
+test('status inválido rejeita a linha', async () => {
+  const db = dbFeliz({ contarCpf: 0 })
+  const resultado = await importPatients(db, {
+    rows: [linhaValida({ status: 'inativo' })],
+    protocolId: PROTOCOL_ID,
+    actor: ACTOR,
+  })
+
+  assert.equal(resultado.ok, false)
+  assert.ok(resultado.rowErrors[0].errors.some((e) => e.includes('Status inválido')))
+})
+
+test('status ausente vira active; status e notes válidos são aceitos', async () => {
+  const db = dbFeliz({ contarCpf: 2 })
+  const resultado = await importPatients(db, {
+    rows: [
+      linhaValida({ cpf: CPF_VALIDO_1, name: 'Sem status' }),
+      linhaValida({ cpf: CPF_VALIDO_2, name: 'Com status', status: 'paused', notes: 'Observação de teste' }),
+    ],
+    protocolId: PROTOCOL_ID,
+    actor: ACTOR,
+  })
+
+  assert.equal(resultado.ok, true)
+  assert.equal(resultado.imported, 2)
+})
+
 test('três linhas válidas e distintas importam todas', async () => {
   const db = dbFeliz({ contarCpf: 3 })
   const resultado = await importPatients(db, {

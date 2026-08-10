@@ -13,7 +13,14 @@ export const IMPORT_COLUMNS = [
   { key: 'responsavel',      label: 'responsavel',      obrigatorio: false },
   { key: 'phone',            label: 'phone',            obrigatorio: false },
   { key: 'email',            label: 'email',            obrigatorio: false },
+  { key: 'notes',            label: 'notes',            obrigatorio: false },
+  { key: 'status',           label: 'status',           obrigatorio: false },
 ]
+
+// Mesmo domínio do CHECK da coluna `status` no banco (worker/src/db/schema.sql)
+// — espelhado aqui pra prevalidar no navegador, mesma razão de cpfValido
+// duplicar o algoritmo do backend.
+export const STATUS_VALIDOS = ['active', 'paused', 'discharged']
 
 export function parseCsv(texto) {
   const resultado = Papa.parse(texto, {
@@ -83,6 +90,9 @@ export function linhasParaPacientes(registrosCsv) {
     const surgery_date = paraIsoData(registro.surgery_date)
     const data_nascimento = paraIsoData(registro.data_nascimento)
     const responsavel = String(registro.responsavel ?? '').trim()
+    const notes = String(registro.notes ?? '').trim()
+    const statusBruto = String(registro.status ?? '').trim().toLowerCase()
+    const status = statusBruto || 'active'
     const cpfDigitos = cpfSoDigitos(registro.cpf)
 
     // Linha 100% vazia (formatacao sobrando do Excel) e pulada em silencio;
@@ -96,6 +106,7 @@ export function linhasParaPacientes(registrosCsv) {
     if (!surgery_date) erros.push('Data da cirurgia inválida ou ausente')
     if (!data_nascimento) erros.push('Data de nascimento inválida ou ausente')
     if (!cpfValido(registro.cpf)) erros.push('CPF inválido')
+    if (!STATUS_VALIDOS.includes(status)) erros.push(`Status inválido: use ${STATUS_VALIDOS.join(', ')}`)
 
     const idade = data_nascimento ? calcularIdade(data_nascimento) : null
     const menorDeIdade = idade != null && idade < 18
@@ -116,6 +127,8 @@ export function linhasParaPacientes(registrosCsv) {
         responsavel: responsavel || undefined,
         phone: String(registro.phone ?? '').trim() || undefined,
         email: email || undefined,
+        notes: notes || undefined,
+        status,
       },
     }
   }).filter(Boolean)

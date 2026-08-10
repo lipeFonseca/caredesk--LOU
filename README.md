@@ -308,8 +308,21 @@ cadastra vários pacientes de uma vez a partir de um CSV enviado pelo botão
 
 - **Cabeçalho do CSV é o nome literal da coluna no banco** (`name`, `cpf`,
   `data_nascimento`, `procedure`, `surgery_date`, `responsavel`, `phone`,
-  `email`) — sem dicionário de sinônimo. O usuário edita a própria planilha
-  pra bater.
+  `email`, `notes`, `status`) — sem dicionário de sinônimo. O usuário edita a
+  própria planilha pra bater. `status` aceita `active`/`paused`/`discharged`
+  (vazio vira `active`) — único campo que a importação expõe e o cadastro
+  individual não (paciente novo lá sempre nasce `active`; aqui existe o caso
+  de importar histórico já fora do acompanhamento ativo).
+- **Quatro colunas do banco ficam de fora de propósito, nunca vêm do
+  arquivo**: `assigned_agent_id` (sempre quem está importando, mesma regra
+  do cadastro individual desde a migration 0027 — nunca client-supplied),
+  `phone_digits` (derivado de `phone`, calculado, não input independente),
+  `next_followup_date` (materializado a partir de protocolo + histórico real
+  de contato — aceitar isso cru quebraria em silêncio o mesmo jeito que o
+  backfill existe pra evitar) e `created_by_name` (snapshot de auditoria de
+  quem fez a ação, mesmo padrão do `agent_name_snapshot`). Deixar essas
+  quatro como coluna abriria os mesmos buracos que essas decisões
+  fecharam.
 - **`id` nunca vem do arquivo** — sempre `crypto.randomUUID()`, mesma regra
   do cadastro individual. Reaproveita a mesma validação de campo (CPF com
   dígito verificador, `responsavel` obrigatório só para menor de 18 via

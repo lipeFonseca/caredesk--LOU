@@ -104,6 +104,19 @@ describe('linhasParaPacientes', () => {
     expect(linhas[1].erros[0]).toMatch(/duplicado/)
   })
 
+  it('status ausente vira active; status inválido vira erro; notes passa direto', () => {
+    const [semStatus] = linhasParaPacientes([linhaBase()])
+    expect(semStatus.paciente.status).toBe('active')
+
+    const [comNotes] = linhasParaPacientes([linhaBase({ status: 'paused', notes: 'Observação' })])
+    expect(comNotes.erros).toEqual([])
+    expect(comNotes.paciente.status).toBe('paused')
+    expect(comNotes.paciente.notes).toBe('Observação')
+
+    const [statusRuim] = linhasParaPacientes([linhaBase({ status: 'inativo' })])
+    expect(statusRuim.erros.some((e) => e.includes('Status inválido'))).toBe(true)
+  })
+
   it('linha totalmente vazia é pulada, linha parcialmente preenchida vira erro', () => {
     const linhas = linhasParaPacientes([
       { name: '', cpf: '', data_nascimento: '', procedure: '', surgery_date: '' },

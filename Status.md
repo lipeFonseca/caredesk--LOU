@@ -482,3 +482,22 @@ Usuário pediu uma forma de cadastrar vários pacientes de uma vez a partir de u
 **Testado**: 154/154 `node --test` no worker (13 novos + 141 preexistentes, sem regressão), 74/74 `npx vitest run` no frontend (15 novos + 59 preexistentes), build limpo nos dois lados. Smoke test real contra `wrangler dev` local antes de acoplar o frontend: CSV com linha inválida no meio → nada inserido, erro aponta a linha certa; corrigido e reenviado → pacientes entraram com protocolo certo, `assigned_agent_id` do importador, `next_followup_date` calculado; confirmado via SQL direto no D1 local, não só pelo código de resposta. Limpeza manual da massa de teste (`DELETE ... WHERE name LIKE 'Paciente % Import'`) via SQL bruto deixou `system_counters` desatualizado (bypassa o decremento que só a rota DELETE faz) — reconciliado manualmente com `UPDATE system_counters SET value = (SELECT COUNT(*) ...)`, local apenas.
 
 Sem migration — mesma tabela `patients`, sem coluna nova.
+
+## 2026-08-10 — Importação em massa: `notes`/`status` adicionados, 4 campos recusados de propósito
+
+Usuário testou a planilha-modelo e pediu mais campos: colou uma lista com `name, phone, procedure, surgery_date, assigned_agent_id, protocol_id, status, notes, created_at, email, phone_digits, next_followup_date, created_by_name, cpf, responsavel` — basicamente todas as colunas cruas da tabela `patients` — e perguntou diretamente se eu concordava que fazem sentido dado "o funcionamento do sistema".
+
+**Resposta foi discordar de 4 delas, com o motivo, antes de mexer em qualquer código** (regra do projeto: avisar problema real antes de executar, não empurrar goela abaixo nem executar calado):
+
+- **`assigned_agent_id`** — a migration 0027 (já registrada acima) removeu de propósito o seletor manual do cadastro individual; sempre é o autor da ação. Deixar o CSV escrever isso reabriria exatamente esse buraco.
+- **`phone_digits`** — derivado de `phone` via `phoneDigits()`, nunca input independente; expor como coluna cria risco de divergir do `phone` da mesma linha.
+- **`next_followup_date`** — o campo mais frágil do banco (seção "3. next_followup_date é materializada" acima). É resultado de protocolo + histórico real de contato, nunca dado digitado; aceitar isso cru do CSV corrompe silenciosamente o agendamento — é o mesmo motivo pelo qual a importação em massa já tinha decidido (na aprovação do plano original) não ter backfill retroativo.
+- **`created_by_name`** — snapshot de auditoria (mesmo padrão do `agent_name_snapshot` em `followup_logs`), preenchido pelo sistema. CSV escrevendo isso permitiria assinar a importação com nome de outra pessoa.
+
+`created_at` o próprio usuário já reconheceu que não precisava (confirma o que o sistema já fazia: sempre a data real da importação). As duas únicas adições aceitas: **`notes`** (texto livre, direto) e **`status`** (`active`/`paused`/`discharged`, vazio vira `active` — único campo que a importação em massa expõe e o cadastro individual não, porque só faz sentido pra paciente importado que já está fora do acompanhamento ativo; cadastro novo pela tela sempre nasce `active` via `DEFAULT` do schema). Usuário confirmou ambas as perguntas (escopo dos campos e protocolo por linha × único pro lote) optando pelo caminho recomendado nos dois casos.
+
+**Tocado**: `worker/src/services/patientImport.js` (`STATUS_VALIDOS`, validação de `status`/`notes` em `validarCamposDaLinha`, colunas novas no `INSERT`), `worker/test/patient-import.test.js` (+2 casos: status inválido rejeita, status ausente vira `active` com `notes` passando), `frontend/src/utils/patientImport.js` (`STATUS_VALIDOS` espelhado, `IMPORT_COLUMNS` com as duas colunas novas, mesma validação em `linhasParaPacientes`), `frontend/src/utils/patientImport.test.js` (+1 caso cobrindo os três cenários), `frontend/src/components/patient/ImportPatientsModal.jsx` (texto de instrução menciona o domínio de `status`).
+
+**Testado**: 156/156 `node --test` no worker (+2), 75/75 `npx vitest run` no frontend (+1), build limpo nos dois lados.
+
+Sem migration — `status`/`notes` já existiam na tabela, só não eram usados por esta via ainda.
