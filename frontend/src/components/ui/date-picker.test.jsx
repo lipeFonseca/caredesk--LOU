@@ -158,7 +158,9 @@ describe('DatePickerField — interação real (jsdom)', () => {
 
     clicar(botaoHoje)
 
-    const hojeIso = new Date().toISOString().slice(0, 10)
+    // Hora local, nao UTC (`toISOString` usaria UTC e falha perto da virada
+    // do dia em fusos negativos) — mesma base que o componente usa.
+    const hojeIso = format(new Date(), 'yyyy-MM-dd')
     expect(onChange).toHaveBeenCalledWith({ target: { value: hojeIso } })
   })
 
