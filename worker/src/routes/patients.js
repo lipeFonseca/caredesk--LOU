@@ -9,7 +9,7 @@ import {
 } from '../utils/protocols.js'
 import { resolveSuggestedMessageTemplate, isValidMessageTemplateContactType } from '../utils/messageTemplates.js'
 import { isValidDocumentStatus } from '../utils/documentTemplates.js'
-import { sanitizeOptionalPhone, sanitizeOptionalEmail, sanitizeRequiredCpf, phoneDigits } from '../utils/contactFields.js'
+import { sanitizeOptionalPhone, sanitizeOptionalEmail, sanitizeRequiredCpf, phoneDigits, stripHtml } from '../utils/contactFields.js'
 import { ehMenorDeIdade } from '../utils/patientAge.js'
 import {
   buildPatientFilters,
@@ -31,6 +31,7 @@ import {
   CONTADOR_CONTATOS,
 } from '../utils/contadores.js'
 import { arquivarPacientes, desarquivarPacientes } from '../services/arquivamento.js'
+import { importPatients } from '../services/patientImport.js'
 
 const patients = new Hono()
 patients.use('*', authMiddleware)
@@ -163,6 +164,32 @@ patients.post('/unarchive', async (c) => {
 
   const restaurados = await desarquivarPacientes(c.env.DB, ids.value, { recalcular: recalcularProximoMarco })
   return c.json({ success: true, restaurados })
+})
+
+// Importação em massa via CSV — mesma razão de vir antes de `/:id/...` que
+// as rotas de arquivamento acima. Admin só: cadastro em lote é ação
+// administrativa, diferente do cadastro individual (agente e admin podem).
+patients.post('/import', adminOnly, async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}))
+    const rows = Array.isArray(body.rows) ? body.rows : []
+    const resolvedProtocolId = await resolveWritableProtocolId(c.env.DB, body.protocol_id)
+    const autor = c.get('agent')
+
+    const resultado = await importPatients(c.env.DB, {
+      rows,
+      protocolId: resolvedProtocolId,
+      actor: { sub: autor?.sub, name: autor?.name },
+    })
+
+    if (!resultado.ok) {
+      return c.json({ error: 'Não foi possível importar', row_errors: resultado.rowErrors, total_rows: resultado.totalRows }, 400)
+    }
+
+    return c.json({ success: true, imported: resultado.imported, total_rows: resultado.totalRows }, 201)
+  } catch (error) {
+    return writeProtocolError(c, error)
+  }
 })
 
 patients.post('/:id/archive', async (c) => {
@@ -612,11 +639,6 @@ patients.delete('/:id/documents/:templateId', async (c) => {
 })
 
 export default patients
-
-function stripHtml(value) {
-  if (typeof value !== 'string') return ''
-  return value.replace(/<[^>]*>/g, '').trim()
-}
 
 async function resolveWritableAgentId(db, requestedAgentId) {
   const normalized = typeof requestedAgentId === 'string' ? requestedAgentId.trim() : requestedAgentId

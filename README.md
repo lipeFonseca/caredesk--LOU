@@ -102,6 +102,7 @@ Cada rota mora no arquivo de mesmo nome — sem indireção.
 - **`arquivamento.js`** — marca `archived_at` aos 6 meses e avisa os admins
 - **`email.js`** — único ponto de saída de e-mail do sistema
 - **`error-log.js`** — grava e expira os erros que alimentam a aba de Logs
+- **`patientImport.js`** — importação de pacientes em massa via CSV (`POST /api/patients/import`), ver seção própria abaixo
 
 ### Regras (`utils/`)
 
@@ -122,7 +123,7 @@ Cada rota mora no arquivo de mesmo nome — sem indireção.
 - `components/login/loginPageBackground.js` — estilo de fundo da tela de login
 - `components/SmokeyBackground.jsx` — fundo animado do login (WebGL puro, sem dependência)
 - `components/admin/` — abas de Configurações, incluindo `MessagingTab` e `EmailTemplateEditor`
-- `components/patient/` — pedaços de UI compartilhados entre `PatientDetail` (página completa) e `PatientPanel` (drawer resumido em `Patients`): `PatientIdentitySummary`, `PatientNextFollowupCard`, `PatientProtocolTimeline`, `ProtocolDayChips`, `ContactLogEntry`, `PatientDocumentsSection`. Cada um recebe `variant="full"|"compact"` para as duas telas. Dados Clínicos e Ações Rápidas ficam fora de propósito — conteúdo/interação diferem de verdade entre os dois contextos.
+- `components/patient/` — pedaços de UI compartilhados entre `PatientDetail` (página completa) e `PatientPanel` (drawer resumido em `Patients`): `PatientIdentitySummary`, `PatientNextFollowupCard`, `PatientProtocolTimeline`, `ProtocolDayChips`, `ContactLogEntry`, `PatientDocumentsSection`. Cada um recebe `variant="full"|"compact"` para as duas telas. Dados Clínicos e Ações Rápidas ficam fora de propósito — conteúdo/interação diferem de verdade entre os dois contextos. `ImportPatientsModal.jsx` (mesma pasta) é a tela de importação em massa, ver seção própria abaixo.
 - `components/ui/date-picker.jsx` — substitui todo `<input type="date">` do sistema. Escrito do zero com `date-fns` (já dependência do projeto), **sem lib de terceiro nem `Portal`** — decisão de propósito, ver `Status.md` (uma tentativa anterior com Ark UI portalado quebrou ao selecionar data dentro de modal e foi revertida). `value`/`onChange` imitam o evento nativo (`e.target.value`, string ISO), então os 6 pontos de uso não precisaram mudar lógica de estado, só o elemento. Digitação livre (`dd/mm/aaaa`, mascarada e validada por round-trip — rejeita `31/02` mesmo que `date-fns` role a data pro mês seguinte) e seletor de ano (clicando no ano do cabeçalho, grade de 12 anos) além do calendário por clique. Testado com interação real via jsdom (`date-picker.test.jsx`, 18 casos — abrir, digitar, navegar mês/ano, clicar fora, Escape, Limpar, Hoje, disabled), não só build.
 
 ### Tela de login
@@ -298,6 +299,38 @@ marco informado (nunca aceita uma lista arbitrária do cliente) e cria os
 `followup_logs` retroativos via `db.batch` — atômico, e sempre antes de
 `recalcularProximoMarco`. Cada linha nasce com `is_backfilled=1`, badge
 "(registrado retroativamente)" no histórico (`ContactLogEntry.jsx`).
+
+### Importação de pacientes em massa (CSV)
+
+`POST /api/patients/import` (admin only, `worker/src/services/patientImport.js`)
+cadastra vários pacientes de uma vez a partir de um CSV enviado pelo botão
+"Importar CSV" em `Patients.jsx`. Decisões que valem entender antes de mexer:
+
+- **Cabeçalho do CSV é o nome literal da coluna no banco** (`name`, `cpf`,
+  `data_nascimento`, `procedure`, `surgery_date`, `responsavel`, `phone`,
+  `email`) — sem dicionário de sinônimo. O usuário edita a própria planilha
+  pra bater.
+- **`id` nunca vem do arquivo** — sempre `crypto.randomUUID()`, mesma regra
+  do cadastro individual. Reaproveita a mesma validação de campo (CPF com
+  dígito verificador, `responsavel` obrigatório só para menor de 18 via
+  `ehMenorDeIdade`) em vez de duplicar regra nova.
+- **Tudo-ou-nada**: qualquer linha inválida cancela o lote inteiro antes de
+  qualquer `INSERT` — nunca existe "importou metade". O relatório de erro
+  acumula **todos** os problemas de **todas** as linhas de uma vez, não só o
+  primeiro.
+- **Confirmação pós-`db.batch()`**: antes de responder sucesso, o service
+  reconta via `SELECT COUNT(*) FROM patients WHERE cpf IN (...)` os CPFs que
+  acabaram de ser inseridos. Só devolve sucesso se o número bater exato — se
+  não bater, devolve divergência em vez de mentir. O modal do frontend mostra
+  os três números lado a lado (linhas no arquivo / linhas válidas / confirmadas
+  no banco) e a hora exata em que terminou.
+- **Um protocolo só para o lote inteiro**, escolhido na tela (cai no padrão
+  do sistema se não escolher); `assigned_agent_id` é sempre quem importou.
+  Sem cadastro retroativo nesta via — paciente importado começa do dia 0 do
+  protocolo.
+- CPF/consultas em lotes de até 100 (`worker/src/services/patientImport.js`),
+  respeitando o teto de 100 parâmetros vinculados por statement do D1; teto de
+  500 linhas por importação.
 
 ### Mais de um template de mensagem por marco
 

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '@/services/api'
+import { useAuthStore } from '@/store'
 import { format, parseISO, differenceInCalendarDays, subDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import PatientPanel from '@/components/PatientPanel'
+import ImportPatientsModal from '@/components/patient/ImportPatientsModal'
 
 const PAGE_SIZE = 20
 
@@ -76,6 +78,8 @@ function getInitials(name = '') {
 }
 
 export default function Patients() {
+  const { isAdmin } = useAuthStore()
+  const [importModalOpen,  setImportModalOpen]  = useState(false)
   const [patients,         setPatients]         = useState([])
   const [total,            setTotal]            = useState(0)
   const [agents,           setAgents]           = useState([])
@@ -185,13 +189,24 @@ export default function Patients() {
                 : 'Gerencie os pacientes, acompanhamentos e status de recuperação.'}
           </p>
         </div>
-        <Link
-          to="/patients/new"
-          className="bg-primary hover:bg-primary-container text-on-primary text-label-md font-label-md py-2.5 px-5 rounded-lg flex items-center justify-center gap-2 transition-colors ambient-shadow-lvl1 self-start md:self-auto shrink-0"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
-          Novo Paciente
-        </Link>
+        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+          {isAdmin() && (
+            <button
+              onClick={() => setImportModalOpen(true)}
+              className="btn-ghost"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>upload_file</span>
+              Importar CSV
+            </button>
+          )}
+          <Link
+            to="/patients/new"
+            className="bg-primary hover:bg-primary-container text-on-primary text-label-md font-label-md py-2.5 px-5 rounded-lg flex items-center justify-center gap-2 transition-colors ambient-shadow-lvl1"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
+            Novo Paciente
+          </Link>
+        </div>
       </div>
 
       {/* ── Visões ──────────────────────────────────────────── */}
@@ -477,6 +492,12 @@ export default function Patients() {
       <PatientPanel
         patientId={selectedPatientId}
         onClose={() => setSelectedPatientId(null)}
+      />
+
+      <ImportPatientsModal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImported={() => fetchPage(null)}
       />
     </div>
   )

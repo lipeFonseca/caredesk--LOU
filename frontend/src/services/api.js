@@ -57,7 +57,11 @@ async function request(path, options = {}, isRetry = false) {
   const data = await res.json().catch(() => ({}))
 
   if (!res.ok) {
-    throw new Error(data.error || `Erro ${res.status}`)
+    const error = new Error(data.error || `Erro ${res.status}`)
+    // Corpo completo (ex.: `row_errors` da importação em massa) fica
+    // disponível pra quem chamou precisar de mais que a mensagem genérica.
+    error.data = data
+    throw error
   }
 
   return data
@@ -91,6 +95,7 @@ export const api = {
     unarchive:     (id)   => request(`/patients/${id}/unarchive`, { method: 'POST' }),
     archiveMany:   (ids)  => request('/patients/archive',   { method: 'POST', body: JSON.stringify({ ids }) }),
     unarchiveMany: (ids)  => request('/patients/unarchive', { method: 'POST', body: JSON.stringify({ ids }) }),
+    importMany:    (body) => request('/patients/import', { method: 'POST', body: JSON.stringify(body) }),
 
     listDocuments:        (id)                     => request(`/patients/${id}/documents`),
     assignDocument:       (id, templateId, body={}) => request(`/patients/${id}/documents/${templateId}`, { method: 'PUT',    body: JSON.stringify(body) }),

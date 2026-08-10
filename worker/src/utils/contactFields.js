@@ -6,6 +6,13 @@ const MAX_PHONE_LENGTH = 20
 const MAX_EMAIL_LENGTH = 160
 const CPF_LENGTH = 11
 
+// Movido de routes/patients.js — usado pelo cadastro individual e pela
+// importacao em massa, as duas linhas de validacao precisam da mesma limpeza.
+export function stripHtml(value) {
+  if (typeof value !== 'string') return ''
+  return value.replace(/<[^>]*>/g, '').trim()
+}
+
 // Aceita o que uma pessoa realmente digita num telefone: digitos, +, parenteses,
 // espaco e hifen. O resto sai fora.
 export function sanitizeOptionalPhone(valor) {
