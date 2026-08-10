@@ -20,7 +20,7 @@ import {
   subYears,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 const DIAS_DA_SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 const TAMANHO_GRADE_DE_ANOS = 12
@@ -65,6 +65,7 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
   const [mesVisivel, setMesVisivel] = useState(dataSelecionada ?? new Date())
   const [textoDigitado, setTextoDigitado] = useState(dataSelecionada ? formatarBr(dataSelecionada) : '')
   const containerRef = useRef(null)
+  const inputRef = useRef(null)
 
   // So resincroniza com o valor de fora (selecao via calendario, Limpar, Hoje,
   // ou o proprio pai mudando o value) — nao a cada tecla digitada.
@@ -86,7 +87,11 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
       if (containerRef.current && !containerRef.current.contains(evento.target)) setAberto(false)
     }
     function aoPressionarTecla(evento) {
-      if (evento.key === 'Escape') setAberto(false)
+      if (evento.key !== 'Escape') return
+      setAberto(false)
+      // Sem isso, o campo continua focado e um novo focus() nao reabre —
+      // o navegador so dispara o evento de foco quando o foco realmente muda.
+      inputRef.current?.blur()
     }
     document.addEventListener('mousedown', aoClicarFora)
     document.addEventListener('keydown', aoPressionarTecla)
@@ -146,13 +151,9 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
 
   return (
     <div ref={containerRef} className="relative">
-      <div
-        className="flex items-center gap-1 rounded-2xl border border-outline-variant/80 bg-surface-container-low py-1.5 pl-4 pr-1.5
-          focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-primary-100/60 data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-60"
-        style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.55)' }}
-        data-disabled={disabled}
-      >
+      <div className="flex items-center gap-1.5">
         <input
+          ref={inputRef}
           type="text"
           inputMode="numeric"
           value={textoDigitado}
@@ -162,31 +163,22 @@ export default function DatePickerField({ value, onChange, placeholder = 'dd/mm/
           disabled={disabled}
           placeholder={placeholder}
           aria-label="Data (dd/mm/aaaa)"
-          className="min-w-0 flex-1 border-0 bg-transparent py-1 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/70 disabled:cursor-not-allowed"
+          className="input min-w-0 flex-1"
         />
         {value && !disabled && (
           <button
             type="button"
             onClick={limpar}
-            className="rounded-xl p-2 text-on-surface-variant outline-none transition-colors hover:bg-error-container/30 hover:text-error focus-visible:ring-2 focus-visible:ring-error/40"
+            className="shrink-0 rounded-lg p-1.5 text-on-surface-variant outline-none transition-colors hover:bg-error-container/30 hover:text-error focus-visible:ring-2 focus-visible:ring-error/40"
             aria-label="Limpar data"
           >
             <X size={16} />
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => setAberto((estaAberto) => !estaAberto)}
-          disabled={disabled}
-          className="rounded-xl p-2 text-on-surface-variant outline-none transition-colors hover:bg-surface-container hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none"
-          aria-label="Abrir calendário"
-        >
-          <Calendar size={18} />
-        </button>
       </div>
 
       {aberto && (
-        <div role="dialog" aria-label="Calendário" className="absolute z-50 mt-2 w-[22rem] rounded-2xl border border-outline-variant bg-surface p-4 shadow-modal">
+        <div role="dialog" aria-label="Calendário" className="absolute left-0 z-50 mt-2 w-[22rem] rounded-2xl border border-outline-variant bg-surface p-4 shadow-modal">
           {visao === 'dias' ? (
             <>
               <div className="mb-3 flex items-center justify-between">
