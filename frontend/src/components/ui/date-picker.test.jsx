@@ -60,13 +60,6 @@ function campoDeTexto(container) {
   return container.querySelector('input[aria-label="Data (dd/mm/aaaa)"]')
 }
 
-// Unico jeito de abrir o calendario agora: focar o campo de texto (clique ou
-// Tab) — o botao dedicado de icone foi removido por ser redundante e o
-// usuario nao gostou do visual dele.
-function abrir(container) {
-  focar(campoDeTexto(container))
-}
-
 // So os botoes de dia vivem dentro dessa grade — separa de proposito dos
 // botoes de navegacao/Limpar/Hoje, que nao tem essa classe.
 function botoesDeDia(popup) {
@@ -74,13 +67,13 @@ function botoesDeDia(popup) {
 }
 
 describe('DatePickerField — interação real (jsdom)', () => {
-  it('abre o calendário ao focar o campo, seleciona um dia, chama onChange com ISO e fecha', () => {
+  it('abre o calendário ao clicar, seleciona um dia, chama onChange com ISO e fecha', () => {
     const onChange = vi.fn()
     const container = montar({ value: '', onChange })
 
     expect(container.querySelector('[role="dialog"]')).toBeNull()
 
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
     const popup = container.querySelector('[role="dialog"]')
     expect(popup).not.toBeNull()
 
@@ -99,7 +92,7 @@ describe('DatePickerField — interação real (jsdom)', () => {
     const onChange = vi.fn()
     const container = montar({ value: '', onChange })
 
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
     expect(container.querySelector('[role="dialog"]')).not.toBeNull()
 
     act(() => {
@@ -110,21 +103,9 @@ describe('DatePickerField — interação real (jsdom)', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('não fecha ao clicar em algo dentro do próprio calendário (ex.: o cabeçalho)', () => {
-    const container = montar({ value: '2026-08-15', onChange: vi.fn() })
-    abrir(container)
-    const popup = container.querySelector('[role="dialog"]')
-
-    act(() => {
-      popup.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    })
-
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
-  })
-
   it('fecha ao pressionar Escape', () => {
     const container = montar({ value: '', onChange: vi.fn() })
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
     expect(container.querySelector('[role="dialog"]')).not.toBeNull()
 
     act(() => {
@@ -152,7 +133,7 @@ describe('DatePickerField — interação real (jsdom)', () => {
     const onChange = vi.fn()
     const container = montar({ value: '', onChange })
 
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
     const popup = container.querySelector('[role="dialog"]')
     const botaoHoje = Array.from(popup.querySelectorAll('button')).find((b) => b.textContent === 'Hoje')
 
@@ -164,17 +145,33 @@ describe('DatePickerField — interação real (jsdom)', () => {
     expect(onChange).toHaveBeenCalledWith({ target: { value: hojeIso } })
   })
 
-  it('não abre nem reage a foco quando disabled', () => {
-    const container = montar({ value: '', onChange: vi.fn(), disabled: true })
+  it('não abre nem reage a clique quando disabled', () => {
+    const onChange = vi.fn()
+    const container = montar({ value: '', onChange, disabled: true })
 
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
 
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('focar o campo de texto (não só o ícone) também abre o calendário', () => {
+    const container = montar({ value: '', onChange: vi.fn() })
+    focar(campoDeTexto(container))
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+  })
+
+  it('clicar de novo no botão que abriu fecha o calendário (toggle)', () => {
+    const container = montar({ value: '', onChange: vi.fn() })
+    const botaoAbrir = container.querySelector('button[aria-label="Abrir calendário"]')
+    clicar(botaoAbrir)
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    clicar(botaoAbrir)
     expect(container.querySelector('[role="dialog"]')).toBeNull()
   })
 
   it('navega pro próximo mês e pro mês anterior, atualizando o cabeçalho', () => {
     const container = montar({ value: '2026-08-15', onChange: vi.fn() })
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
     const popup = container.querySelector('[role="dialog"]')
     const mes = () => popup.querySelector('span.capitalize').textContent
     const ano = () => popup.querySelector('button[aria-label="Selecionar ano"]').textContent
@@ -193,7 +190,7 @@ describe('DatePickerField — interação real (jsdom)', () => {
   it('permite selecionar um dia esmaecido do mês adjacente mostrado na grade', () => {
     const onChange = vi.fn()
     const container = montar({ value: '2026-08-15', onChange })
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
     const popup = container.querySelector('[role="dialog"]')
 
     const primeiroDiaDaGrade = startOfWeek(startOfMonth(new Date(2026, 7, 15)))
@@ -204,7 +201,7 @@ describe('DatePickerField — interação real (jsdom)', () => {
 
   it('a grade sempre cobre o mês inteiro, do primeiro ao último dia', () => {
     const container = montar({ value: '2026-02-15', onChange: vi.fn() })
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
     const popup = container.querySelector('[role="dialog"]')
 
     const dias = botoesDeDia(popup)
@@ -245,7 +242,7 @@ describe('DatePickerField — interação real (jsdom)', () => {
 
   it('clicar no ano abre o seletor de ano; escolher um ano atualiza o cabeçalho sem fechar o calendário', () => {
     const container = montar({ value: '2026-08-15', onChange: vi.fn() })
-    abrir(container)
+    clicar(container.querySelector('button[aria-label="Abrir calendário"]'))
     const popup = container.querySelector('[role="dialog"]')
 
     clicar(popup.querySelector('button[aria-label="Selecionar ano"]'))
@@ -261,17 +258,16 @@ describe('DatePickerField — interação real (jsdom)', () => {
     expect(popup.querySelector('button[aria-label="Selecionar ano"]').textContent).toBe('2030')
   })
 
-  it('a visão sempre reabre em "dias" na próxima vez que o calendário abre', () => {
+  it('a década reabre sempre do zero (visão de dias) na próxima vez que o calendário abre', () => {
     const container = montar({ value: '2026-08-15', onChange: vi.fn() })
+    const botaoAbrir = container.querySelector('button[aria-label="Abrir calendário"]')
 
-    abrir(container)
+    clicar(botaoAbrir)
     clicar(container.querySelector('[role="dialog"] button[aria-label="Selecionar ano"]'))
     expect(container.querySelector('[role="dialog"] button[aria-label="Selecionar ano"]')).toBeNull()
 
-    act(() => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    })
-    abrir(container)
+    clicar(botaoAbrir) // fecha
+    clicar(botaoAbrir) // abre de novo
 
     expect(container.querySelector('[role="dialog"] button[aria-label="Selecionar ano"]')).not.toBeNull()
   })
