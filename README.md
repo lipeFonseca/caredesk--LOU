@@ -306,13 +306,28 @@ marco informado (nunca aceita uma lista arbitrária do cliente) e cria os
 cadastra vários pacientes de uma vez a partir de um CSV enviado pelo botão
 "Importar CSV" em `Patients.jsx`. Decisões que valem entender antes de mexer:
 
-- **Cabeçalho do CSV é o nome literal da coluna no banco** (`name`, `cpf`,
-  `data_nascimento`, `procedure`, `surgery_date`, `responsavel`, `phone`,
-  `email`, `notes`, `status`) — sem dicionário de sinônimo. O usuário edita a
-  própria planilha pra bater. `status` aceita `active`/`paused`/`discharged`
-  (vazio vira `active`) — único campo que a importação expõe e o cadastro
-  individual não (paciente novo lá sempre nasce `active`; aqui existe o caso
-  de importar histórico já fora do acompanhamento ativo).
+- **Cabeçalho do CSV é o nome literal da coluna no banco** (`name`,
+  `data_nascimento`, `procedure`, `surgery_date`, `cpf`, `responsavel`,
+  `phone`, `email`, `notes`, `status`) — sem dicionário de sinônimo. O
+  usuário edita a própria planilha pra bater. `status` aceita
+  `active`/`paused`/`discharged` (vazio vira `active`) — único campo que a
+  importação expõe e o cadastro individual não (paciente novo lá sempre nasce
+  `active`; aqui existe o caso de importar histórico já fora do
+  acompanhamento ativo).
+- **`cpf` e `responsavel` são opcionais nesta via, inclusive para menor de
+  idade** — decisão explícita do usuário, diferente do cadastro individual
+  (`POST /api/patients`), que continua exigindo os dois sem exceção.
+  `sanitizeOptionalCpf` (`worker/src/utils/contactFields.js`) aceita
+  ausente/vazio como válido, mas ainda valida o dígito verificador se vier
+  preenchido — não relaxa o formato, só a obrigatoriedade. Duplicata de CPF
+  (no arquivo e contra o banco) só é checada entre linhas que **têm** CPF;
+  várias linhas sem CPF não são "duplicata" entre si. Confirmação pós-batch
+  passou a contar por `id` (sempre presente) em vez de `cpf` (agora pode ser
+  `NULL`, e `WHERE cpf IN (...)` nunca bate com `NULL` — contaria errado o
+  paciente sem CPF). O contador materializado de pacientes **ativos** só soma
+  as linhas com `status = 'active'` do lote, não o lote inteiro — reusa
+  `contaComoAtivo()` de `worker/src/utils/contadores.js` pra não divergir da
+  reconciliação noturna.
 - **Quatro colunas do banco ficam de fora de propósito, nunca vêm do
   arquivo**: `assigned_agent_id` (sempre quem está importando, mesma regra
   do cadastro individual desde a migration 0027 — nunca client-supplied),

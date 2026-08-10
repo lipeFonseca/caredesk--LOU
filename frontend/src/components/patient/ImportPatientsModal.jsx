@@ -143,7 +143,7 @@ export default function ImportPatientsModal({ open, onClose, onImported }) {
                 {' — '}
                 <strong>Opcionais:</strong> {COLUNAS_OPCIONAIS.join(', ')}
               </p>
-              <p>Datas no formato <code>aaaa-mm-dd</code> ou <code>dd/mm/aaaa</code>. Paciente menor de 18 anos precisa de <code>responsavel</code> preenchido.</p>
+              <p>Datas no formato <code>aaaa-mm-dd</code> ou <code>dd/mm/aaaa</code>. <code>cpf</code> e <code>responsavel</code> são opcionais, inclusive para paciente menor de idade.</p>
               <p><code>status</code> aceita <code>active</code>, <code>paused</code> ou <code>discharged</code> (vazio conta como <code>active</code>).</p>
             </div>
 

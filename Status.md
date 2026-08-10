@@ -501,3 +501,21 @@ Usuário testou a planilha-modelo e pediu mais campos: colou uma lista com `name
 **Testado**: 156/156 `node --test` no worker (+2), 75/75 `npx vitest run` no frontend (+1), build limpo nos dois lados.
 
 Sem migration — `status`/`notes` já existiam na tabela, só não eram usados por esta via ainda.
+
+## 2026-08-10 — Importação em massa: CPF e responsável deixam de ser obrigatórios
+
+Usuário testou o modal (print anexado) e pediu direto: "cpf não deve ser obrigatorio nem nome do responsavel em nenhum caso". Escopo explícito (referência clara ao modal de importação, não ao cadastro individual) — avisado em 1-2 frases que isso reabre duas travas que existem no resto do sistema por motivo real (CPF como "chave real de identificação do paciente", responsável obrigatório pra menor de idade), usuário manteve a decisão, executado.
+
+**Backend** (`worker/src/utils/contactFields.js`): checksum de CPF extraído pra função interna `cpfComDigitoValido()`, compartilhada por `sanitizeRequiredCpf` (cadastro individual, inalterado — continua exigindo CPF) e a nova `sanitizeOptionalCpf` (só a importação usa — vazio vira `null` válido, mas se vier preenchido ainda precisa passar no mesmo dígito verificador; não aceita CPF errado só por ser opcional).
+
+`worker/src/services/patientImport.js`: removida a checagem `ehMenorDeIdade(...) && !responsavel` por completo (`ehMenorDeIdade` nem é mais importado aqui). Troca de `sanitizeRequiredCpf` por `sanitizeOptionalCpf`. Três pontos que dependiam de CPF sempre presente precisaram de ajuste, não só a validação de campo:
+
+1. **Deduplicação de CPF dentro do arquivo** e **checagem contra o banco** agora ignoram linhas com `cpf` vazio — várias linhas sem CPF não são "duplicata" entre si (antes, `undefined === undefined` teria marcado todas como duplicadas de todas).
+2. **Confirmação pós-`db.batch()` (o "monitor" do usuário) trocou de `cpf` pra `id`.** `SELECT COUNT(*) FROM patients WHERE cpf IN (...)` nunca bate com uma linha de `cpf IS NULL` — semântica do `IN` do SQL —, então o monitor reportaria divergência falsa exatamente no paciente sem CPF, o oposto do que "zero erro de paciente faltando" pede. `id` é sempre gerado, sempre presente, e mais robusto de qualquer forma — não devia ter sido `cpf` desde o início.
+3. **Bug real achado nesta revisão, não introduzido por este pedido**: desde a entrada de `status` (commit anterior, mesmo dia), o contador materializado `patients_active` estava sendo incrementado por `idsGerados.length` inteiro, sem checar `status` — um lote com paciente `paused` inflava o contador de ativos. Corrigido: soma só as linhas com `contaComoAtivo({ status, archived_at: null })` (reusa a mesma função de `worker/src/utils/contadores.js` que a reconciliação noturna usa, pra não divergir). Coberto por teste novo que verifica o bind exato gravado em `system_counters`.
+
+**Frontend** (`frontend/src/utils/patientImport.js`): mesmo padrão — `cpf` movido pra `obrigatorio: false` em `IMPORT_COLUMNS`, checagem de CPF só roda `if (cpfDigitos && !cpfValido(...))`, checagem de responsável-por-idade removida (import de `calcularIdade` também saiu, ficou sem uso), deduplicação de CPF no arquivo pula linha sem `cpf`. `ImportPatientsModal.jsx`: texto de instrução atualizado (tira a frase "menor de idade precisa de responsavel", troca por "cpf e responsavel são opcionais, inclusive para paciente menor de idade").
+
+**Testado**: 162/162 `node --test` no worker (+6: CPF ausente aceito, CPF inválido-mas-preenchido ainda rejeita, duas linhas sem CPF não conflitam, contador de ativos soma só status active — mais 2 testes novos de `sanitizeOptionalCpf` em `contact-fields.test.js`), 78/78 `npx vitest run` no frontend (+3 no mesmo padrão), build limpo nos dois lados.
+
+Sem migration.

@@ -78,13 +78,33 @@ describe('linhasParaPacientes', () => {
   })
 
   it('acumula todos os erros da linha, não só o primeiro (linha parcial, não vazia — vazia de verdade é pulada)', () => {
-    const [linha] = linhasParaPacientes([{ name: 'Só isto preenchido', cpf: '', data_nascimento: '', procedure: '', surgery_date: '' }])
+    const [linha] = linhasParaPacientes([{ name: 'Só isto preenchido', cpf: '', data_nascimento: '', procedure: '', surgery_date: '', status: 'invalido' }])
     expect(linha.erros.length).toBeGreaterThanOrEqual(4)
   })
 
-  it('menor de idade sem responsável é erro; com responsável passa', () => {
+  it('CPF é opcional — paciente sem CPF não é erro', () => {
+    const { cpf, ...semCpf } = linhaBase()
+    const [linha] = linhasParaPacientes([semCpf])
+    expect(linha.erros).toEqual([])
+    expect(linha.paciente.cpf).toBeUndefined()
+  })
+
+  it('CPF preenchido mas inválido ainda é erro, mesmo sendo opcional', () => {
+    const [linha] = linhasParaPacientes([linhaBase({ cpf: '123.456.789-00' })])
+    expect(linha.erros.some((e) => e.includes('CPF'))).toBe(true)
+  })
+
+  it('duas linhas sem CPF não são tratadas como duplicata entre si', () => {
+    const { cpf: _c1, ...semCpfA } = linhaBase({ name: 'A' })
+    const { cpf: _c2, ...semCpfB } = linhaBase({ name: 'B' })
+    const linhas = linhasParaPacientes([semCpfA, semCpfB])
+    expect(linhas[0].erros).toEqual([])
+    expect(linhas[1].erros).toEqual([])
+  })
+
+  it('menor de idade SEM responsável não é erro — nunca obrigatório nesta via', () => {
     const [semResp] = linhasParaPacientes([linhaBase({ data_nascimento: '2015-01-10' })])
-    expect(semResp.erros.some((e) => e.includes('Responsável'))).toBe(true)
+    expect(semResp.erros).toEqual([])
 
     const [comResp] = linhasParaPacientes([linhaBase({ data_nascimento: '2015-01-10', responsavel: 'Mãe' })])
     expect(comResp.erros).toEqual([])

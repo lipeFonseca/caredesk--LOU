@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { sanitizeOptionalPhone, sanitizeOptionalEmail, sanitizeRequiredCpf } from '../src/utils/contactFields.js'
+import { sanitizeOptionalPhone, sanitizeOptionalEmail, sanitizeRequiredCpf, sanitizeOptionalCpf } from '../src/utils/contactFields.js'
 
 test('sanitizeOptionalPhone trata ausente e vazio como null', () => {
   assert.equal(sanitizeOptionalPhone(null), null)
@@ -57,4 +57,16 @@ test('sanitizeRequiredCpf recusa tamanho errado, ausente ou vazio', () => {
   assert.equal(sanitizeRequiredCpf(null).ok, false)
   assert.equal(sanitizeRequiredCpf('').ok, false)
   assert.equal(sanitizeRequiredCpf('123.456.789').ok, false)
+})
+
+test('sanitizeOptionalCpf trata ausente e vazio como null válido (diferença chave pra sanitizeRequiredCpf)', () => {
+  assert.deepEqual(sanitizeOptionalCpf(null), { ok: true, value: null })
+  assert.deepEqual(sanitizeOptionalCpf(''), { ok: true, value: null })
+  assert.deepEqual(sanitizeOptionalCpf('   '), { ok: true, value: null })
+})
+
+test('sanitizeOptionalCpf valida o mesmo dígito verificador quando preenchido', () => {
+  assert.deepEqual(sanitizeOptionalCpf('123.456.789-09'), { ok: true, value: '12345678909' })
+  assert.equal(sanitizeOptionalCpf('123.456.789-00').ok, false)
+  assert.equal(sanitizeOptionalCpf('111.111.111-11').ok, false)
 })

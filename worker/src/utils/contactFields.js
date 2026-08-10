@@ -63,29 +63,46 @@ export function sanitizeOptionalEmail(valor) {
   return plausivel ? { ok: true, value: limpo } : { ok: false, value: null }
 }
 
-// CPF e obrigatorio no cadastro — e a chave real de identificacao do paciente
-// (protocol_id nao serve pra isso, e so o vinculo com o protocolo de contato).
-// Guardado so-digitos (mesma logica de phoneDigits): mascara e problema de
-// exibicao, nao de armazenamento. Valida o digito verificador de verdade —
-// sequencias falsas como 111.111.111-11 sao rejeitadas antes de chegar ao banco.
+function calcularDigitoVerificadorCpf(base) {
+  let soma = 0
+  let peso = base.length + 1
+  for (const digito of base) {
+    soma += Number(digito) * peso
+    peso -= 1
+  }
+  const resto = soma % 11
+  return resto < 2 ? 0 : 11 - resto
+}
+
+// Digito verificador de verdade — sequencias falsas como 111.111.111-11 sao
+// rejeitadas antes de chegar ao banco. Compartilhado entre a versao
+// obrigatoria (cadastro individual) e a opcional (importacao em massa).
+function cpfComDigitoValido(digitos) {
+  if (digitos.length !== CPF_LENGTH) return false
+  if (/^(\d)\1{10}$/.test(digitos)) return false
+
+  const dv1 = calcularDigitoVerificadorCpf(digitos.slice(0, 9))
+  const dv2 = calcularDigitoVerificadorCpf(digitos.slice(0, 9) + String(dv1))
+
+  return digitos.slice(9) === `${dv1}${dv2}`
+}
+
+// CPF e obrigatorio no cadastro individual — e a chave real de identificacao
+// do paciente (protocol_id nao serve pra isso, e so o vinculo com o protocolo
+// de contato). Guardado so-digitos (mesma logica de phoneDigits): mascara e
+// problema de exibicao, nao de armazenamento.
 export function sanitizeRequiredCpf(valor) {
   const digitos = valor == null ? '' : String(valor).replace(/\D/g, '')
-  if (digitos.length !== CPF_LENGTH) return { ok: false, value: null }
-  if (/^(\d)\1{10}$/.test(digitos)) return { ok: false, value: null }
+  return cpfComDigitoValido(digitos) ? { ok: true, value: digitos } : { ok: false, value: null }
+}
 
-  const calcularDigitoVerificador = (base) => {
-    let soma = 0
-    let peso = base.length + 1
-    for (const digito of base) {
-      soma += Number(digito) * peso
-      peso -= 1
-    }
-    const resto = soma % 11
-    return resto < 2 ? 0 : 11 - resto
-  }
-
-  const dv1 = calcularDigitoVerificador(digitos.slice(0, 9))
-  const dv2 = calcularDigitoVerificador(digitos.slice(0, 9) + String(dv1))
-
-  return digitos.slice(9) === `${dv1}${dv2}` ? { ok: true, value: digitos } : { ok: false, value: null }
+// Variante opcional — so a importacao em massa usa (decisao do usuario:
+// planilha pode trazer paciente sem CPF ainda levantado). Vazio e valido
+// (vira null); se vier preenchido, tem que passar no mesmo digito
+// verificador da versao obrigatoria — nao aceita CPF errado so por ser
+// opcional.
+export function sanitizeOptionalCpf(valor) {
+  const digitos = valor == null ? '' : String(valor).replace(/\D/g, '')
+  if (!digitos) return { ok: true, value: null }
+  return cpfComDigitoValido(digitos) ? { ok: true, value: digitos } : { ok: false, value: null }
 }

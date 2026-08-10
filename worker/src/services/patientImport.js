@@ -3,10 +3,9 @@
 // so que tudo-ou-nada: qualquer linha invalida cancela o lote inteiro antes de
 // qualquer INSERT rodar. Nunca nasce paciente "meio importado".
 
-import { sanitizeOptionalPhone, sanitizeOptionalEmail, sanitizeRequiredCpf, phoneDigits, stripHtml } from '../utils/contactFields.js'
-import { ehMenorDeIdade } from '../utils/patientAge.js'
+import { sanitizeOptionalPhone, sanitizeOptionalEmail, sanitizeOptionalCpf, phoneDigits, stripHtml } from '../utils/contactFields.js'
 import { recalcularLote } from '../utils/proximoMarco.js'
-import { ajustarContador, CONTADOR_PACIENTES_ATIVOS, CONTADOR_PACIENTES_TOTAL } from '../utils/contadores.js'
+import { ajustarContador, contaComoAtivo, CONTADOR_PACIENTES_ATIVOS, CONTADOR_PACIENTES_TOTAL } from '../utils/contadores.js'
 
 export const MAX_LINHAS_POR_IMPORTACAO = 500
 
@@ -17,8 +16,8 @@ export const MAX_LINHAS_POR_IMPORTACAO = 500
 const STATUS_VALIDOS = ['active', 'paused', 'discharged']
 
 // D1 limita a 100 parametros vinculados por statement — uma unica query
-// `IN (...)` com 500 CPFs estouraria isso. Consulta em lotes.
-const TAMANHO_LOTE_CONSULTA_CPF = 100
+// `IN (...)` com 500 CPFs/ids estouraria isso. Consulta em lotes.
+const TAMANHO_LOTE_CONSULTA = 100
 
 function isoDataValida(valor) {
   return /^\d{4}-\d{2}-\d{2}$/.test(valor) ? valor : null
@@ -47,14 +46,10 @@ function validarCamposDaLinha(linhaBruta) {
   if (!surgery_date) erros.push('Data da cirurgia inválida ou ausente (use aaaa-mm-dd)')
   if (!data_nascimento) erros.push('Data de nascimento inválida ou ausente (use aaaa-mm-dd)')
 
-  // So obrigatorio pra menor de idade — maior pode nao ter (ou nao precisar
-  // informar) um responsavel. Mesma regra de worker/src/utils/patientAge.js
-  // ja usada no cadastro individual.
-  if (data_nascimento && ehMenorDeIdade(data_nascimento) && !responsavel) {
-    erros.push('Responsável é obrigatório para paciente menor de idade')
-  }
-
-  const cpfSanitizado = sanitizeRequiredCpf(linhaBruta.cpf)
+  // Decisão explícita do usuário pra esta via: nem CPF nem responsável são
+  // obrigatórios aqui, mesmo pra menor de idade — diferente do cadastro
+  // individual (POST /api/patients), que continua exigindo os dois.
+  const cpfSanitizado = sanitizeOptionalCpf(linhaBruta.cpf)
   if (!cpfSanitizado.ok) erros.push('CPF inválido')
 
   const emailSanitizado = sanitizeOptionalEmail(linhaBruta.email)
@@ -81,8 +76,8 @@ function validarCamposDaLinha(linhaBruta) {
 
 async function buscarCpfsExistentes(db, cpfs) {
   const encontrados = new Set()
-  for (let i = 0; i < cpfs.length; i += TAMANHO_LOTE_CONSULTA_CPF) {
-    const lote = cpfs.slice(i, i + TAMANHO_LOTE_CONSULTA_CPF)
+  for (let i = 0; i < cpfs.length; i += TAMANHO_LOTE_CONSULTA) {
+    const lote = cpfs.slice(i, i + TAMANHO_LOTE_CONSULTA)
     const marcadores = lote.map(() => '?').join(',')
     const { results } = await db.prepare(`SELECT cpf FROM patients WHERE cpf IN (${marcadores})`).bind(...lote).all()
     for (const linha of results ?? []) encontrados.add(linha.cpf)
@@ -90,19 +85,24 @@ async function buscarCpfsExistentes(db, cpfs) {
   return encontrados
 }
 
-async function contarPacientesPorCpf(db, cpfs) {
+// Confirmação pós-batch por `id`, não por `cpf`: `id` é sempre gerado e
+// sempre presente (CPF agora é opcional nesta via) — `WHERE cpf IN (...)`
+// nunca bateria com uma linha de cpf NULL (semântica de IN do SQL), o que
+// faria o monitor mentir divergência num paciente que na verdade entrou certo.
+async function contarPacientesPorId(db, ids) {
   let total = 0
-  for (let i = 0; i < cpfs.length; i += TAMANHO_LOTE_CONSULTA_CPF) {
-    const lote = cpfs.slice(i, i + TAMANHO_LOTE_CONSULTA_CPF)
+  for (let i = 0; i < ids.length; i += TAMANHO_LOTE_CONSULTA) {
+    const lote = ids.slice(i, i + TAMANHO_LOTE_CONSULTA)
     const marcadores = lote.map(() => '?').join(',')
-    const linha = await db.prepare(`SELECT COUNT(*) AS total FROM patients WHERE cpf IN (${marcadores})`).bind(...lote).first()
+    const linha = await db.prepare(`SELECT COUNT(*) AS total FROM patients WHERE id IN (${marcadores})`).bind(...lote).first()
     total += linha?.total ?? 0
   }
   return total
 }
 
-// `rows`: array de objetos já mapeados pelas colunas do CSV (name, cpf,
-// data_nascimento, procedure, surgery_date, responsavel?, phone?, email?).
+// `rows`: array de objetos já mapeados pelas colunas do CSV (name,
+// data_nascimento, procedure, surgery_date, cpf?, responsavel?, phone?,
+// email?, notes?, status?).
 // `protocolId`: já resolvido (worker/src/routes/patients.js:629,
 // resolveWritableProtocolId) antes de chamar isto — o service não decide
 // protocolo, só usa o que a rota já validou.
@@ -132,9 +132,11 @@ export async function importPatients(db, { rows, protocolId, actor }) {
   })
 
   // CPF duplicado dentro do proprio arquivo — so entre linhas que ja passaram
-  // na validacao de campo (uma linha com CPF invalido nao entra aqui).
+  // na validacao de campo (uma linha com CPF invalido nao entra aqui) e que
+  // TEM cpf preenchido (varias linhas sem CPF nao sao "duplicata" entre si).
   const linhasPorCpf = new Map()
   for (const [row, paciente] of pacientesPorLinha) {
+    if (!paciente.cpf) continue
     if (!linhasPorCpf.has(paciente.cpf)) linhasPorCpf.set(paciente.cpf, [])
     linhasPorCpf.get(paciente.cpf).push(row)
   }
@@ -147,8 +149,9 @@ export async function importPatients(db, { rows, protocolId, actor }) {
     }
   }
 
-  // CPF ja existente no banco — so pros que sobreviveram ate aqui.
-  const cpfsRestantes = Array.from(pacientesPorLinha.values(), (p) => p.cpf)
+  // CPF ja existente no banco — so pros que sobreviveram ate aqui e tem cpf
+  // preenchido (linha sem CPF nao tem o que checar contra o banco).
+  const cpfsRestantes = Array.from(pacientesPorLinha.values(), (p) => p.cpf).filter(Boolean)
   const cpfsExistentes = cpfsRestantes.length ? await buscarCpfsExistentes(db, cpfsRestantes) : new Set()
   if (cpfsExistentes.size) {
     for (const [row, paciente] of pacientesPorLinha) {
@@ -200,15 +203,19 @@ export async function importPatients(db, { rows, protocolId, actor }) {
   await db.batch(statements)
 
   await recalcularLote(db, idsGerados)
-  await ajustarContador(db, CONTADOR_PACIENTES_ATIVOS, idsGerados.length)
+  // Paciente importado nunca nasce arquivado, mas `status` agora pode vir
+  // 'paused'/'discharged' da planilha — só conta pro contador de ATIVOS quem
+  // ficou 'active' de verdade (mesma regra de `contaComoAtivo`, pra não
+  // divergir da reconciliação noturna).
+  const totalAtivos = linhasOrdenadas.filter(([, p]) => contaComoAtivo({ status: p.status, archived_at: null })).length
+  await ajustarContador(db, CONTADOR_PACIENTES_ATIVOS, totalAtivos)
   await ajustarContador(db, CONTADOR_PACIENTES_TOTAL, idsGerados.length)
 
   // Confirmacao pos-batch: nunca confiar so no db.batch ter "rodado sem
-  // erro" — reconta de verdade os CPFs que acabaram de entrar antes de
+  // erro" — reconta de verdade os ids que acabaram de entrar antes de
   // devolver sucesso pro usuario. E o "monitor" pedido explicitamente: se
   // o numero nao bater exato, reporta divergencia em vez de mentir sucesso.
-  const cpfsInseridos = linhasOrdenadas.map(([, p]) => p.cpf)
-  const confirmados = await contarPacientesPorCpf(db, cpfsInseridos)
+  const confirmados = await contarPacientesPorId(db, idsGerados)
 
   if (confirmados !== idsGerados.length) {
     return {

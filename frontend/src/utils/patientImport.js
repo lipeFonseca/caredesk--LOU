@@ -1,15 +1,14 @@
 import Papa from 'papaparse'
-import { calcularIdade } from './contactDisplay'
 
 // Cabecalho do CSV = nome da coluna no banco, exatamente — sem sinonimo, sem
 // traducao. Decisao do usuario: ele edita a planilha pra bater com isto, o
 // sistema nao tenta adivinhar "Nome completo" vs `name`.
 export const IMPORT_COLUMNS = [
   { key: 'name',            label: 'name',            obrigatorio: true },
-  { key: 'cpf',              label: 'cpf',              obrigatorio: true },
   { key: 'data_nascimento',  label: 'data_nascimento',  obrigatorio: true },
   { key: 'procedure',        label: 'procedure',        obrigatorio: true },
   { key: 'surgery_date',     label: 'surgery_date',     obrigatorio: true },
+  { key: 'cpf',              label: 'cpf',              obrigatorio: false },
   { key: 'responsavel',      label: 'responsavel',      obrigatorio: false },
   { key: 'phone',            label: 'phone',            obrigatorio: false },
   { key: 'email',            label: 'email',            obrigatorio: false },
@@ -34,7 +33,7 @@ export function parseCsv(texto) {
 // Aceita "aaaa-mm-dd" (ja ISO) ou "dd/mm/aaaa" — sempre por split de string,
 // nunca via `Date`/`toISOString()`. `toISOString()` converte pra UTC e erraria
 // o dia no fuso do Brasil (mesmo cuidado que worker/src/utils/patientAge.js
-// e o calcularIdade abaixo ja tomam do lado do backend).
+// ja toma do lado do backend).
 export function paraIsoData(valor) {
   const texto = String(valor ?? '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto
@@ -105,12 +104,12 @@ export function linhasParaPacientes(registrosCsv) {
     if (!procedure) erros.push('Procedimento é obrigatório')
     if (!surgery_date) erros.push('Data da cirurgia inválida ou ausente')
     if (!data_nascimento) erros.push('Data de nascimento inválida ou ausente')
-    if (!cpfValido(registro.cpf)) erros.push('CPF inválido')
+    // CPF e responsável nunca são obrigatórios nesta via, mesmo pra menor de
+    // idade — decisão do usuário, diferente do cadastro individual. CPF, se
+    // vier preenchido, ainda precisa ser válido (não aceita CPF errado só
+    // por ser opcional).
+    if (cpfDigitos && !cpfValido(registro.cpf)) erros.push('CPF inválido')
     if (!STATUS_VALIDOS.includes(status)) erros.push(`Status inválido: use ${STATUS_VALIDOS.join(', ')}`)
-
-    const idade = data_nascimento ? calcularIdade(data_nascimento) : null
-    const menorDeIdade = idade != null && idade < 18
-    if (menorDeIdade && !responsavel) erros.push('Responsável é obrigatório para paciente menor de idade')
 
     const email = String(registro.email ?? '').trim()
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) erros.push('E-mail inválido')
@@ -120,7 +119,7 @@ export function linhasParaPacientes(registrosCsv) {
       erros,
       paciente: {
         name,
-        cpf: cpfDigitos,
+        cpf: cpfDigitos || undefined,
         data_nascimento,
         procedure,
         surgery_date,
@@ -134,10 +133,12 @@ export function linhasParaPacientes(registrosCsv) {
   }).filter(Boolean)
 
   // CPF duplicado dentro do proprio arquivo — so entre linhas ja sem erro de
-  // campo (uma linha com CPF invalido nao entra nessa checagem).
+  // campo (uma linha com CPF invalido nao entra nessa checagem) e que TEM
+  // cpf preenchido (varias linhas sem CPF nao sao "duplicata" entre si).
   const linhasPorCpf = new Map()
   for (const linha of linhas) {
     if (linha.erros.length) continue
+    if (!linha.paciente.cpf) continue
     if (!linhasPorCpf.has(linha.paciente.cpf)) linhasPorCpf.set(linha.paciente.cpf, [])
     linhasPorCpf.get(linha.paciente.cpf).push(linha)
   }
