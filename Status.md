@@ -542,3 +542,25 @@ Pedido do usuário: auditar o sistema inteiro (segurança do repositório, produ
 - **Importação em massa re-testada ponta a ponta com os dois recursos mais recentes desta sessão** (CPF opcional + `status`): lote de 2 linhas, uma adulta sem CPF e uma menor com `responsavel` e `status:"paused"` — as duas entraram, `cpf: null` persistiu certo, e o contador de ativos somou só a linha `active` (não as duas) — confirma em produção-like real o que os testes unitários já garantiam.
 
 Nenhuma migration, nenhuma mudança de schema. Dependência corrigida é o único código tocado nesta entrada (resto foi achado + confirmado, não mudado).
+
+## 2026-08-16 (cont.) — Histórico do git reescrito: e-mail do admin removido de todas as entradas passadas
+
+Usuário decidiu sobre as recomendações do relatório da checagem completa: confirmou que o acesso ao repositório nunca foi compartilhado e não há indício de uso indevido, então a saída escolhida foi reescrever o histórico e seguir — sem tornar o repositório privado.
+
+**Execução** (ordem clara do usuário — "reescreva o histórico, tire a informação, siga" — então rodado direto, com checagem antes/depois em cada etapa):
+1. `git status` limpo confirmado antes de mexer; `CLAUDE.md` (única sujeira local, nunca commitado por convenção) guardado em `git stash` pra não se perder.
+2. **Backup local do histórico inteiro antes de qualquer coisa**: `git bundle create ...-backup-pre-rewrite-20260816-155524.bundle --all`, fora do repositório (não é apagado por nenhum comando git, fica em `caredesk-sprint-backup-pre-rewrite-20260816-155524.bundle` um nível acima do projeto).
+3. `git filter-repo --replace-text` (instalado via `pip install git-filter-repo`, não estava disponível) trocando as duas variações do e-mail pessoal por `[e-mail removido]` em **todo** commit do histórico, não só o mais recente.
+4. Confirmado **zero** ocorrência do e-mail em `git log --all -p` depois — e de novo, num clone novo do zero (`git clone` limpo em `/tmp`), pra checar exatamente o que alguém de fora veria, não só o meu working copy.
+5. `origin` (removido pelo `filter-repo` por segurança, de propósito) reconectado; `git fetch` antes do push pra saber o SHA remoto real; `git push --force-with-lease=main:<sha-remoto-conhecido>` — nunca `--force` cego.
+6. **Efeito colateral previsto e corrigido antes de empurrar**: reescrever histórico muda o hash de todo commit a partir do primeiro tocado — o `before` que o GitHub manda pro workflow no próximo push aponta pra um SHA que não existe mais no clone buscado, e `git diff --name-only "$before" "$after"` no `.github/workflows/deploy.yml` estourava (`set -euo pipefail` ativo). Corrigido **antes** do force-push (mesmo commit que ficou no topo do histórico reescrito): `git cat-file -e "$before"` falhando cai no mesmo caminho já usado pro push inicial (SHA zero) — publica os dois lados em vez de quebrar o step.
+7. **Confirmado ao vivo, não só por leitura do código**: o primeiro deploy depois do force-push realmente recebeu `before` = SHA antigo (órfão) e caiu certinho no fallback novo (`deploy_worker=true`/`deploy_frontend=true` pelo motivo certo, log conferido linha a linha) — sem o fix, esse deploy teria quebrado. `worker` e `frontend` no ar depois, `200` nos dois.
+
+**Efeitos colaterais aceitos, registrados por transparência:**
+- Todo hash de commit a partir de onde o e-mail aparecia mudou — histórico "antigo" (SHAs de antes de hoje) não existe mais como tal; qualquer link/referência externa a um commit SHA anterior a esta reescrita quebra. Sem PR aberto nem colaborador, impacto real é zero.
+- GitHub pode manter cache/blob antigo acessível por SHA direto por um tempo, mesmo depois do force-push, até o GC deles rodar — purga garantida exigiria abrir chamado com o suporte do GitHub. Não feito agora (decisão: e-mail pessoal exposto, não senha/token; risco residual considerado aceitável pelo usuário).
+- `Status.md` local passou a divergir do padrão "append-only nunca edita entrada antiga" **uma única vez, de propósito**: o `filter-repo` reescreveu o texto das entradas de 24–25/jul substituindo o e-mail pelo placeholder — é edição de conteúdo passado, mas da categoria "remover dado que nunca devia ter sido exposto", não "reescrever a narrativa". Todas as entradas daqui pra frente continuam estritamente append-only.
+
+**Junto (recomendação 4 do relatório, mesmo commit da correção do deploy.yml)**: comentário `-- Admin padrão (senha: Admin@2025 — TROCAR NO PRIMEIRO ACESSO)` em `worker/src/db/schema.sql` trocado por explicação de que o hash é `$PLACEHOLDER_HASH$` inerte (nunca autentica) e a conta de verdade nasce via `/api/setup/admin`, já bloqueado em produção. Sem risco funcional — só evitava que alguém lesse aquilo como credencial real.
+
+Nenhum teste automatizado quebrou (nada de lógica tocada, só comentário + um `if` a mais no workflow). Backup local do histórico pré-reescrita mantido fora do git, não commitado — apagar quando o usuário confirmar que não precisa mais dele.
