@@ -308,8 +308,11 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES
   ('login_border_bloom',          '0.25'),
   ('timezone',              'America/Fortaleza');
 
--- Admin padrão (senha: Admin@2025 — TROCAR NO PRIMEIRO ACESSO)
--- hash bcrypt gerado fora do SQLite via Worker no setup
+-- Admin padrão — placeholder inerte, NUNCA autentica de verdade.
+-- '$PLACEHOLDER_HASH$' não é um hash PBKDF2 real (ver verifyPassword() em
+-- routes/auth.js), então nenhuma senha bate com ele. Conta de fato nasce via
+-- POST /api/setup/admin (worker/src/routes/setup.js), que já é bloqueado em
+-- produção (APP_ENV=production) e exige e-mail/senha informados na hora.
 INSERT OR IGNORE INTO agents (id, name, email, password_hash, role)
   VALUES (
     'admin-default-0000-0000-000000000001',

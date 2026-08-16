@@ -77,7 +77,10 @@ jobs:
             before="${{ github.event.before }}"
             after="${{ github.sha }}"
 
-            if [[ "$before" == "0000000000000000000000000000000000000000" ]]; then
+            # "before" inexistente no historico buscado (push inicial OU depois de um
+            # reescrever de historico/force-push, onde o SHA antigo nao e mais alcancavel)
+            # cai no mesmo caminho seguro: publica os dois lados em vez de estourar o step.
+            if [[ "$before" == "0000000000000000000000000000000000000000" ]] || ! git cat-file -e "$before" 2>/dev/null; then
               deploy_worker=true
               deploy_frontend=true
             else
