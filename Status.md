@@ -564,3 +564,18 @@ Usuário decidiu sobre as recomendações do relatório da checagem completa: co
 **Junto (recomendação 4 do relatório, mesmo commit da correção do deploy.yml)**: comentário `-- Admin padrão (senha: Admin@2025 — TROCAR NO PRIMEIRO ACESSO)` em `worker/src/db/schema.sql` trocado por explicação de que o hash é `$PLACEHOLDER_HASH$` inerte (nunca autentica) e a conta de verdade nasce via `/api/setup/admin`, já bloqueado em produção. Sem risco funcional — só evitava que alguém lesse aquilo como credencial real.
 
 Nenhum teste automatizado quebrou (nada de lógica tocada, só comentário + um `if` a mais no workflow). Backup local do histórico pré-reescrita mantido fora do git, não commitado — apagar quando o usuário confirmar que não precisa mais dele.
+
+## 2026-08-16 (cont.) — Recomendações 2 e 3: vite e react-router atualizados
+
+Usuário pediu explicação mais didática das recomendações 2 (react-router) e 3 (vite) do relatório antes de decidir. Investigação prévia mudou a recomendação original de ambos:
+
+- **vite**: `npm audit fix --force` sugeria pular direto pra `vite@8` (3 majors), mas checando a árvore de dependência real, a correção mínima do `esbuild` (`^0.25.0`) já existe desde `vite@6.4.2` — e `@vitejs/plugin-react@4.7.0` (já instalado, sem precisar trocar) já declara suporte a `vite ^6.0.0`. Salto real necessário: 1 major, não 3.
+- **react-router**: checado no código se o vetor de exploração do CVE (open redirect) existe — `grep` em todo `navigate()`/`Link to=` confirmou que **nenhum** destino de navegação vem de fora (query param, input do usuário); todo caminho é literal ou monta com id interno (`/patients/${id}`). Confirmado também que o app usa só a API declarativa (`BrowserRouter`/`Routes`/`Route`/`Link`/`useNavigate`/`NavLink`/`Outlet`/`useParams`), sem data router nem SSR — exatamente a parte que a v7 manteve compatível. `react-router-dom@7` ainda existe como pacote (reexporta `react-router`), mesmo import path, peer só exige `react >=18` (já atende).
+
+Usuário escolheu, com a explicação em mãos: **vite direto pro 6.4.2** (não o 8) e **react-router direto pro 7** (não ficar só no canary de future-flags) — os dois caminhos recomendados.
+
+**Execução**: `frontend/package.json` — `vite: ^5.4.1 → ^6.4.2`, `react-router-dom: ^6.26.0 → ^7.18.2`. Cada troca testada isolada antes de ir pra próxima (não as duas de uma vez, pra saber exatamente qual quebraria algo se quebrasse): instala, `vitest run`, `vite build`, confere `npm ls` que a versão nova realmente entrou. Ao final, `rm -rf node_modules && npm ci` (replica o CI) + suite completa de novo — **0 vulnerabilidade** no `npm audit` (zerou de vez, não só reduziu). Bundle principal foi de 626 KB pra 644 KB (+18 KB, esperado — react-router v7 é levemente maior).
+
+**Checagem extra, dentro do que é automatizável** (build de produção real servido localmente via `vite preview`, sem executar JS de verdade — isso continua sendo validação do usuário no navegador, por convenção do projeto): raiz `200`, rota profunda client-side (`/patients/abc123`) cai no fallback do SPA (`200`, não `404` — confirma que o *history API fallback* do `BrowserRouter` continua funcionando igual na v7), bundle JS principal serve `200`.
+
+Nenhuma migration, nenhuma mudança de schema — só dependência de frontend.
