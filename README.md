@@ -103,13 +103,14 @@ Cada rota mora no arquivo de mesmo nome — sem indireção.
 - **`email.js`** — único ponto de saída de e-mail do sistema
 - **`error-log.js`** — grava e expira os erros que alimentam a aba de Logs
 - **`patientImport.js`** — importação de pacientes em massa via CSV (`POST /api/patients/import`), ver seção própria abaixo
+- **`sheetsBackup.js`** — backup diário pra Google Sheets, com restore, ver seção "Backup e restore" abaixo
 
 ### Regras (`utils/`)
 
 - **`protocols.js`** — resolução de protocolo e cálculo de marcos. **Fonte única da regra**
 - **`proximoMarco.js`** — mantém `next_followup_date` e a expressão SQL de urgência
 - **`patientQuery.js`** — busca, cursor, filtros e os status válidos de paciente
-- **`contactFields.js`**, **`emailTemplates.js`**, **`messagingSettings.js`**, **`passwordReset.js`**, **`storage.js`**
+- **`contactFields.js`**, **`emailTemplates.js`**, **`messagingSettings.js`**, **`backupSettings.js`**, **`passwordReset.js`**, **`storage.js`**
 
 ## Frontend — `frontend/src/`
 
@@ -433,6 +434,92 @@ E-mail sai pelo Gmail da clínica via Apps Script — o Workers não abre conex�
 SMTP, então **senha de app do Gmail não serve aqui**. Configuração e modelos
 ficam em **Configurações → Mensageria**. Publicação do script:
 [`docs/EMAIL-APPS-SCRIPT.md`](docs/EMAIL-APPS-SCRIPT.md).
+
+---
+
+## Backup e restore
+
+Todo dia às 00h (Fortaleza, mesmo cron da faxina noturna), o CareDesk exporta
+`agents`, `contact_protocols`, `patients` e `followup_logs` para uma Google
+Planilha — e consegue **restaurar** esses dados de volta no D1 a partir dela.
+Configuração em **Configurações → Backup**, credenciais **próprias**,
+independentes do relay de e-mail (pode usar uma conta Google separada).
+Publicação do Apps Script: [`docs/GOOGLE-SHEETS-BACKUP.md`](docs/GOOGLE-SHEETS-BACKUP.md).
+
+**Duas camadas de proteção, não uma só.** O D1 já tem **Time Travel** nativo
+(point-in-time recovery, janela de 30 dias confirmada no `--help` do próprio
+wrangler) — mais rápido e mais completo que qualquer coisa construída por
+cima do Sheets. **Se o desastre foi percebido dentro de 30 dias, é essa a
+ferramenta certa, sempre.** O backup no Sheets é a segunda camada: cobre
+desastre percebido depois dos 30 dias, ou perda da própria conta Cloudflare
+(não só do banco).
+
+**Restaurar pro dia anterior ao problema** (`worker/scripts/time-travel-restore.js`):
+
+```powershell
+cd worker
+node scripts/time-travel-restore.js --date 2026-08-15              # dry-run, só mostra o bookmark
+node scripts/time-travel-restore.js --date 2026-08-15 --confirm    # restaura de verdade
+```
+
+`--date` vira sempre o **fim** daquele dia (23:59:59, fuso fixo de Fortaleza,
+UTC-3 sem DST) — pega o máximo de dado bom ainda dentro do dia escolhido. Use
+`--timestamp <RFC3339>` direto pra precisão maior (ex: problema começou às
+14h, restaurar pras 13:59). **De propósito só no terminal, nunca um botão no
+app**: expor isso na UI exigiria guardar no Worker um token Cloudflare com
+poder de reescrever o banco de produção inteiro, alcançável por qualquer
+sessão de admin comprometida — risco desproporcional ao ganho de
+conveniência. Sem `--confirm` é sempre dry-run. Antes de restaurar de
+verdade, o script anota o bookmark **atual** (pra desfazer a própria
+restauração depois, se o dia escolhido não era o certo — Time Travel restaura
+pra qualquer bookmark dentro da janela, inclusive um capturado minutos
+antes).
+
+**Por que essas 4 tabelas e não só `patients`**: `patients.assigned_agent_id`
+e `patients.protocol_id` são foreign keys de verdade, com checagem ativa no
+D1 — restaurar um paciente apontando pra um agente ou protocolo que não
+existe quebra o insert. `agents` e `contact_protocols` entram como
+pré-requisito, nessa ordem de dependência.
+
+**O que fica de fora, de propósito:**
+- `password_hash` de agente — nunca sai do D1. Agente restaurado nasce com o
+  mesmo placeholder inerte que o `schema.sql` já usa pro admin padrão
+  (`$PLACEHOLDER_HASH$`, tratado por `verifyPassword()` como "nunca
+  autentica") e recupera acesso pelo fluxo de "Esqueci minha senha".
+- `cpf` de paciente — decisão do usuário: mesmo sabendo que isso deixa uma
+  lacuna proposital na recuperação (paciente restaurado nasce sem CPF,
+  reeditável à mão depois), o risco de exposição numa planilha (controle de
+  acesso bem mais fraco que o D1) pesou mais.
+- `protocol_message_templates`, `notifications`, `app_settings`/branding —
+  perder isso num desastre é reconfigurável na mão em minutos; não justificou
+  a complexidade extra na primeira versão.
+
+**Como funciona**: `agents`/`contact_protocols`/`patients` são reescritos por
+inteiro toda noite (sempre a foto do estado atual, paginado por `id` — não
+`OFFSET`, proporcional ao tamanho da tabela). `followup_logs` é **incremental**
+(cresce pra sempre; reexportar tudo toda noite desperdiçaria leitura do D1 à
+toa) — uma marca d'água em `app_settings` guarda até quando já foi exportado,
+só avançada depois que o Apps Script confirma o lote, e a janela é fixada no
+**início** de cada rodada (não no maior `created_at` devolvido) pra nunca
+perder uma linha criada no meio da exportação. Lotes de até 500 linhas por
+chamada.
+
+**Restore** (`worker/scripts/restore-from-backup.js`, ferramenta de "quebrar
+o vidro", não rota de uso comum):
+
+```powershell
+cd worker
+node scripts/restore-from-backup.js --url <apps-script-url> --token <token>                    # dry-run
+node scripts/restore-from-backup.js --url <apps-script-url> --token <token> --remote --confirm  # restaura de verdade
+```
+
+`--url`/`--token` vêm sempre por flag, nunca lidos de `app_settings`: se o D1
+sumiu de vez — o cenário que esta ferramenta existe pra cobrir —, a cópia
+dessas credenciais na aba Backup some junto. **Guarde as duas também fora do
+sistema** (gerenciador de senhas). Sem `--confirm` é sempre dry-run (só mostra
+quanto seria restaurado); sem `--remote` roda contra D1 local. Inserção é
+`INSERT OR IGNORE` por `id` — rodar duas vezes, ou restaurar em cima de um
+banco parcialmente vivo, nunca duplica nem sobrescreve o que já existe.
 
 ---
 

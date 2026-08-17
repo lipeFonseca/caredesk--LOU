@@ -201,6 +201,10 @@ export const api = {
     // Roda o resumo de verdade pra todos os agentes ativos, sem esperar o cron das 20h.
     runDigestNow:   ()     => request('/settings/email/digest/run-now', { method: 'POST' }),
 
+    // Backup: testa a conexão (lote mínimo) e roda o backup completo na hora.
+    testBackup:     ()     => request('/settings/backup/test',    { method: 'POST' }),
+    runBackupNow:   ()     => request('/settings/backup/run-now', { method: 'POST' }),
+
     // Templates de e-mail editáveis
     getEmailTemplates: ()            => request('/settings/email-templates'),
     saveEmailTemplate: (tipo, body)  => request(`/settings/email-templates/${tipo}`, { method: 'PUT', body: JSON.stringify(body) }),

@@ -7,6 +7,7 @@ import { purgeExpiredResetCodes } from '../utils/passwordReset.js'
 import { runArquivamento } from './arquivamento.js'
 import { reconciliarProximosMarcos } from '../utils/proximoMarco.js'
 import { reconciliarContadores } from '../utils/contadores.js'
+import { runDailyBackup } from './sheetsBackup.js'
 
 // ── Entry point chamado pelo cron trigger ────────────────────
 export async function runScheduler(env) {
@@ -78,6 +79,11 @@ export async function runNightlyCleanup(env) {
   // Paga o COUNT(*) completo uma vez por noite pra corrigir divergencia — em
   // vez de paga-lo a cada carregamento do Dashboard.
   await limparComTolerancia('contadores', () => reconciliarContadores(env.DB))
+
+  // Por ultimo, ja refletindo quem foi arquivado hoje. Sem backup configurado
+  // (aba Backup em Configuracoes vazia), runDailyBackup devolve {skipped:true}
+  // sem erro — nao e uma falha, so um recurso opcional desligado.
+  await limparComTolerancia('backup', () => runDailyBackup(env))
 
   // Sem estatistica atualizada o planner do SQLite escolhe indice por heuristica
   // fixa — e com a tabela crescendo 100-300 linhas/dia isso passa a errar. O

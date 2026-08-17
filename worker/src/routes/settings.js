@@ -12,7 +12,14 @@ import {
   isMaskedValue,
   redactSettings,
 } from '../utils/messagingSettings.js'
+import {
+  BACKUP_SETTING_KEYS,
+  SECRET_SETTING_KEYS as BACKUP_SECRET_SETTING_KEYS,
+  isMaskedValue as isBackupMaskedValue,
+  redactBackupSettings,
+} from '../utils/backupSettings.js'
 import { sendEmail } from '../services/email.js'
+import { runDailyBackup } from '../services/sheetsBackup.js'
 import {
   EMAIL_TEMPLATE_PLACEHOLDERS,
   isValidEmailTemplateType,
@@ -65,7 +72,8 @@ settings.get('/', async (c) => {
   // so admin — por isso a resposta e filtrada por papel: agente comum nao ve
   // mensageria nenhuma, admin ve com o token mascarado.
   const isAdmin = c.get('agent')?.role === 'admin'
-  return c.json(redactSettings(Object.fromEntries(results.map((row) => [row.key, row.value])), { isAdmin }))
+  const mapa = Object.fromEntries(results.map((row) => [row.key, row.value]))
+  return c.json(redactBackupSettings(redactSettings(mapa, { isAdmin }), { isAdmin }))
 })
 
 settings.patch('/', adminOnly, async (c) => {
@@ -95,6 +103,7 @@ settings.patch('/', adminOnly, async (c) => {
     'login_background_effect_enabled',
     'timezone',
     ...MESSAGING_SETTING_KEYS,
+    ...BACKUP_SETTING_KEYS,
   ]
 
   for (const [key, value] of Object.entries(body)) {
@@ -102,6 +111,7 @@ settings.patch('/', adminOnly, async (c) => {
     // O formulario devolve o segredo mascarado quando ninguem mexeu no campo;
     // gravar isso apagaria a credencial real.
     if (SECRET_SETTING_KEYS.includes(key) && isMaskedValue(value)) continue
+    if (BACKUP_SECRET_SETTING_KEYS.includes(key) && isBackupMaskedValue(value)) continue
     await upsertSetting(c.env.DB, key, value)
   }
 
@@ -203,6 +213,35 @@ settings.post('/email/test', adminOnly, async (c) => {
     // token errado x URL errada x cota estourada vira adivinhacao. Rota e
     // adminOnly, entao nao expoe nada a mais do que quem configurou ja sabe.
     return c.json({ error: falhaNoEnvio.message || 'Falha ao enviar o e-mail de teste' }, 502)
+  }
+})
+
+// ── POST /api/settings/backup/test ───────────────────────────
+// Manda um lote minimo (so a aba Agentes) pra confirmar URL/token/planilha
+// antes de depender do backup de verdade — mesma razao do teste de e-mail.
+settings.post('/backup/test', adminOnly, async (c) => {
+  try {
+    const resultado = await runDailyBackup(c.env, { apenasAgents: true })
+    if (resultado.skipped) {
+      return c.json({ error: 'Backup nao configurado (URL/token ausentes ou desligado)' }, 400)
+    }
+    return c.json({ success: true, ...resultado })
+  } catch (falha) {
+    return c.json({ error: falha.message || 'Falha ao testar o backup' }, 502)
+  }
+})
+
+// ── POST /api/settings/backup/run-now ────────────────────────
+// Dispara o backup completo (as 4 abas) na hora, sem esperar a faxina noturna.
+settings.post('/backup/run-now', adminOnly, async (c) => {
+  try {
+    const resultado = await runDailyBackup(c.env)
+    if (resultado.skipped) {
+      return c.json({ error: 'Backup nao configurado (URL/token ausentes ou desligado)' }, 400)
+    }
+    return c.json({ success: true, ...resultado })
+  } catch (falha) {
+    return c.json({ error: falha.message || 'Falha ao rodar o backup' }, 502)
   }
 })
 

@@ -579,3 +579,65 @@ Usuário escolheu, com a explicação em mãos: **vite direto pro 6.4.2** (não 
 **Checagem extra, dentro do que é automatizável** (build de produção real servido localmente via `vite preview`, sem executar JS de verdade — isso continua sendo validação do usuário no navegador, por convenção do projeto): raiz `200`, rota profunda client-side (`/patients/abc123`) cai no fallback do SPA (`200`, não `404` — confirma que o *history API fallback* do `BrowserRouter` continua funcionando igual na v7), bundle JS principal serve `200`.
 
 Nenhuma migration, nenhuma mudança de schema — só dependência de frontend.
+
+## 2026-08-16 (cont.) — Segunda checagem completa, pós-upgrade, antes de novas features
+
+Usuário pediu nova verificação geral do sistema (repetindo o escopo da checagem de mais cedo hoje) antes de começar funcionalidade nova — motivo explícito: garantir que a rodada de mudanças do dia (CPF/responsável opcional, reescrita de histórico, upgrade de vite/react-router) não deixou nada quebrado.
+
+- **Testes automatizados**: worker `node --test` — **162/162**; frontend `vitest` — **78/78**. Nenhuma regressão.
+- **`npm audit`**: **0 vulnerabilidade** nos dois pacotes (confirma o resultado do upgrade de mais cedo, ainda válido).
+- **Build**: `vite build` limpo (bundle 644 KB, igual ao registrado no upgrade).
+- **Segurança do repositório**: histórico completo (`git log --all -p`) varrido de novo por e-mail pessoal exposto (`faugusto*@gmail`) — nenhuma ocorrência; varrido por padrão de chave/token de API (`AIza`, `sk-`, `AKIA`, `CLOUDFLARE_API_TOKEN=`) — só placeholders (`YOUR_CLOUDFLARE_API_TOKEN`). `.gitignore` cobre `.dev.vars`/`.env*`; `git ls-files` confirma que só os `.env.example` estão versionados. Repositório segue **público**, visibilidade não alterada — decisão do usuário mantida.
+- **Produção vs `main`**: `HEAD` local (`2c15386`) bate exato com o SHA do último deploy do Actions (`conclusion: success`). `GET /health` do worker `200`, frontend Pages `200` — zero drift.
+- **Docs vs código**: tabela de rotas do `README.md` comparada linha a linha contra `app.route(...)` em `worker/src/index.js` — bate 100%. Seção de importação em massa do README já reflete CPF/responsável opcional e os dois bugfixes (confirmação por `id`, contador por status).
+- **Funcional, ao vivo, contra D1 local** (nunca produção): admin de teste temporário inserido via hash PBKDF2 manual (mesma trava de sempre — `/api/setup/admin` continua bloqueado até em `wrangler dev --local`, `APP_ENV=production` estático no `wrangler.toml`). Testado com sessão real (cookie JWT):
+  - Import CSV com CPF/`data_nascimento` faltando **rejeitou o lote inteiro** (tudo-ou-nada confirmado ao vivo, não só em teste unitário).
+  - Reenviado corrigido (uma linha sem CPF, outra com CPF válido e `status=paused`) — **importou as duas**, `assigned_agent_id` do importador certo, `next_followup_date` calculado certo pro protocolo (`surgery_date + 7 dias`, primeiro marco de `proto-local`).
+  - **Contador materializado conferido no banco**: `patients_total` 9→11 (+2, os dois importados), `patients_active` 6→7 (+1, só o `active` — o `paused` corretamente não contou). Confirma ao vivo, pós-upgrade de dependências, que o bugfix do contador registrado mais cedo continua valendo.
+  - Arquivar/desarquivar em massa (`POST /api/patients/archive` e `/unarchive`) — `200`, contagem certa nos dois.
+  - Cron da faxina noturna disparado manualmente (`/cdn-cgi/handler/scheduled?cron=0+3+*+*+*`) — respondeu `ok`, zero linha nova em `error_logs` nos 2 minutos seguintes.
+- **Limpeza**: os 2 pacientes de teste e o admin temporário apagados ao final; conferido que `agents`/`patients`/`system_counters` voltaram ao exato baseline de antes do teste (`2` agentes, `9` pacientes, `patients_total=9`/`patients_active=6`) — zero rastro.
+
+**Nada quebrado, nenhum achado novo.** Único item ainda em aberto, já sinalizado no relatório de mais cedo: o backup local pré-reescrita de histórico (`caredesk-sprint-backup-pre-rewrite-20260816-155524.bundle`) continua fora do git, aguardando o usuário confirmar que pode apagar.
+
+## 2026-08-16 (cont.) — Backup diário pra Google Sheets, com restore
+
+Usuário pediu um sistema de backup pro Google Planilhas, 1x/dia. Planejado em modo de planejamento (plan mode), com duas correções de escopo feitas pelo próprio usuário depois da primeira versão:
+
+1. **Primeira versão do plano** tratava o backup só como cópia de leitura (pra olhar dado fora do sistema). Usuário corrigiu: o objetivo real é **recuperar o sistema inteiro de forma ágil em caso de desastre** — isso mudou o desenho inteiro, de "só escrever no Sheets" pra "escrever e conseguir ler de volta".
+2. Isso expôs que a primeira versão só levava `patients`+`followup_logs`, insuficiente: `assigned_agent_id`/`protocol_id` são FK de verdade no D1, restaurar sem `agents`/`contact_protocols` antes quebra o insert. Escopo final: **`agents` → `contact_protocols` → `patients` → `followup_logs`**, nessa ordem de dependência.
+3. Perguntado de novo (agora com o objetivo real em mente) se CPF entraria no backup — usuário manteve a decisão de fora, mesmo sabendo que isso deixa uma lacuna proposital: paciente restaurado nasce sem CPF, reeditável à mão depois. Segurança > completude, conforme os pilares do projeto.
+4. Usuário pediu explicitamente uma **aba própria em Configurações** com **credenciais próprias** pro backup — não reaproveitar em silêncio a URL/token do relay de e-mail. Motivo: permite conta Google separada da que envia e-mail, isolando o blast radius de um token vazado.
+
+**Duas camadas de proteção documentadas**: D1 já tem Time Travel nativo (30 dias, um comando, zero código) — é a ferramenta certa pra qualquer desastre percebido a tempo. O backup no Sheets é a segunda camada, pra fora dessa janela ou perda da própria conta Cloudflare.
+
+**Implementado:**
+- `docs/apps-script-backup.gs` + `docs/GOOGLE-SHEETS-BACKUP.md` — Web App próprio (não extensão do script de e-mail), `doPost` despachado por `action` (`backup_agents`/`backup_protocols`/`backup_patients`/`backup_followups`/`export_for_restore`). Toda a aba gravada como texto puro (`setNumberFormat('@')`) antes de escrever — sem isso o Sheets tenta adivinhar tipo por conteúdo e uma data tipo `"2026-08-01"` vira célula de Data de verdade, corrompendo o formato na volta (mesma armadilha de data que o README já documentava pra outras colunas, achada durante a implementação, corrigida antes de virar bug).
+- `worker/src/utils/backupSettings.js` — espelha `messagingSettings.js`, credenciais próprias (`backup_enabled`/`backup_relay_url`/`backup_relay_token`), sem fallback cruzado com o e-mail.
+- `worker/src/services/sheetsBackup.js` — `runDailyBackup(env)`. `agents`/`contact_protocols`/`patients` reescritos por inteiro toda noite (paginação por `id > ultimoId`, não `OFFSET`); `followup_logs` incremental via marca d'água em `app_settings`, janela fixada no **início** da rodada (não no maior `created_at` devolvido) pra nunca perder linha criada no meio da exportação, marca só avança depois que o Apps Script confirma o lote inteiro.
+- `worker/src/routes/settings.js` — `POST /backup/test` (lote mínimo, só agents) e `/backup/run-now` (completo), mesmo padrão de `/email/test` e `/email/digest/run-now`.
+- Hook na faxina noturna (`scheduler.js`, cron `0 3 * * *` já existente) — mais um passo tolerante a falha, por último, depois do arquivamento.
+- `worker/scripts/restore-from-backup.js` — dry-run por padrão, `--confirm` pra gravar, `--remote`/`--local`. `INSERT OR IGNORE` por `id` (idempotente — restaurar em cima de banco parcialmente vivo não duplica nem sobrescreve). Agente restaurado recebe `password_hash = '$PLACEHOLDER_HASH$'` (mesmo placeholder inerte do `schema.sql`), recupera acesso via "Esqueci minha senha". **URL/token do restore vêm sempre por flag, nunca de `app_settings`** — se o D1 sumiu de vez (o cenário que a ferramenta cobre), a cópia das credenciais na aba Backup some junto; documentado no README e no próprio script pra guardar as duas também fora do sistema.
+- Frontend: aba própria "Backup" em Configurações (`BackupSettingsTab.jsx`), botões "Testar conexão" e "Rodar backup agora" com painel de última execução.
+- `README.md` ganhou a seção "Backup e restore" completa (as duas camadas, o porquê do escopo, o runbook de restore).
+
+**Testes**: `worker/test/sheets-backup.test.js` (13 casos — chunking, mode overwrite vs append, marca d'água só avança após confirmação e nunca em falha parcial, `apenasAgents`) e `worker/test/restore-from-backup.test.js` (9 casos — escape de SQL, lotes de 100, ordem de dependência FK, placeholder de senha, leitura do Apps Script). Suite completa do worker: **184/184**. Restore refatorado pra separar lógica pura (testável sem `wrangler`/rede) da execução real (`execSync`), com guarda de `import.meta.url` pra não disparar `main()` ao importar o arquivo num teste.
+
+**Ainda não publicado**: o próprio Apps Script (`apps-script-backup.gs`) precisa ser colado e implantado pelo usuário numa planilha nova antes do backup funcionar de verdade — nada roda sozinho até a aba Backup em Configurações ser preenchida. Ensaio ponta a ponta (backup → apagar D1 local → restore → contagem bate) fica pro usuário rodar quando publicar o script, documentado no README como parte da verificação.
+
+**Nada commitado ainda nesta entrada** — usuário perguntou se já tinha sido commitado/empurrado/deployado antes de eu confirmar; resposta foi não, trabalho ficou local aguardando aprovação.
+
+## 2026-08-16 (cont.) — Restore via D1 Time Travel, só terminal
+
+Usuário pediu, além do backup pro Sheets, uma forma de carregar a "versão salva no D1" escolhendo o dia anterior ao problema — ou seja, acesso ao **D1 Time Travel** (point-in-time recovery nativo da Cloudflare), não o restore do Sheets que acabou de ser implementado.
+
+Antes de construir, avisei o risco real de expor isso como botão no app: exigiria guardar no Worker um token Cloudflare com poder de reescrever o banco de produção **inteiro**, alcançável por qualquer sessão de admin comprometida — categoria de risco bem acima de tudo que existia no projeto até aqui (o restore do Sheets só insere linha por linha com `OR IGNORE`; Time Travel reescreve o banco inteiro de uma vez). Usuário escolheu, com o risco em mãos: **script no terminal**, mesmo padrão de `restore-from-backup.js`.
+
+**Implementado**: `worker/scripts/time-travel-restore.js`.
+- `--date aaaa-mm-dd` vira o **fim** daquele dia (`23:59:59-03:00`, fuso fixo de Fortaleza, sem DST — mesma regra do resto do projeto) — pega o máximo de dado bom ainda dentro do dia escolhido. `--timestamp <RFC3339>` direto pra precisão maior.
+- Fluxo em duas etapas, sempre: `wrangler d1 time-travel info --timestamp=... --json` resolve o bookmark (consulta somente-leitura, testada ao vivo contra o D1 remoto de produção durante a implementação — confirmou o formato `{"bookmark": "..."}` e a janela de 30 dias, que veio direto do `--help` do próprio wrangler instalado, não de memória). Sem `--confirm`, para aqui (dry-run). Com `--confirm`, primeiro anota o bookmark **atual** (pra desfazer a própria restauração depois, se o dia escolhido não era o certo) e só então roda `wrangler d1 time-travel restore --bookmark=...` — restaura pelo bookmark capturado na etapa de preview, não por um novo `--timestamp`, pra não haver drift entre o que foi mostrado e o que de fato roda.
+- Sem opção `--local`: Time Travel é recurso do D1 remoto por natureza, não existe equivalente local pra ensaiar contra.
+
+**Testes**: `worker/test/time-travel-restore.test.js` (7 casos — conversão de data pro fim do dia no fuso certo, formato inválido rejeitado, `--timestamp` explícito vence quando os dois vêm juntos). Só a lógica pura de resolução de timestamp é testada; a chamada ao wrangler em si não (mesmo padrão já aceito pro resto do projeto pra chamada de I/O real). Suite completa do worker depois desta e da entrada anterior: **191/191**.
+
+`README.md` ganhou o runbook dentro da seção "Backup e restore", junto da explicação de por que não é botão.
